@@ -16,6 +16,8 @@ lib/local/
 game/
 profiles/
 BepInEx/
+Environment.props
+Directory.Build.props.local
 *.dll
 *.pdb
 
