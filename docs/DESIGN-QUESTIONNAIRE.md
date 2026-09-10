@@ -5,7 +5,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 ## Progress
 
 - **Completed:** 0 of 17
-- **Current:** Awaiting approval of the master list
+- **Current:** Question 1 — Ideal gameplay flow
 - **Build readiness:** Not ready yet
 
 ## How the interview works
