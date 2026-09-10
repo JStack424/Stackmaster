@@ -1,0 +1,32 @@
+# Build output
+bin/
+obj/
+artifacts/
+dist/
+
+# IDEs and editors
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local game and mod-manager files
+lib/local/
+game/
+profiles/
+BepInEx/
+*.dll
+*.pdb
+
+# Thunderstore publishing secrets or local credentials
+.env
+.env.*
+*.key
+*.pem
+credentials*
+secrets*
+
+# OS files
+.DS_Store
+Thumbs.db
