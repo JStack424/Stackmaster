@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 1 of 18
-- **Current:** Question 2 — First-release boundary
+- **Completed:** 2 of 18
+- **Current:** Question 3 — Sorting trigger and timing
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -21,7 +21,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 ## Master list
 
 - [x] **1. Ideal gameplay flow** — Describe what should happen from the player's point of view during ordinary adventuring, returning to base, opening inventory, and using storage.
-- [ ] **2. First-release boundary** — Decide the must-have behavior for v0.1, what can wait, and whether sorting, depositing, and replenishment ship together initially.
+- [x] **2. First-release boundary** — Decide the must-have behavior for v0.1, what can wait, and whether sorting, depositing, and replenishment ship together initially.
 - [ ] **3. Sorting trigger and timing** — Decide what “always sorted” means in practice: after pickups, inventory changes, opening the inventory, explicit input, or another event model.
 - [ ] **4. Sort scope and protected areas** — Decide which inventories and slots may move, including hotbar, equipped items, arbitrary protected slots, and an open container.
 - [ ] **5. Sort order and grouping** — Define the category order, within-category order, naming basis, quality/durability handling, and stable tie-breakers.
@@ -56,6 +56,10 @@ Joe returns from adventuring, approaches and looks directly at a chest, and pres
 - The intended result is one deliberate button press that unloads gathered materials and restores the player's chosen adventuring loadout.
 
 Details such as exact modifier keys, radius, routing priority, shortage behavior, and storage eligibility remain assigned to their later checkpoints.
+
+### 2. First-release boundary
+
+The first public version will ship the complete core loop together: inventory sorting, nearby-chest depositing, and loadout replenishment to desired quantities. Replenishment is not deferred to a later release.
 
 ## Deferred decisions
 
