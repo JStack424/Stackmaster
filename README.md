@@ -8,6 +8,7 @@ Research and planning are complete as of September 10, 2026, one day after Valhe
 
 - [Valheim 1.0 modding research](docs/RESEARCH.md)
 - [Implementation and release plan](docs/NEXT-STEPS.md)
+- [Running design questionnaire](docs/DESIGN-QUESTIONNAIRE.md)
 
 Nothing has been installed, published, or copied from the game into this repository.
 
