@@ -126,7 +126,8 @@ The first public version will ship the complete core loop together: inventory so
 - Protected food and ammunition can carry user-set target quantities and stay in their chosen inventory slots.
 - Each target belongs to that exact protected slot, not to the item type across the player's whole inventory.
 - Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
-- Still to settle: target editing, source priority, shortage behavior, and excess handling.
+- When a stack is first protected, immediately ask the player to enter its target quantity rather than inferring the target from its current quantity or maximum stack size.
+- Still to settle: later target editing, source priority, shortage behavior, and excess handling.
 
 ## Deferred decisions
 
