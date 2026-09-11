@@ -161,8 +161,10 @@ The first public version will ship the complete core loop together: inventory so
 
 ### Question 14 — multiplayer and installation contract
 
-- Container mutation must behave safely in co-op and on dedicated servers.
-- Still to settle: who must install the mod, authority and synchronization expectations, and what happens if two players act on the same storage at once.
+- The mod should be optional and client-side from an installation perspective: only players who want its features install it.
+- Players with the mod must remain able to join and use ordinary vanilla-hosted and dedicated servers; the host, server, and other players should not need the mod.
+- Container mutation must still use Valheim's normal ownership and synchronization behavior safely.
+- Still to settle: what happens if two players access or change the same storage at once.
 
 ## Deferred decisions
 
