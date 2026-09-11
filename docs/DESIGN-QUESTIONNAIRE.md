@@ -75,6 +75,14 @@ The first public version will ship the complete core loop together: inventory so
 - Opening a chest should organize that chest automatically rather than requiring a separate chest-sort button.
 - Chest-specific exclusions and category rules remain assigned to the chest-controls checkpoint.
 
+## Current checkpoint notes
+
+### Question 5 — awaiting one clarification
+
+- Chests sort in a single alphabetical order with no category grouping.
+- Compatible stacks should merge whenever possible, except that a favorited/locked partial stack must remain untouched. This also supplies the core rule for Question 6.
+- Still to settle: whether the player's movable inventory uses the same alphabetical order or a different arrangement.
+
 ## Deferred decisions
 
 None yet.
