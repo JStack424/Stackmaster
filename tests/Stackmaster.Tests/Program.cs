@@ -21,7 +21,11 @@ internal static class Program
             ExcessProtectedQuantityUsesDepositRouting,
             EligibilityAndInitialMatchingAreEnforced,
             PlanningBudgetStopsSafelyAndReportsPartialSearch,
-            MixedPlanConservesEveryItemCount
+            MixedPlanConservesEveryItemCount,
+            ProtectionStateRoundTripsTargets,
+            ProtectionStateSkipsMalformedRecords,
+            ProtectionStateRejectsUnknownVersions,
+            ProtectionStateValidatesTargets
         };
 
         var failures = 0;
@@ -262,6 +266,49 @@ internal static class Program
         Equal(originalContainerTotal, containers.SelectMany(container => container.Items).Sum(item => item.Quantity), "container snapshots remain unchanged");
         Equal(5, plan.ReplenishedUnits, "mixed replenished count");
         Equal(67, plan.DepositedUnits, "mixed deposited count");
+    }
+
+    private static void ProtectionStateRoundTripsTargets()
+    {
+        var state = new ProtectionState();
+        state.Protect(new Slot(2, 3), 42, "wood|quality=1;custom=å");
+        state.Protect(new Slot(0, 1), null, null);
+
+        var parsed = ProtectionState.Parse(state.Serialize());
+        Equal(2, parsed.Records.Count, "round-trip protected record count");
+        ProtectionRecord target;
+        True(parsed.TryGet(new Slot(2, 3), out target), "target slot survives round trip");
+        Equal(42, target.TargetQuantity, "target quantity survives round trip");
+        Equal("wood|quality=1;custom=å", target.TargetItemKey, "target identity survives round trip");
+        True(parsed.IsProtected(new Slot(0, 1)), "protect-only slot survives round trip");
+    }
+
+    private static void ProtectionStateSkipsMalformedRecords()
+    {
+        var valid = new ProtectionState(new[] { new ProtectionRecord(new Slot(1, 2), null, null) }).Serialize();
+        var parsed = ProtectionState.Parse(valid + ";bad;1,-2,,;1,2,-4,;3,4,2,%%%not-base64%%%");
+        Equal(1, parsed.Records.Count, "malformed records are ignored independently");
+        True(parsed.IsProtected(new Slot(1, 2)), "valid record remains available");
+    }
+
+    private static void ProtectionStateRejectsUnknownVersions()
+    {
+        var parsed = ProtectionState.Parse("v999;1,2,,");
+        Equal(0, parsed.Records.Count, "unknown version fails closed to an empty state");
+    }
+
+    private static void ProtectionStateValidatesTargets()
+    {
+        var state = new ProtectionState();
+        var missingKeyThrew = false;
+        try { state.Protect(new Slot(0, 0), 1, null); }
+        catch (ArgumentException) { missingKeyThrew = true; }
+        True(missingKeyThrew, "target without item identity is rejected");
+
+        var nonPositiveThrew = false;
+        try { state.Protect(new Slot(0, 0), 0, "wood"); }
+        catch (ArgumentOutOfRangeException) { nonPositiveThrew = true; }
+        True(nonPositiveThrew, "non-positive target is rejected");
     }
 
     private static InventorySnapshot Player(int capacity, params ItemStackSnapshot[] items)

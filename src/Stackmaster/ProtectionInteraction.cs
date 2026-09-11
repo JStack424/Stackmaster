@@ -1,0 +1,109 @@
+#nullable disable
+using System;
+using System.Globalization;
+using HarmonyLib;
+using Stackmaster.Core;
+using UnityEngine;
+
+namespace Stackmaster
+{
+    internal static class ProtectionInteraction
+    {
+        internal static bool TryHandle(InventoryGrid grid, ItemDrop.ItemData item, Vector2i position)
+        {
+            if (!Input.GetKey(KeyCode.LeftAlt))
+            {
+                return false;
+            }
+
+            var player = Player.m_localPlayer;
+            if (player == null || grid == null || grid.GetInventory() != player.GetInventory())
+            {
+                return false;
+            }
+
+            var slot = new Slot(position.x, position.y);
+            var state = RuntimeContext.LoadProtection(player);
+            if (state.IsProtected(slot))
+            {
+                state.Unprotect(slot);
+                RuntimeContext.SaveProtection(player, state);
+                RuntimeContext.ShowTopLeft("Stackmaster: slot unprotected.");
+                return true;
+            }
+
+            if (item == null || item.m_shared.m_maxStackSize <= 1)
+            {
+                state.Protect(slot, null, null);
+                RuntimeContext.SaveProtection(player, state);
+                RuntimeContext.ShowTopLeft("Stackmaster: slot protected.");
+                return true;
+            }
+
+            if (TextInput.instance == null)
+            {
+                RuntimeContext.ShowCenter("Stackmaster could not open the target prompt; slot unchanged.");
+                return true;
+            }
+
+            var receiver = new TargetPromptReceiver(player, slot, item);
+            TextInput.instance.RequestText(
+                receiver,
+                "Stackmaster: 0 = protect only; 1-" + item.m_shared.m_maxStackSize.ToString(CultureInfo.InvariantCulture) + " = target",
+                4);
+            return true;
+        }
+
+        private sealed class TargetPromptReceiver : TextReceiver
+        {
+            private readonly Player _player;
+            private readonly Slot _slot;
+            private readonly string _itemKey;
+            private readonly int _maxStack;
+            private string _text = string.Empty;
+
+            internal TargetPromptReceiver(Player player, Slot slot, ItemDrop.ItemData item)
+            {
+                _player = player;
+                _slot = slot;
+                _itemKey = InventorySnapshots.PersistentItemKey(item);
+                _maxStack = item.m_shared.m_maxStackSize;
+            }
+
+            public string GetText() => _text;
+
+            public void SetText(string text)
+            {
+                _text = text ?? string.Empty;
+                int target;
+                if (!int.TryParse(_text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out target) || target < 0 || target > _maxStack)
+                {
+                    RuntimeContext.ShowCenter("Stackmaster: enter 0 or a target from 1 to " + _maxStack.ToString(CultureInfo.InvariantCulture) + ". Slot unchanged.");
+                    return;
+                }
+
+                var state = RuntimeContext.LoadProtection(_player);
+                if (target == 0)
+                {
+                    state.Protect(_slot, null, null);
+                    RuntimeContext.ShowTopLeft("Stackmaster: slot protected.");
+                }
+                else
+                {
+                    state.Protect(_slot, target, _itemKey);
+                    RuntimeContext.ShowTopLeft("Stackmaster: protected with target " + target.ToString(CultureInfo.InvariantCulture) + ".");
+                }
+                RuntimeContext.SaveProtection(_player, state);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier))]
+    internal static class InventoryProtectionClickPatch
+    {
+        private static bool Prefix(InventoryGrid grid, ItemDrop.ItemData item, Vector2i pos)
+        {
+            return !ProtectionInteraction.TryHandle(grid, item, pos);
+        }
+    }
+}

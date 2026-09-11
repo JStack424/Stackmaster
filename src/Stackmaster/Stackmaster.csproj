@@ -14,18 +14,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="BepInEx">
-      <HintPath>$(StackmasterReferencePath)/BepInEx.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine">
-      <HintPath>$(StackmasterReferencePath)/UnityEngine.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(StackmasterReferencePath)/UnityEngine.CoreModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
+    <Reference Include="0Harmony"><HintPath>$(StackmasterReferencePath)/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BepInEx"><HintPath>$(StackmasterReferencePath)/BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(StackmasterReferencePath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(StackmasterReferencePath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(StackmasterReferencePath)/UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(StackmasterReferencePath)/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.TextMeshPro"><HintPath>$(StackmasterReferencePath)/Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="assembly_guiutils"><HintPath>$(StackmasterReferencePath)/assembly_guiutils.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="assembly_utils"><HintPath>$(StackmasterReferencePath)/assembly_utils.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="assembly_valheim"><HintPath>$(StackmasterReferencePath)/assembly_valheim.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 
   <!-- Compile the pure policy source into the one plugin DLL. Tests reference the
@@ -56,6 +54,10 @@
            Text="Private Unity facade reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
     <Error Condition="!Exists('$(StackmasterReferencePath)/UnityEngine.CoreModule.dll')"
            Text="Private Unity reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
+    <Error Condition="!Exists('$(StackmasterReferencePath)/assembly_valheim.dll')"
+           Text="Private Valheim reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
+    <Error Condition="!Exists('$(StackmasterReferencePath)/0Harmony.dll')"
+           Text="Private Harmony reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
   </Target>
 
   <Target Name="VerifyReferencesWereNotCopied" AfterTargets="Build">
