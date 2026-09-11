@@ -151,7 +151,8 @@ The first public version will ship the complete core loop together: inventory so
 - This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
 - Keep the binding configurable.
 - In the inventory UI, Left Alt-clicking an item or slot opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
-- Still to settle: controller controls, popup contents and counting units, sounds, and error/skip feedback.
+- v0.1 supports keyboard and mouse only; controller bindings and controller-specific UI are outside the first-release scope.
+- Still to settle: popup contents and counting units, sounds, and error/skip feedback.
 
 ## Deferred decisions
 
