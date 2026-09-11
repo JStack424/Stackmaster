@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 13 of 18
-- **Current:** Question 14 — Multiplayer and installation contract
+- **Completed:** 14 of 18
+- **Current:** Question 15 — Configuration model and defaults
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -33,7 +33,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
 - [x] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
 - [x] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
-- [ ] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
+- [x] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
 - [ ] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
 - [ ] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
 - [ ] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
@@ -157,14 +157,20 @@ The first public version will ship the complete core loop together: inventory so
 - Do not add success or failure sounds; feedback stays visual.
 - If the action cannot run, use the same popup to show a concise reason.
 
+### 14. Multiplayer and installation contract
+
+- The mod is optional and client-side from an installation perspective: only players who want its features install it.
+- Players with the mod can join and use ordinary vanilla-hosted and dedicated servers; the host, server, and other players do not need the mod.
+- Container mutation must still use Valheim's normal ownership and synchronization behavior safely.
+- If another player is actively using a nearby container, skip it rather than waiting, retrying, or modifying it concurrently.
+- Include skipped in-use containers in the compact action feedback.
+
 ## Current checkpoint notes
 
-### Question 14 — multiplayer and installation contract
+### Question 15 — configuration model and defaults
 
-- The mod should be optional and client-side from an installation perspective: only players who want its features install it.
-- Players with the mod must remain able to join and use ordinary vanilla-hosted and dedicated servers; the host, server, and other players should not need the mod.
-- Container mutation must still use Valheim's normal ownership and synchronization behavior safely.
-- Still to settle: what happens if two players access or change the same storage at once.
+- Already settled: auto-sort can be toggled in game, the storage radius is configurable with a 20-meter default, and the Left Alt + E binding is configurable.
+- Still to settle: whether to expose additional behavior controls, where settings live, and whether settings are shared or scoped per player/profile/world.
 
 ## Deferred decisions
 
