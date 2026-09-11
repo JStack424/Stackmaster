@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 16 of 18
-- **Current:** Question 17 — Public package identity
+- **Completed:** 17 of 18
+- **Current:** Question 18 — Test plan and definition of done
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -36,7 +36,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
 - [x] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
 - [x] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
-- [ ] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
+- [x] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
 - [ ] **18. Test plan and definition of done** — Agree on solo, host, guest, dedicated-server, conflict, update, packaging, and r2modman tests required before v0.1 is publishable.
 
 ## Settled answers
@@ -191,9 +191,7 @@ The first public version will ship the complete core loop together: inventory so
 - If a Valheim update or compatibility check shows that any part of the mod is unsafe, disable the entire mod for that session before it can alter items.
 - Show the player a clear incompatibility warning and write the technical reason to the BepInEx log; do not keep trying old behavior or run only a subset of features.
 
-## Current checkpoint notes
-
-### Question 17 — public package identity
+### 17. Public package identity
 
 - Public mod name: **Stackmaster**.
 - Reserve the matching package and assembly naming direction (`Stackmaster`) unless Thunderstore's final creation flow reveals a collision.
@@ -203,7 +201,13 @@ The first public version will ship the complete core loop together: inventory so
 - Publish the source in a public GitHub repository and enable GitHub Issues for bug reports and support.
 - Use that repository as Stackmaster's Thunderstore homepage/source link; choose the exact GitHub owner and create the remote only when Joe approves publication.
 - Icon direction: a clean, readable square mark centered on neatly stacked Viking-style wooden chests, using original artwork rather than Valheim assets.
-- Still to settle: short public description.
+- Thunderstore lead: “Turn a messy Viking inventory into a tidy, adventure-ready loadout.”
+
+## Current checkpoint notes
+
+### Question 18 — test plan and definition of done
+
+- Still to settle: required solo, listen-server host/guest, dedicated-server, safety, performance, conflict, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
 
 ## Deferred decisions
 
