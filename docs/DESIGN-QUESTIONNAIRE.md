@@ -4,9 +4,9 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 17 of 18
-- **Current:** Question 18 — Test plan and definition of done
-- **Build readiness:** Not ready yet
+- **Completed:** 18 of 18
+- **Current:** Consolidated behavior-contract review
+- **Build readiness:** Awaiting Joe's explicit approval of the consolidated contract
 
 ## How the interview works
 
@@ -37,7 +37,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
 - [x] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
 - [x] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
-- [ ] **18. Test plan and definition of done** — Agree on solo, host, guest, dedicated-server, conflict, update, packaging, and r2modman tests required before v0.1 is publishable.
+- [x] **18. Test plan and definition of done** — Agree on solo, host, guest, dedicated-server, conflict, update, packaging, and r2modman tests required before v0.1 is publishable.
 
 ## Settled answers
 
@@ -203,9 +203,7 @@ The first public version will ship the complete core loop together: inventory so
 - Icon direction: a clean, readable square mark centered on neatly stacked Viking-style wooden chests, using original artwork rather than Valheim assets.
 - Thunderstore lead: “Turn a messy Viking inventory into a tidy, adventure-ready loadout.”
 
-## Current checkpoint notes
-
-### Question 18 — test plan and definition of done
+### 18. Test plan and definition of done
 
 - Required real gameplay environments before v0.1 publication:
   - Solo world.
@@ -214,15 +212,19 @@ The first public version will ship the complete core loop together: inventory so
   - Vanilla dedicated server, with no server-side Stackmaster installation.
 - Each multiplayer test must verify that unmodded peers remain compatible and that chest state stays synchronized.
 - v0.1 uses a basic smoke-test release gate rather than an exhaustive strict safety campaign.
-- The smoke test still exercises sorting, depositing, and replenishment in representative conditions across every required environment, and any observed item loss, duplication, crash, or synchronization error blocks release.
-- This gate does not claim proof that no rare defect exists beyond the tested paths.
+- The smoke test exercises sorting, depositing, and replenishment in representative conditions across every required environment. Any observed item loss, duplication, crash, or synchronization error blocks release, but the gate does not claim proof that no rare defect exists beyond the tested paths.
 - Mod-conflict testing is limited to a clean r2modman profile containing BepInEx and Stackmaster's declared dependencies; v0.1 makes no broader coexistence promise for other gameplay or inventory mods.
 - Packaging gate: the release ZIP must install successfully into a fresh r2modman profile and launch with its declared dependencies and intended defaults.
 - Updating an older package and uninstalling cleanly are not required release-gate tests for v0.1.
 - Persistence gate: after protecting slots and setting replenishment targets, fully quit and relaunch Valheim with the same character and verify those choices remain intact.
 - Cross-world persistence and separate-character isolation are part of the intended behavior but are not separate required release-gate tests for v0.1.
 - Automated tests for deterministic sorting and item-transfer logic must pass before release, including protected-slot behavior, partial-stack priority, routing order, replenishment, shortages, excess handling, and no item-count drift.
-- Still to settle: the required performance test before v0.1 is publishable.
+- Performance testing is limited to one normal-sized base representing ordinary play within the configured 20-meter radius. The action must remain acceptably responsive there, and profiling from that run sets the internal time budget.
+- A deliberately oversized stress base is not a separate v0.1 release gate, but automated tests must verify that reaching the time budget stops safely and produces the promised partial-search notice.
+- The supported Valheim version must be recorded from the installed game. Before claiming compatibility after a later game update, rerun the same smoke gate; automated coverage must also verify that a failed compatibility check disables all item-changing behavior and surfaces the warning.
+- The exact release ZIP must pass structural validation: required Thunderstore files present, 256×256 PNG icon, valid manifest and dependency versions, matching plugin/package version, and no game assemblies, machine-local paths, credentials, test binaries, or development debris.
+
+All 18 checkpoints are now complete. Gameplay coding remains blocked until Joe approves the consolidated behavior contract.
 
 ## Deferred decisions
 
