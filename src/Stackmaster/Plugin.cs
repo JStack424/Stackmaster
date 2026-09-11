@@ -47,15 +47,25 @@ namespace Stackmaster
             try
             {
                 _harmony = new Harmony(PluginGuid);
-                _harmony.PatchAll(typeof(Plugin).Assembly);
+                PatchInstaller.Install(_harmony);
                 Logger.LogInfo("Compatibility gate passed for Steam build 25253764 reference surface; gameplay hooks enabled.");
             }
             catch (System.Exception exception)
             {
-                _harmony?.UnpatchSelf();
-                _harmony = null;
                 RuntimeContext.Disable("Harmony patch installation failed: " + exception.GetType().Name);
                 Logger.LogError("Stackmaster disabled after patch installation failed: " + exception);
+                try
+                {
+                    _harmony?.UnpatchSelf();
+                }
+                catch (System.Exception cleanupException)
+                {
+                    Logger.LogError("Stackmaster patch cleanup also failed; every patch entrypoint remains fail-closed: " + cleanupException);
+                }
+                finally
+                {
+                    _harmony = null;
+                }
             }
         }
 
@@ -71,20 +81,28 @@ namespace Stackmaster
             {
                 _compatibilityWarningShown = true;
                 MessageHud.instance.ShowMessage(MessageHud.MessageType.Center,
-                    "Stackmaster disabled: this game build is not safely supported.", 0, null);
+                    "Stackmaster disabled for safety. Restart Valheim before using it again.", 0, null);
             }
         }
 
         private void OnDestroy()
         {
-            if (_harmony != null)
+            RuntimeContext.Disable("plugin unloading");
+            try
             {
-                _harmony.UnpatchSelf();
+                _harmony?.UnpatchSelf();
             }
-
-            InventoryIntegration.Shutdown();
-            RuntimeContext.Shutdown();
-            Instance = null;
+            catch (System.Exception exception)
+            {
+                Logger.LogError("Stackmaster patch cleanup failed during unload; entrypoint guards remain disabled: " + exception);
+            }
+            finally
+            {
+                _harmony = null;
+                InventoryIntegration.Shutdown();
+                RuntimeContext.Shutdown();
+                Instance = null;
+            }
             Logger.LogInfo($"{PluginName} {PluginVersion} unloaded cleanly.");
         }
     }

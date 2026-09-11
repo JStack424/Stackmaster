@@ -184,7 +184,7 @@ namespace Stackmaster
     {
         private static bool Prefix(Container __instance, bool granted)
         {
-            return !OwnershipCoordinator.HandleResponse(__instance, granted);
+            return !RuntimeContext.Compatibility.IsCompatible || !OwnershipCoordinator.HandleResponse(__instance, granted);
         }
     }
 }

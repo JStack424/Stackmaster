@@ -28,21 +28,41 @@ namespace Stackmaster
             Compatibility = new CompatibilityResult(false, "shut down");
         }
 
-        internal static ProtectionState LoadProtection(Player player)
+        internal static bool TryLoadProtection(Player player, out ProtectionState state)
         {
+            state = new ProtectionState();
+            if (!Compatibility.IsCompatible)
+            {
+                return false;
+            }
             if (player == null || player.m_customData == null)
             {
-                return new ProtectionState();
+                return true;
             }
 
             string raw;
-            return player.m_customData.TryGetValue(CharacterDataKey, out raw)
-                ? ProtectionState.Parse(raw)
-                : new ProtectionState();
+            if (!player.m_customData.TryGetValue(CharacterDataKey, out raw))
+            {
+                return true;
+            }
+            if (ProtectionState.TryParse(raw, out state))
+            {
+                return true;
+            }
+
+            const string reason = "Saved protection data is malformed or from an unsupported version; restart required.";
+            Disable(reason);
+            Plugin.Log.LogError("Stackmaster disabled without changing the saved protection payload: " + reason);
+            ShowCenter("Stackmaster disabled: protected-slot data could not be read safely. Your saved data was not changed.");
+            return false;
         }
 
         internal static void SaveProtection(Player player, ProtectionState state)
         {
+            if (!Compatibility.IsCompatible)
+            {
+                throw new InvalidOperationException("Stackmaster is disabled; protection data was not changed.");
+            }
             if (player == null || player.m_customData == null)
             {
                 throw new InvalidOperationException("No loaded character is available for protection persistence.");

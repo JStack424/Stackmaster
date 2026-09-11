@@ -23,7 +23,11 @@ namespace Stackmaster
             }
 
             var slot = new Slot(position.x, position.y);
-            var state = RuntimeContext.LoadProtection(player);
+            ProtectionState state;
+            if (!RuntimeContext.TryLoadProtection(player, out state))
+            {
+                return true;
+            }
             if (state.IsProtected(slot))
             {
                 state.Unprotect(slot);
@@ -87,7 +91,11 @@ namespace Stackmaster
                     return;
                 }
 
-                var state = RuntimeContext.LoadProtection(_player);
+                ProtectionState state;
+                if (!RuntimeContext.TryLoadProtection(_player, out state))
+                {
+                    return;
+                }
                 if (target == 0)
                 {
                     state.Protect(_slot, null, null);
@@ -108,7 +116,7 @@ namespace Stackmaster
     {
         private static bool Prefix(InventoryGrid grid, ItemDrop.ItemData item, Vector2i pos, InventoryGrid.Modifier mod)
         {
-            return !ProtectionInteraction.TryHandle(grid, item, pos, mod);
+            return !RuntimeContext.Compatibility.IsCompatible || !ProtectionInteraction.TryHandle(grid, item, pos, mod);
         }
     }
 }

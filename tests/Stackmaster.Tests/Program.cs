@@ -24,7 +24,7 @@ internal static class Program
             PlanningBudgetStopsSafelyAndReportsPartialSearch,
             MixedPlanConservesEveryItemCount,
             ProtectionStateRoundTripsTargets,
-            ProtectionStateSkipsMalformedRecords,
+            ProtectionStateRejectsMalformedRecords,
             ProtectionStateRejectsUnknownVersions,
             ProtectionStateValidatesTargets
         };
@@ -301,18 +301,21 @@ internal static class Program
         True(parsed.IsProtected(new Slot(0, 1)), "protect-only slot survives round trip");
     }
 
-    private static void ProtectionStateSkipsMalformedRecords()
+    private static void ProtectionStateRejectsMalformedRecords()
     {
         var valid = new ProtectionState(new[] { new ProtectionRecord(new Slot(1, 2), null, null) }).Serialize();
-        var parsed = ProtectionState.Parse(valid + ";bad;1,-2,,;1,2,-4,;3,4,2,%%%not-base64%%%");
-        Equal(1, parsed.Records.Count, "malformed records are ignored independently");
-        True(parsed.IsProtected(new Slot(1, 2)), "valid record remains available");
+        ProtectionState parsed;
+        True(!ProtectionState.TryParse(valid + ";bad", out parsed), "malformed record invalidates the payload");
+        Equal(0, parsed.Records.Count, "invalid payload exposes no partial protection state");
+        True(!ProtectionState.TryParse(valid + ";1,-2,,", out parsed), "invalid slot invalidates the payload");
+        True(!ProtectionState.TryParse(valid + ";3,4,2,%%%not-base64%%%", out parsed), "invalid item key invalidates the payload");
     }
 
     private static void ProtectionStateRejectsUnknownVersions()
     {
-        var parsed = ProtectionState.Parse("v999;1,2,,");
-        Equal(0, parsed.Records.Count, "unknown version fails closed to an empty state");
+        ProtectionState parsed;
+        True(!ProtectionState.TryParse("v999;1,2,,", out parsed), "unknown version is explicitly rejected");
+        Equal(0, parsed.Records.Count, "unknown version exposes no protection state");
     }
 
     private static void ProtectionStateValidatesTargets()

@@ -1,5 +1,6 @@
 #nullable disable
 using HarmonyLib;
+using Stackmaster.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -83,7 +84,11 @@ namespace Stackmaster
                 return;
             }
 
-            var protection = RuntimeContext.LoadProtection(player);
+            ProtectionState protection;
+            if (!RuntimeContext.TryLoadProtection(player, out protection))
+            {
+                return;
+            }
             string failure;
             if (!SortExecutor.Sort(player.GetInventory(), true, player, protection, out failure))
             {
@@ -110,6 +115,7 @@ namespace Stackmaster
     {
         private static void Postfix(InventoryGui __instance)
         {
+            if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
         }
     }
@@ -119,6 +125,7 @@ namespace Stackmaster
     {
         private static void Postfix()
         {
+            if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.OnInventoryHidden();
         }
     }
@@ -128,6 +135,7 @@ namespace Stackmaster
     {
         private static void Postfix(InventoryGui __instance, Container container)
         {
+            if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
             InventoryIntegration.SortOpenedInventories(container);
         }

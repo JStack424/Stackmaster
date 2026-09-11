@@ -28,9 +28,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("fully disabled before any inventory hooks were installed", self.plugin)
         self.assertIn("_harmony?.UnpatchSelf()", self.plugin)
         self.assertIn("RuntimeContext.Disable", self.plugin)
+        self.assertNotIn("PatchAll", self.plugin)
         self.assertLess(
             self.plugin.index("CompatibilityGate.Evaluate()"),
-            self.plugin.index("PatchAll"),
+            self.plugin.index("PatchInstaller.Install"),
         )
 
     def test_compatibility_gate_fingerprints_the_exact_runtime(self):
@@ -66,8 +67,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("item.m_stack = placement.Quantity", sort_executor)
 
     def test_inventory_mutation_hooks_are_installed_only_after_gate(self):
-        self.assertIn("[HarmonyPatch(typeof(InventoryGui)", self.gameplay)
-        self.assertIn("[HarmonyPatch(typeof(Container)", self.gameplay)
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        self.assertIn("AccessTools.DeclaredMethod", installer)
+        self.assertIn("Resolve the complete exact target set before installing the first patch", installer)
+        self.assertNotIn("PatchAll", self.plugin)
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
@@ -78,6 +81,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("Dictionary<Slot, ProtectionRecord>", core)
         self.assertIn("player.m_customData", runtime)
         self.assertIn("CharacterDataKey", runtime)
+        self.assertIn("ProtectionState.TryParse", runtime)
+        self.assertIn("Saved protection data is malformed or from an unsupported version", runtime)
+        self.assertIn("saved protection payload", runtime)
         snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
         self.assertIn("record.TargetItemKey, PersistentItemKey(item)", snapshots)
 
@@ -89,6 +95,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(executor.index("destination stack changed before transfer"), move_index)
         self.assertIn("exactPostcondition", executor)
         self.assertIn("FatalPostconditionFailure", executor)
+        self.assertIn("RuntimeContext.Disable", executor)
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        self.assertIn("Restart Valheim before using it again", action)
 
     def test_input_paths_are_narrow_and_modal_safe(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")

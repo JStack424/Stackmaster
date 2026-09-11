@@ -76,7 +76,12 @@ namespace Stackmaster
 
             try
             {
-                var protection = RuntimeContext.LoadProtection(player);
+                ProtectionState protection;
+                if (!RuntimeContext.TryLoadProtection(player, out protection))
+                {
+                    _actionRunning = false;
+                    return;
+                }
                 var catalog = new CompatibilityCatalog();
                 var playerSnapshot = InventorySnapshots.CapturePlayer(player, protection, catalog);
                 var discovery = ContainerDiscovery.Discover(
@@ -181,13 +186,20 @@ namespace Stackmaster
                 ownership.Timeout();
             }
 
+            ProtectionState freshProtection;
+            if (!RuntimeContext.TryLoadProtection(player, out freshProtection))
+            {
+                OwnershipCoordinator.End(ownership);
+                _actionRunning = false;
+                yield break;
+            }
+
             try
             {
                 // Ownership transfer can cause Container.Load to replace every ItemData instance.
                 // Re-capture and re-plan from the synchronized inventories so no pre-RPC object
                 // reference is ever used for mutation.
                 var freshCatalog = new CompatibilityCatalog();
-                var freshProtection = RuntimeContext.LoadProtection(player);
                 var freshPlayer = InventorySnapshots.CapturePlayer(player, freshProtection, freshCatalog);
                 var freshDiscovery = ContainerDiscovery.Discover(player, target, freshCatalog, radius);
                 var freshTarget = freshDiscovery.Containers.FirstOrDefault(handle => handle.Container == target);
@@ -229,7 +241,14 @@ namespace Stackmaster
                         freshPlan,
                         freshCatalog,
                         ownership.FailedContainerIds);
-                    ShowSummary(player, freshProtection, freshPlan, execution);
+                    if (execution.FatalPostconditionFailure)
+                    {
+                        RuntimeContext.ShowCenter("Stackmaster disabled after an unexpected transfer result. Restart Valheim before using it again.");
+                    }
+                    else
+                    {
+                        ShowSummary(player, freshProtection, freshPlan, execution);
+                    }
                 }
             }
             catch (Exception exception)
@@ -289,11 +308,6 @@ namespace Stackmaster
             {
                 lines.Add("Partial search: time budget reached.");
             }
-            if (execution.FatalPostconditionFailure)
-            {
-                lines.Add("Stopped after an unexpected transfer result; check the log.");
-            }
-
             RuntimeContext.ShowTopLeft(string.Join("\n", lines));
         }
 
@@ -314,7 +328,7 @@ namespace Stackmaster
     {
         private static bool Prefix(Container __instance, Humanoid character, ref bool __result)
         {
-            if (!StorageAction.HandleContainerInteraction(__instance, character))
+            if (!RuntimeContext.Compatibility.IsCompatible || !StorageAction.HandleContainerInteraction(__instance, character))
             {
                 return true;
             }
@@ -329,7 +343,7 @@ namespace Stackmaster
     {
         private static void Postfix(Container __instance, ref string __result)
         {
-            if (__instance.GetType() == typeof(Container) && RuntimeContext.Plugin != null)
+            if (RuntimeContext.Compatibility.IsCompatible && __instance.GetType() == typeof(Container) && RuntimeContext.Plugin != null)
             {
                 __result += "\n[<color=yellow>" + RuntimeContext.Plugin.StorageActionShortcut.Value + "</color>] Stackmaster: deposit + replenish";
             }

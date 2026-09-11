@@ -50,7 +50,8 @@ namespace Stackmaster
                 {
                     result.FatalPostconditionFailure = true;
                     result.FailedContainers[containerId] = failure;
-                    RuntimeContext.Plugin.Log.LogError("Transfer postcondition failed; remaining Stackmaster action aborted: " + failure);
+                    RuntimeContext.Disable("Unexpected transfer result; restart required before any further Stackmaster item changes.");
+                    RuntimeContext.Plugin.Log.LogError("Transfer postcondition failed; Stackmaster disabled for this session and the remaining action aborted: " + failure);
                     break;
                 }
 

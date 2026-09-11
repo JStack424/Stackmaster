@@ -83,18 +83,26 @@ namespace Stackmaster.Core
 
         public static ProtectionState Parse(string raw)
         {
+            ProtectionState state;
+            return TryParse(raw, out state) ? state : new ProtectionState();
+        }
+
+        public static bool TryParse(string raw, out ProtectionState state)
+        {
+            state = new ProtectionState();
             if (string.IsNullOrWhiteSpace(raw))
             {
-                return new ProtectionState();
+                return true;
             }
 
             var parts = raw.Split(';');
             if (parts.Length == 0 || !string.Equals(parts[0], CurrentVersion, StringComparison.Ordinal))
             {
-                return new ProtectionState();
+                return false;
             }
 
             var records = new List<ProtectionRecord>();
+            var slots = new HashSet<Slot>();
             for (var index = 1; index < parts.Length; index++)
             {
                 if (string.IsNullOrWhiteSpace(parts[index]))
@@ -110,7 +118,7 @@ namespace Stackmaster.Core
                     !int.TryParse(fields[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out row) ||
                     column < 0 || row < 0)
                 {
-                    continue;
+                    return false;
                 }
 
                 int parsedTarget;
@@ -119,7 +127,7 @@ namespace Stackmaster.Core
                 {
                     if (!int.TryParse(fields[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedTarget) || parsedTarget <= 0)
                     {
-                        continue;
+                        return false;
                     }
                     target = parsedTarget;
                 }
@@ -131,18 +139,24 @@ namespace Stackmaster.Core
                 }
                 catch (FormatException)
                 {
-                    continue;
+                    return false;
                 }
 
                 if (target.HasValue && string.IsNullOrEmpty(itemKey))
                 {
-                    continue;
+                    return false;
                 }
 
-                records.Add(new ProtectionRecord(new Slot(column, row), target, itemKey));
+                var slot = new Slot(column, row);
+                if (!slots.Add(slot))
+                {
+                    return false;
+                }
+                records.Add(new ProtectionRecord(slot, target, itemKey));
             }
 
-            return new ProtectionState(records);
+            state = new ProtectionState(records);
+            return true;
         }
 
         private static string Encode(string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
