@@ -65,6 +65,18 @@ class EnvironmentInspectorStaticTests(unittest.TestCase):
             self.script,
         )
 
+    def test_powershell_51_does_not_wrap_generic_lists_with_array_operator(self):
+        for unsafe in (
+            "@($roots)",
+            "@($results)",
+            "@($notes)",
+        ):
+            self.assertNotIn(unsafe, self.script)
+        self.assertIn("$roots.ToArray()", self.script)
+        self.assertIn("$results.ToArray()", self.script)
+        self.assertIn("$notes.ToArray()", self.script)
+        self.assertIn("environment check failed at line", self.script)
+
     def test_script_contains_no_network_install_or_mutating_commands(self):
         forbidden_commands = (
             "Invoke-WebRequest",

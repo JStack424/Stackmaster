@@ -81,6 +81,15 @@ if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path -Path $scriptDirectory -ChildPath 'stackmaster-environment-report.json'
 }
 
+trap {
+    $failedLine = $_.InvocationInfo.ScriptLineNumber
+    Write-Host "Stackmaster environment check failed at line ${failedLine}: $($_.Exception.Message)" -ForegroundColor Red
+    if (-not [string]::IsNullOrWhiteSpace($_.InvocationInfo.Line)) {
+        Write-Host "Command: $($_.InvocationInfo.Line.Trim())" -ForegroundColor Red
+    }
+    exit 1
+}
+
 function ConvertTo-SanitizedPath {
     param([AllowNull()][string]$Path)
 
@@ -201,7 +210,9 @@ function Get-SteamRoots {
         Add-UniqueExistingDirectory -List $roots -Path (Join-Path $env:ProgramFiles 'Steam')
     }
 
-    $initialRoots = @($roots)
+    # PowerShell 5.1 can throw "Argument types do not match" when @() wraps a
+    # generic List directly. Convert it explicitly instead.
+    $initialRoots = $roots.ToArray()
     foreach ($steamRoot in $initialRoots) {
         $libraryFile = Join-Path $steamRoot 'steamapps\libraryfolders.vdf'
         if (-not (Test-Path -LiteralPath $libraryFile -PathType Leaf)) {
@@ -220,7 +231,7 @@ function Get-SteamRoots {
         }
     }
 
-    return @($roots)
+    return $roots.ToArray()
 }
 
 function Get-ValheimInstallRecords {
@@ -310,7 +321,7 @@ function Get-ValheimInstallRecords {
         })
     }
 
-    return @($results)
+    return $results.ToArray()
 }
 
 function Get-R2ProfileRoots {
@@ -331,7 +342,7 @@ function Get-R2ProfileRoots {
         Add-UniqueExistingDirectory -List $roots -Path (Join-Path $env:APPDATA 'r2modmanPlus-local\Valheim\profiles')
     }
 
-    return @($roots)
+    return $roots.ToArray()
 }
 
 function Get-R2ProfileRecords {
@@ -386,7 +397,7 @@ function Get-R2ProfileRecords {
 
     return [ordered]@{
         roots    = @($profileRoots | ForEach-Object { ConvertTo-SanitizedPath $_ })
-        profiles = @($results)
+        profiles = $results.ToArray()
     }
 }
 
@@ -465,7 +476,7 @@ $report = [ordered]@{
     }
     valheimInstallations  = @($valheimRecords)
     r2modman              = $r2Records
-    notes                 = @($notes)
+    notes                 = $notes.ToArray()
 }
 
 if ($Format -eq 'Json') {
