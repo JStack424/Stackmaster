@@ -139,7 +139,9 @@ The first public version will ship the complete core loop together: inventory so
 
 ### Question 12 — chest controls and exceptions
 
-- Still to settle: whether nearby accessible containers participate automatically or need per-container opt-in/opt-out controls, and whether containers can accept or reject particular item categories.
+- All eligible nearby containers participate by default.
+- Let players opt out individual containers.
+- Still to settle: whether opt-out applies jointly or separately to depositing and replenishment, how the control appears, and whether containers can accept or reject particular item categories.
 
 ## Deferred decisions
 
