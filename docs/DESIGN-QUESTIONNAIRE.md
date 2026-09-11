@@ -217,7 +217,9 @@ The first public version will ship the complete core loop together: inventory so
 - The smoke test still exercises sorting, depositing, and replenishment in representative conditions across every required environment, and any observed item loss, duplication, crash, or synchronization error blocks release.
 - This gate does not claim proof that no rare defect exists beyond the tested paths.
 - Mod-conflict testing is limited to a clean r2modman profile containing BepInEx and Stackmaster's declared dependencies; v0.1 makes no broader coexistence promise for other gameplay or inventory mods.
-- Still to settle: performance, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
+- Packaging gate: the release ZIP must install successfully into a fresh r2modman profile and launch with its declared dependencies and intended defaults.
+- Updating an older package and uninstalling cleanly are not required release-gate tests for v0.1.
+- Still to settle: performance and persistence tests that must pass before v0.1 is publishable.
 
 ## Deferred decisions
 
