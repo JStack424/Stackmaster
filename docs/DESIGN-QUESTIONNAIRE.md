@@ -153,7 +153,9 @@ The first public version will ship the complete core loop together: inventory so
 - In the inventory UI, Left Alt-clicking an item or slot opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
 - v0.1 supports keyboard and mouse only; controller bindings and controller-specific UI are outside the first-release scope.
 - All quantities in the result popup count individual item units, not stacks or distinct item types.
-- Still to settle: exact popup contents, sounds, and error/skip feedback.
+- Keep the popup compact: show aggregate totals for deposited, replenished, and left behind, while naming any item-specific replenishment shortages and meaningful skipped items.
+- Do not show a full item-by-item success breakdown.
+- Still to settle: sounds and error feedback.
 
 ## Deferred decisions
 
