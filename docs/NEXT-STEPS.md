@@ -223,7 +223,7 @@ Exit criterion: comprehensive automated tests pass without launching Valheim.
 ### Milestone 2 — local sorting integration
 
 - [x] Identify the current inventory-open hook and supported mutation APIs.
-- [x] Add the in-inventory auto-sort checkbox, enabled by default.
+- [x] Add the in-inventory auto-sort checkbox along the panel's bottom border below the item slots, enabled by default, with a centered symmetric X and full label-width click target.
 - [x] Sort the movable player area and an owner-authorized opened vanilla chest once per inventory open.
 - [x] Preserve the entire quick bar, equipped items, resolved protected stacks, and protected partial stacks.
 - [x] Trigger required vanilla inventory/UI refresh methods.
@@ -237,7 +237,7 @@ Exit criterion: source integration and automated losslessness checks are complet
 - [x] Prompt stackable items immediately for a legal single-slot target quantity, with the full legal stack size prefilled/selected for Enter acceptance (`0` still means Protect only).
 - [x] Store versioned per-character protection identity, preferred slot, and optional target data across worlds; migrate the safe subset of v1 exact-slot records.
 - [x] Reconcile each record to exactly one matching stack, preferring its current slot and otherwise choosing in deterministic row-major order; never protect a nonmatching replacement.
-- [x] Show a noninteractive soft teal border plus a bottom-left target quantity or protection-only lock on resolved stacks.
+- [x] Show a noninteractive soft teal border plus a top-left target quantity in the exact border color or protection-only lock on resolved stacks, clear of the vanilla lower-right stack quantity.
 - [x] Validate saved data before use and skip malformed or incompatible records safely.
 - [ ] Verify one complete quit/relaunch with the same character preserves choices.
 

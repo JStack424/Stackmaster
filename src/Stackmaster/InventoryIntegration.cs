@@ -51,7 +51,8 @@ namespace Stackmaster
             anchorRect.anchorMin = new Vector2(0f, 0f);
             anchorRect.anchorMax = new Vector2(0f, 0f);
             anchorRect.pivot = new Vector2(0f, 0f);
-            anchorRect.anchoredPosition = new Vector2(12f, 4f);
+            // Straddle the panel's lower edge instead of covering the bottom inventory row.
+            anchorRect.anchoredPosition = new Vector2(12f, -24f);
             anchorRect.sizeDelta = new Vector2(164f, 28f);
             _toggleAnchor.GetComponent<LayoutElement>().ignoreLayout = true;
 
@@ -75,9 +76,9 @@ namespace Stackmaster
             boxOutline.effectColor = new Color(0.22f, 0.78f, 0.84f, 0.9f);
             boxOutline.effectDistance = new Vector2(1f, -1f);
 
-            // Draw the checkmark from UI images rather than relying on a font glyph that may not
-            // exist in every Valheim font asset.
-            _toggleCheckmark = new GameObject("Checkmark", typeof(RectTransform));
+            // Draw a symmetric X from UI images rather than relying on a font glyph that may not
+            // exist in every Valheim font asset. A symmetric mark cannot appear sideways.
+            _toggleCheckmark = new GameObject("CheckedX", typeof(RectTransform));
             _toggleCheckmark.transform.SetParent(_toggleAnchor.transform, false);
             var checkRect = (RectTransform)_toggleCheckmark.transform;
             checkRect.anchorMin = new Vector2(0f, 0.5f);
@@ -85,8 +86,8 @@ namespace Stackmaster
             checkRect.pivot = new Vector2(0f, 0.5f);
             checkRect.anchoredPosition = Vector2.zero;
             checkRect.sizeDelta = new Vector2(20f, 20f);
-            CreateCheckmarkStroke(checkRect, "ShortStroke", new Vector2(7f, 9f), new Vector2(3f, 8f), -42f);
-            CreateCheckmarkStroke(checkRect, "LongStroke", new Vector2(12f, 8f), new Vector2(3f, 13f), 43f);
+            CreateCheckedXStroke(checkRect, "ForwardStroke", 45f);
+            CreateCheckedXStroke(checkRect, "BackStroke", -45f);
 
             var labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
             labelObject.transform.SetParent(_toggleAnchor.transform, false);
@@ -152,20 +153,15 @@ namespace Stackmaster
             target.fontSize = template.fontSize;
         }
 
-        private static void CreateCheckmarkStroke(
-            Transform parent,
-            string name,
-            Vector2 anchoredPosition,
-            Vector2 size,
-            float rotation)
+        private static void CreateCheckedXStroke(Transform parent, string name, float rotation)
         {
             var stroke = CreateImage(parent, name, new Color(0.25f, 0.9f, 0.94f, 1f));
             var rect = stroke.rectTransform;
             rect.anchorMin = new Vector2(0f, 0f);
             rect.anchorMax = new Vector2(0f, 0f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = anchoredPosition;
-            rect.sizeDelta = size;
+            rect.anchoredPosition = new Vector2(10f, 10f);
+            rect.sizeDelta = new Vector2(3f, 14f);
             rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
         }
 
@@ -471,27 +467,27 @@ namespace Stackmaster
                 targetLabel.gameObject.name = "Target";
                 targetLabel.gameObject.SetActive(true);
                 targetLabel.text = string.Empty;
-                targetLabel.alignment = TextAlignmentOptions.BottomLeft;
+                targetLabel.alignment = TextAlignmentOptions.TopLeft;
                 targetLabel.textWrappingMode = TextWrappingModes.NoWrap;
                 targetLabel.fontSize = Mathf.Max(12f, targetLabel.fontSize * 0.8f);
-                targetLabel.color = Color.white;
+                targetLabel.color = ProtectedBorderColor;
                 targetLabel.outlineColor = new Color32(0, 24, 31, 255);
                 targetLabel.outlineWidth = 0.22f;
                 targetLabel.raycastTarget = false;
                 var targetRect = targetLabel.rectTransform;
-                targetRect.anchorMin = Vector2.zero;
-                targetRect.anchorMax = Vector2.zero;
-                targetRect.pivot = Vector2.zero;
-                targetRect.anchoredPosition = new Vector2(3f, 2f);
+                targetRect.anchorMin = new Vector2(0f, 1f);
+                targetRect.anchorMax = new Vector2(0f, 1f);
+                targetRect.pivot = new Vector2(0f, 1f);
+                targetRect.anchoredPosition = new Vector2(3f, -2f);
                 targetRect.sizeDelta = new Vector2(26f, 18f);
 
                 var lockIcon = new GameObject("Lock", typeof(RectTransform));
                 lockIcon.transform.SetParent(root.transform, false);
                 var lockRect = (RectTransform)lockIcon.transform;
-                lockRect.anchorMin = Vector2.zero;
-                lockRect.anchorMax = Vector2.zero;
-                lockRect.pivot = Vector2.zero;
-                lockRect.anchoredPosition = new Vector2(3f, 3f);
+                lockRect.anchorMin = new Vector2(0f, 1f);
+                lockRect.anchorMax = new Vector2(0f, 1f);
+                lockRect.pivot = new Vector2(0f, 1f);
+                lockRect.anchoredPosition = new Vector2(3f, -3f);
                 lockRect.sizeDelta = new Vector2(12f, 14f);
 
                 var lockBody = CreateImage(lockIcon.transform, "Body", ProtectedBorderColor).rectTransform;

@@ -152,8 +152,8 @@ The first public version will ship the complete core loop together: inventory so
 - This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
 - Keep the binding configurable.
 - In the inventory UI, Left Alt-clicking an item opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
-- A resolved protected stack has a soft teal/blue border; its bottom-left shows either the target quantity or, for protection-only, a small lock. These indicators are visual-only and never intercept input.
-- The auto-sort setting appears as an in-game checkbox.
+- A resolved protected stack has a soft teal/blue border; its top-left shows either the target quantity in that exact border color or, for protection-only, a small lock. These indicators stay clear of the vanilla lower-right stack quantity, are visual-only, and never intercept input.
+- The auto-sort setting appears as an in-game checkbox along the player inventory's bottom border, below the item slots. Its checked state uses a centered symmetric X so orientation is unambiguous, and the full label-width control remains clickable.
 - v0.1 supports keyboard and mouse only; controller bindings and controller-specific UI are outside the first-release scope.
 - All quantities in the result popup count individual item units, not stacks or distinct item types.
 - Keep the popup compact: show aggregate totals for deposited, replenished, and left behind, while naming any item-specific replenishment shortages and meaningful skipped items.
