@@ -195,7 +195,9 @@ The first public version will ship the complete core loop together: inventory so
 
 ### Question 17 — public package identity
 
-- Still to settle: public mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and short public description.
+- Public mod name: **Stackmaster**.
+- Reserve the matching package and assembly naming direction (`Stackmaster`) unless Thunderstore's final creation flow reveals a collision.
+- Still to settle: plugin GUID, Thunderstore team identity, license, source/homepage plan, icon direction, and short public description.
 
 ## Deferred decisions
 
