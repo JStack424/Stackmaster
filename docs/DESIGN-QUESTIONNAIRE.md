@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 14 of 18
-- **Current:** Question 15 — Configuration model and defaults
+- **Completed:** 15 of 18
+- **Current:** Question 16 — Compatibility, performance, and failure safety
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -34,7 +34,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
 - [x] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
 - [x] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
-- [ ] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
+- [x] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
 - [ ] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
 - [ ] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
 - [ ] **18. Test plan and definition of done** — Agree on solo, host, guest, dedicated-server, conflict, update, packaging, and r2modman tests required before v0.1 is publishable.
@@ -165,11 +165,10 @@ The first public version will ship the complete core loop together: inventory so
 - If another player is actively using a nearby container, skip it rather than waiting, retrying, or modifying it concurrently.
 - Include skipped in-use containers in the compact action feedback.
 
-## Current checkpoint notes
-
-### Question 15 — configuration model and defaults
+### 15. Configuration model and defaults
 
 - Keep v0.1 configuration focused on exactly three settings: auto-sort enabled, nearby-storage radius, and the storage-action keybind.
+- Auto-sort defaults to enabled for a new r2modman profile.
 - The nearby-storage radius defaults to 20 meters.
 - The storage-action binding defaults to Left Alt + E.
 - Do not add separate deposit/replenishment toggles, presets, or an advanced-settings section in v0.1.
@@ -177,7 +176,14 @@ The first public version will ship the complete core loop together: inventory so
 - Expose the radius and keybinding through the normal r2modman/BepInEx configuration rather than building a separate in-game settings panel for them.
 - Store one set of these settings per r2modman profile; all characters and worlds launched through that profile use the same values.
 - Protected-slot choices and replenishment targets belong to the individual Valheim character and follow that character across every world.
-- Still to settle: whether auto-sort defaults on or off for a new profile.
+
+## Current checkpoint notes
+
+### Question 16 — compatibility, performance, and failure safety
+
+- The action must never duplicate, delete, or corrupt items, and unsupported or unavailable storage must fail safely.
+- Nearby-container discovery and routing run only when needed rather than continuously scanning the world.
+- Still to settle: modded-container compatibility, handling partial failures, practical performance limits, and safe behavior after incompatible game or mod updates.
 
 ## Deferred decisions
 
