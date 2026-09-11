@@ -199,7 +199,8 @@ The first public version will ship the complete core loop together: inventory so
 - Reserve the matching package and assembly naming direction (`Stackmaster`) unless Thunderstore's final creation flow reveals a collision.
 - Thunderstore author/team identity: **JStack424**.
 - BepInEx plugin GUID: `com.jstack424.stackmaster`.
-- Still to settle: license, source/homepage plan, icon direction, and short public description.
+- License: MIT, allowing reuse and modification with the required copyright and license notice.
+- Still to settle: source/homepage plan, icon direction, and short public description.
 
 ## Deferred decisions
 
