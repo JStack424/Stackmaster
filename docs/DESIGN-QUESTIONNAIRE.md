@@ -174,7 +174,9 @@ The first public version will ship the complete core loop together: inventory so
 - The nearby-storage radius defaults to 20 meters.
 - The storage-action binding defaults to Left Alt + E.
 - Do not add separate deposit/replenishment toggles, presets, or an advanced-settings section in v0.1.
-- Still to settle: where settings live and whether they are shared or scoped per player/profile/world.
+- Put the auto-sort checkbox directly in the inventory UI.
+- Expose the radius and keybinding through the normal r2modman/BepInEx configuration rather than building a separate in-game settings panel for them.
+- Still to settle: whether settings are shared or scoped per player/profile/world.
 
 ## Deferred decisions
 
