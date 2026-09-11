@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 12 of 18
-- **Current:** Question 13 — Controls, interface, and feedback
+- **Completed:** 13 of 18
+- **Current:** Question 14 — Multiplayer and installation contract
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -32,7 +32,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
 - [x] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
 - [x] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
-- [ ] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
+- [x] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
 - [ ] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
 - [ ] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
 - [ ] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
@@ -142,21 +142,27 @@ The first public version will ship the complete core loop together: inventory so
 - Do not add item-type or category filters; the matching-content rule is the only routing rule a container needs.
 - Containers that Valheim considers locked, private, inaccessible, or unavailable remain excluded under the general eligibility rules from Question 8.
 
-## Current checkpoint notes
+### 13. Controls, interface, and feedback
 
-### Question 13 — controls, interface, and feedback
-
-- Already settled: the targeted-container tooltip advertises the deposit/replenish action, auto-sort has an in-game checkbox, protecting a replenished stack opens a target prompt, and the action shows a brief result popup.
+- The targeted-container tooltip advertises the deposit/replenish action.
 - On keyboard, trigger the combined deposit/replenish action by holding Left Alt + E while targeting a valid container.
 - This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
 - Keep the binding configurable.
 - In the inventory UI, Left Alt-clicking an item or slot opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
+- The auto-sort setting appears as an in-game checkbox.
 - v0.1 supports keyboard and mouse only; controller bindings and controller-specific UI are outside the first-release scope.
 - All quantities in the result popup count individual item units, not stacks or distinct item types.
 - Keep the popup compact: show aggregate totals for deposited, replenished, and left behind, while naming any item-specific replenishment shortages and meaningful skipped items.
 - Do not show a full item-by-item success breakdown.
 - Do not add success or failure sounds; feedback stays visual.
-- Still to settle: error feedback.
+- If the action cannot run, use the same popup to show a concise reason.
+
+## Current checkpoint notes
+
+### Question 14 — multiplayer and installation contract
+
+- Container mutation must behave safely in co-op and on dedicated servers.
+- Still to settle: who must install the mod, authority and synchronization expectations, and what happens if two players act on the same storage at once.
 
 ## Deferred decisions
 
