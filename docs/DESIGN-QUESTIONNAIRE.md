@@ -141,7 +141,8 @@ The first public version will ship the complete core loop together: inventory so
 
 - All eligible nearby containers participate by default.
 - Let players independently opt an individual container out of receiving deposits, supplying replenishment, or both.
-- Still to settle: how these two controls appear and whether containers can accept or reject particular item categories.
+- Show these as two checkboxes in the container UI while that container is open.
+- Still to settle: whether containers can accept or reject particular item categories, and whether these controls are shared with the world or personal to each player.
 
 ## Deferred decisions
 
