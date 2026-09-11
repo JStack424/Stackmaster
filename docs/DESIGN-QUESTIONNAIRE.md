@@ -131,7 +131,8 @@ The first public version will ship the complete core loop together: inventory so
 - If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected slot partially replenished rather than making the transfer all-or-nothing.
 - Report the remaining shortfall in the action feedback.
 - Do not edit a target in place. To change it, the player unprotects the slot, protects it again, and enters a new target in the normal setup prompt.
-- Still to settle: excess handling.
+- If a protected slot contains more than its target, deposit the excess through the normal matching-container routing and leave exactly the target quantity in that slot.
+- Still to settle: which protected items receive a target.
 
 ## Deferred decisions
 
