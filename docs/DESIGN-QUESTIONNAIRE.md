@@ -94,6 +94,13 @@ The first public version will ship the complete core loop together: inventory so
 - The action is available only while the player is deliberately looking at a valid chest.
 - The targeted chest's interaction tooltip should advertise the hotkey alongside the normal open control.
 
+## Current checkpoint notes
+
+### Question 8 — eligible storage and search area
+
+- Nearby-storage discovery is centered on the player's character, not on the chest being targeted.
+- Still to settle within this checkpoint: radius, eligible container types, and access restrictions.
+
 ## Deferred decisions
 
 None yet.
