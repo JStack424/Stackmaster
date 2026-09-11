@@ -18,7 +18,7 @@ namespace Stackmaster
         internal static void Update()
         {
             var plugin = RuntimeContext.Plugin;
-            if (plugin == null || !plugin.StorageActionShortcut.Value.IsDown() || _lastActionFrame == Time.frameCount)
+            if (plugin == null || InputIsBlocked() || !plugin.StorageActionShortcut.Value.IsDown() || _lastActionFrame == Time.frameCount)
             {
                 return;
             }
@@ -39,7 +39,7 @@ namespace Stackmaster
         internal static bool HandleContainerInteraction(Container container, Humanoid character)
         {
             var plugin = RuntimeContext.Plugin;
-            if (plugin == null || character != Player.m_localPlayer || !plugin.StorageActionShortcut.Value.IsPressed())
+            if (plugin == null || InputIsBlocked() || character != Player.m_localPlayer || !plugin.StorageActionShortcut.Value.IsPressed())
             {
                 return false;
             }
@@ -49,6 +49,19 @@ namespace Stackmaster
                 Begin(Player.m_localPlayer, container);
             }
             return true;
+        }
+
+        private static bool InputIsBlocked()
+        {
+            return !ZInput.IsKeyboardAvailable()
+                || InventoryGui.IsVisible()
+                || TextInput.IsVisible()
+                || UnifiedPopup.IsVisible()
+                || Menu.IsVisible()
+                || Console.IsVisible()
+                || Minimap.IsOpen()
+                || Hud.InRadial()
+                || (Chat.instance != null && Chat.instance.HasFocus());
         }
 
         private static void Begin(Player player, Container target)
@@ -124,7 +137,10 @@ namespace Stackmaster
 
                 RuntimeContext.ShowTopLeft("Stackmaster: checking nearby storage…");
                 RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(
-                    player, protection, catalog, handles, neededHandles, plan));
+                    player,
+                    target,
+                    neededHandles,
+                    RuntimeContext.Plugin.NearbyStorageRadius.Value));
             }
             catch (Exception exception)
             {
@@ -136,16 +152,14 @@ namespace Stackmaster
 
         private static IEnumerator FinishAfterOwnership(
             Player player,
-            ProtectionState protection,
-            CompatibilityCatalog catalog,
-            IReadOnlyDictionary<string, ContainerHandle> handles,
+            Container target,
             ContainerHandle[] neededHandles,
-            TransferPlan plan)
+            float radius)
         {
             OwnershipBatch ownership = null;
             try
             {
-                ownership = OwnershipCoordinator.Begin(neededHandles, player);
+                ownership = OwnershipCoordinator.Begin(neededHandles);
             }
             catch (Exception exception)
             {
@@ -167,18 +181,56 @@ namespace Stackmaster
                 ownership.Timeout();
             }
 
-            foreach (var handle in neededHandles.Where(handle => ownership.SuccessfulContainerIds.Contains(handle.Id)))
-            {
-                if (!ContainerDiscovery.RefreshFromNetwork(handle.Container))
-                {
-                    ownership.FailedContainerIds[handle.Id] = "latest network state could not be loaded";
-                }
-            }
-
             try
             {
-                var execution = TransferExecutor.Execute(player, handles, plan, catalog, ownership.FailedContainerIds);
-                ShowSummary(player, protection, plan, execution);
+                // Ownership transfer can cause Container.Load to replace every ItemData instance.
+                // Re-capture and re-plan from the synchronized inventories so no pre-RPC object
+                // reference is ever used for mutation.
+                var freshCatalog = new CompatibilityCatalog();
+                var freshProtection = RuntimeContext.LoadProtection(player);
+                var freshPlayer = InventorySnapshots.CapturePlayer(player, freshProtection, freshCatalog);
+                var freshDiscovery = ContainerDiscovery.Discover(player, target, freshCatalog, radius);
+                var freshTarget = freshDiscovery.Containers.FirstOrDefault(handle => handle.Container == target);
+                if (freshTarget == null || !freshTarget.Snapshot.IsEligible)
+                {
+                    throw new InvalidOperationException("Target container changed or became unavailable before transfer.");
+                }
+                var freshHandles = freshDiscovery.Containers.ToDictionary(handle => handle.Id, StringComparer.Ordinal);
+                var freshPlan = new StorageTransferPlanner().Plan(
+                    freshPlayer,
+                    freshDiscovery.Containers.Select(handle => handle.Snapshot));
+                if (freshDiscovery.Truncated && !freshPlan.SearchTruncated)
+                {
+                    freshPlan = new TransferPlan(
+                        freshPlan.Steps,
+                        freshPlan.Shortages,
+                        freshPlan.SkippedContainers,
+                        freshPlan.InspectedContainerIds,
+                        freshPlan.DepositedUnits,
+                        freshPlan.ReplenishedUnits,
+                        freshPlan.LeftBehindUnits,
+                        true);
+                }
+
+                var validation = PlanValidator.ValidateTransferConservation(
+                    freshPlayer,
+                    freshDiscovery.Containers.Select(handle => handle.Snapshot),
+                    freshPlan);
+                if (!validation.IsValid)
+                {
+                    RuntimeContext.Plugin.Log.LogError("Refreshed storage action plan rejected before mutation: " + string.Join("; ", validation.Errors));
+                    RuntimeContext.ShowCenter("Stackmaster stopped safely: refreshed transfer plan validation failed.");
+                }
+                else
+                {
+                    var execution = TransferExecutor.Execute(
+                        player,
+                        freshHandles,
+                        freshPlan,
+                        freshCatalog,
+                        ownership.FailedContainerIds);
+                    ShowSummary(player, freshProtection, freshPlan, execution);
+                }
             }
             catch (Exception exception)
             {
@@ -225,7 +277,7 @@ namespace Stackmaster
             }
 
             var skipReasons = plan.SkippedContainers.Select(skip => skip.Reason)
-                .Concat(execution.FailedContainers.Values.Select(reason => "changed/failed"))
+                .Concat(execution.FailedContainers.Values.Select(MeaningfulFailureReason))
                 .GroupBy(reason => reason, StringComparer.Ordinal)
                 .Select(group => group.Count() + " " + group.Key)
                 .ToArray();
@@ -243,6 +295,17 @@ namespace Stackmaster
             }
 
             RuntimeContext.ShowTopLeft(string.Join("\n", lines));
+        }
+
+        private static string MeaningfulFailureReason(string reason)
+        {
+            if (reason.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0) return "ownership timeout";
+            if (reason.IndexOf("still pending", StringComparison.OrdinalIgnoreCase) >= 0) return "ownership pending";
+            if (reason.IndexOf("busy", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                reason.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0) return "busy/unavailable";
+            if (reason.IndexOf("access", StringComparison.OrdinalIgnoreCase) >= 0) return "inaccessible";
+            if (reason.IndexOf("in use", StringComparison.OrdinalIgnoreCase) >= 0) return "in use";
+            return "changed/failed";
         }
     }
 

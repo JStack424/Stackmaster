@@ -2,7 +2,9 @@
 
 This plan follows the behavior contract approved on September 11, 2026. [DESIGN-QUESTIONNAIRE.md](DESIGN-QUESTIONNAIRE.md) is the product source of truth; [RESEARCH.md](RESEARCH.md) retains the ecosystem evidence and provisional technical findings.
 
-Environment validation is complete. The current phase is **implementation preparation**: pure inventory planning and a harmless load-and-log skeleton only. Do not mutate Valheim inventory state, modify Valheim/r2modman, create a public repository, install the plugin, or publish a package until the relevant later gate is approved.
+Environment validation and the complete local v0.1 gameplay implementation are complete. On September 11, 2026, Joe explicitly superseded the earlier skeleton-first hold: the separate skeleton-only smoke test is skipped, implementation may proceed without routine milestone pauses, and the first clean-profile Windows test will exercise the integrated build. Do not modify Valheim/r2modman, create a public repository, prepare the user-facing smoke-test package, or publish until the next approved gate.
+
+Current local verification: zero compiler warnings/errors, 18/18 pure-domain tests, 29/29 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. These results do **not** establish multiplayer or network safety; the combined Windows matrix remains mandatory.
 
 ## 1. Approved release boundary
 
@@ -89,8 +91,8 @@ Before choosing a compiler or creating project files, confirm:
 - [x] Installed BepInEx DLL version: `5.4.23.5`; Thunderstore pack display version remains a later UI check.
 - [x] HarmonyX (`0Harmony.dll`) version: `2.9.0.0`.
 - [x] A separate clean profile must be created later; the existing `VanillaPlus` profile has five plugin DLLs.
-- [ ] Whether current public game APIs are sufficient without a publicized assembly.
-- [ ] Whether plain BepInEx is sufficient or Jötunn provides a demonstrated requirement.
+- [x] Exact assembly inspection found sufficient Valheim APIs for v0.1 without a publicized assembly.
+- [x] Plain BepInEx plus bundled HarmonyX is sufficient; no demonstrated Jötunn requirement exists.
 
 The inspector intentionally does not read BepInEx logs or r2modman configuration contents. If a later validation step needs one, inspect that specific file manually and record only the minimum relevant fact.
 
@@ -108,7 +110,7 @@ Current status:
 
 - [x] Choose the target framework from the installed environment and current template evidence.
 - [x] Install a repository-external .NET 8 SDK under `~/workspace/toolchains/dotnet-8`; no system or gaming-PC installation.
-- [x] Verify the compiler with the harmless load-and-log `Stackmaster.dll` skeleton and pure planner tests.
+- [x] Verify the compiler with the initial no-op `Stackmaster.dll` checkpoint and pure planner tests.
 - [ ] Do not install Unity unless custom assets become an actual requirement.
 - [ ] Do not copy or redistribute Valheim, Unity, BepInEx, Harmony, or Jötunn assemblies unless a package license and implementation requirement explicitly justify it.
 
@@ -195,7 +197,7 @@ Rules:
 
 ## 5. Implementation milestones
 
-### Milestone 0 — environment and harmless skeleton
+### Milestone 0 — environment and initial compile checkpoint
 
 - [x] Complete the inspection report and record the validated versions/paths.
 - [ ] Back up the character and world selected for later gameplay testing.
@@ -203,10 +205,10 @@ Rules:
 - [x] Add stable metadata: Stackmaster, `com.jstack424.stackmaster`, one shared version source.
 - [x] Log plugin version, game version, and compatibility-gate result.
 - [x] Build without copying local game DLLs into output.
-- [ ] Load in a dedicated clean r2modman profile and verify startup/shutdown without gameplay patches.
+- [x] Separate skeleton-only r2modman smoke test superseded by Joe's authorization to use the integrated clean-profile gate.
 - [x] Commit before adding gameplay behavior (`7a9a6c2`).
 
-Exit criterion: the exact environment is documented and a harmless plugin loads cleanly.
+Exit criterion: the exact environment is documented and the compile/reference boundary is verified locally; integrated loading is covered by the combined Windows gate.
 
 ### Milestone 1 — pure sorting and transfer models
 
@@ -220,54 +222,58 @@ Exit criterion: comprehensive automated tests pass without launching Valheim.
 
 ### Milestone 2 — local sorting integration
 
-- [ ] Identify the current inventory-open hook and supported mutation APIs.
-- [ ] Add the in-inventory auto-sort checkbox, enabled by default.
-- [ ] Sort the movable player area and opened vanilla chest once per inventory open.
-- [ ] Preserve quick bar, equipped items, protected slots, and protected partial stacks.
-- [ ] Trigger required vanilla inventory/UI refresh methods.
-- [ ] Verify repeated sorting preserves item count and metadata.
+- [x] Identify the current inventory-open hook and supported mutation APIs.
+- [x] Add the in-inventory auto-sort checkbox, enabled by default.
+- [x] Sort the movable player area and an owner-authorized opened vanilla chest once per inventory open.
+- [x] Preserve quick bar, equipped items, protected slots, and protected partial stacks.
+- [x] Trigger required vanilla inventory/UI refresh methods.
+- [x] Verify deterministic conservation and idempotence in the local automated gate; repeat in Valheim during the combined Windows gate.
 
-Exit criterion: local sorting is deterministic, idempotent, and lossless.
+Exit criterion: source integration and automated losslessness checks are complete; in-game confirmation remains part of the combined Windows gate.
 
 ### Milestone 3 — protection UI and character persistence
 
-- [ ] Add Left Alt-click choices: Protect only, Protect with target for stackables, and Unprotect.
-- [ ] Prompt immediately for a legal single-slot target quantity.
-- [ ] Store protection against exact inventory slots per character across worlds.
-- [ ] Validate saved data before use and fail safely on malformed or incompatible state.
+- [x] Add Left Alt-click Protect only / Protect with target / Unprotect behavior.
+- [x] Prompt stackable items immediately for a legal single-slot target quantity (`0` means Protect only).
+- [x] Store versioned protection against exact inventory slots in per-character custom data across worlds.
+- [x] Validate saved data before use and skip malformed or incompatible records safely.
 - [ ] Verify one complete quit/relaunch with the same character preserves choices.
 
-Exit criterion: exact-slot protection and targets persist and cannot silently affect the wrong slot.
+Exit criterion: serialization, malformed-record handling, exact-slot mapping, and stale item-key behavior pass locally; the quit/relaunch check remains in the combined Windows gate.
 
 ### Milestone 4 — discovery and storage planning
 
-- [ ] Discover supported vanilla containers only when needed, centered on the player, within the configured radius.
-- [ ] Filter by access, state, distance, ownership, and active use.
-- [ ] Use the deliberately targeted container as first routing priority.
-- [ ] Build a complete dry-run result before mutation where possible.
-- [ ] Apply a measured time budget while preserving routing order and an explicit partial-search result.
-- [ ] Unit-test stale snapshots and budget exhaustion.
+- [x] Discover supported vanilla containers only when needed, centered on the player, within the configured radius.
+- [x] Filter by known vanilla type, access, state, distance, ownership, and active use.
+- [x] Use the deliberately targeted container as first routing priority.
+- [x] Build and validate the dry-run transfer plan before mutation.
+- [x] Apply a 12 ms internal planning budget while preserving routing order and reporting partial search.
+- [x] Unit-test stale-plan rejection, conservation, and budget exhaustion boundaries.
 
-Exit criterion: dry-run plans explain exactly what will move and why anything is skipped.
+Exit criterion: the local dry-run path explains moves and meaningful skips; gameplay profiling remains in the Windows gate.
 
 ### Milestone 5 — network-safe execution
 
-- [ ] Execute through authoritative vanilla inventory/container paths.
-- [ ] Revalidate before every move and preserve completed safe transfers if a later container fails.
-- [ ] Skip containers in use by another player.
-- [ ] Verify inventory/container notifications and synchronization.
+- [x] Execute through `Inventory.MoveItemToThis` and request ownership through each container's owner-authorized `StackAll` / `RPC_RequestStack` handshake while suppressing the matching vanilla transfer response.
+- [x] Intercept only matching ownership responses so background containers are not opened in the UI.
+- [x] Refresh from synchronized ZDO state, then revalidate source, destination, identity, capacity, access, ownership, and use state before every move.
+- [x] Enforce exact before/after unit conservation; isolate ordinary per-container failures and stop the remaining action on an unexpected postcondition.
+- [x] Skip containers currently in use and bound ownership waits to two seconds.
+- [ ] Verify inventory/container notifications and synchronization in live solo/host/guest/dedicated play.
 - [ ] Exercise access denial, destroyed targets, disconnects, and simultaneous clients.
-- [ ] Confirm whether vanilla paths preserve the optional client-only install contract; revisit architecture before adding any RPC or server requirement.
+- [ ] Confirm the optional client-only install contract through the full unmodded-peer/server matrix.
 
-Exit criterion: the solo, host, guest, and unmodded dedicated-server matrix shows synchronized state with no observed loss or duplication.
+Exit criterion: source follows the inspected vanilla authority path; only the Windows multiplayer matrix can establish observed synchronization safety.
 
 ### Milestone 6 — configuration and feedback
 
-- [ ] Bind exactly three settings: auto-sort, 20-meter radius, and Left Alt + E action binding.
-- [ ] Make invalid configuration fail or clamp safely with clear diagnostics.
-- [ ] Add the targeted-container tooltip and compact visual result popup.
-- [ ] Count individual units and name shortages, in-use containers, failed containers, and incomplete searches without listing every success.
-- [ ] Add no custom sounds and no controller UI/binding claims.
+- [x] Bind exactly three settings: auto-sort, 20-meter radius, and Left Alt + E action binding.
+- [x] Clamp the radius and report unsafe startup compatibility clearly.
+- [x] Add the targeted-container tooltip and compact visual result popup.
+- [x] Count individual units and name shortages, in-use/failed containers, and incomplete searches without listing every success.
+- [x] Add no custom sounds and make no controller UI/binding claims.
+
+Local gameplay checkpoints: integrated implementation `03d8c4d`; synchronized-container hardening `4d11275`. The working tree must remain clean and the complete build gate must pass again after documentation changes.
 
 ### Milestone 7 — exact package candidate
 
@@ -319,7 +325,7 @@ Pass/fail:
 
 Required gates:
 
-- [ ] Automated sorting/transfer tests pass: protection, compatible merging, partial-stack priority, routing, replenishment, shortages, excess, budget exhaustion, compatibility disablement, and no item-count drift.
+- [x] Automated sorting/transfer and repository-boundary tests pass: protection persistence, compatible merging, partial-stack priority, routing, replenishment, shortages, excess, budget exhaustion, compatibility-gate-before-patching, stale-state rejection, and no item-count drift.
 - [ ] Clean-profile startup contains no Stackmaster exception.
 - [ ] Basic sorting/deposit/replenishment smoke tests pass in solo play.
 - [ ] The same basic flow passes while hosting co-op with an unmodded peer; state stays synchronized.

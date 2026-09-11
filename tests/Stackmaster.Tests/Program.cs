@@ -11,6 +11,7 @@ internal static class Program
         {
             EmptyInventorySortsWithoutPlacements,
             SortKeepsFixedSlotsAndMergesMovableStacks,
+            SortReservesEmptyProtectedSlots,
             SortDoesNotMergeIncompatibleStacksWithEqualNames,
             DepositPreservesQuickBarEquippedAndProtectedSlots,
             DepositFillsEveryPartialStackBeforeCreatingAStack,
@@ -75,6 +76,23 @@ internal static class Program
         Placement(plan, 4, "wood", 50, false);
         Placement(plan, 5, "wood", 10, false);
         Placement(plan, 6, "helmet", 1, true);
+        Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
+    private static void SortReservesEmptyProtectedSlots()
+    {
+        var inventory = new InventorySnapshot(
+            "player",
+            5,
+            new[]
+            {
+                Item("wood", "wood", "Wood", 10, 50, 3),
+                Item("stone", "stone", "Stone", 10, 50, 4)
+            },
+            new[] { 1 });
+
+        var plan = new InventorySortPlanner().Plan(inventory);
+        SequenceEqual(new[] { 0, 2 }, plan.Placements.Select(item => item.Slot), "empty protected slot remains reserved");
         Valid(PlanValidator.ValidateSortConservation(inventory, plan));
     }
 

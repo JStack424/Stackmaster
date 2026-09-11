@@ -21,8 +21,9 @@ namespace Stackmaster
 
             _toggle = Object.Instantiate(gui.m_pvp, gui.m_pvp.transform.parent);
             _toggle.gameObject.name = ToggleName;
+            _toggle.group = null;
             _toggle.onValueChanged.RemoveAllListeners();
-            _toggle.isOn = RuntimeContext.Plugin.AutoSortEnabled.Value;
+            _toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value);
             _toggle.onValueChanged.AddListener(enabled => RuntimeContext.Plugin.AutoSortEnabled.Value = enabled);
 
             var label = _toggle.GetComponentInChildren<TMP_Text>(true);
@@ -38,13 +39,29 @@ namespace Stackmaster
                 rect.anchoredPosition += new Vector2(0f, -28f);
             }
 
-            RuntimeContext.Plugin.AutoSortEnabled.SettingChanged += (sender, args) =>
+            RuntimeContext.Plugin.AutoSortEnabled.SettingChanged += OnAutoSortSettingChanged;
+        }
+
+        internal static void Shutdown()
+        {
+            if (RuntimeContext.Plugin != null && RuntimeContext.Plugin.AutoSortEnabled != null)
             {
-                if (_toggle != null && _toggle.isOn != RuntimeContext.Plugin.AutoSortEnabled.Value)
-                {
-                    _toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value);
-                }
-            };
+                RuntimeContext.Plugin.AutoSortEnabled.SettingChanged -= OnAutoSortSettingChanged;
+            }
+            if (_toggle != null)
+            {
+                Object.Destroy(_toggle.gameObject);
+                _toggle = null;
+            }
+            _sortedThisOpen = false;
+        }
+
+        private static void OnAutoSortSettingChanged(object sender, System.EventArgs args)
+        {
+            if (_toggle != null && _toggle.isOn != RuntimeContext.Plugin.AutoSortEnabled.Value)
+            {
+                _toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value);
+            }
         }
 
         internal static void SortOpenedInventories(Container container)

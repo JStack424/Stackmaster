@@ -11,7 +11,8 @@ namespace Stackmaster.Core
             if (inventory == null) throw new ArgumentNullException(nameof(inventory));
 
             var fixedItems = inventory.Items.Where(item => item.IsFixed).OrderBy(item => item.Slot).ToList();
-            var occupiedFixedSlots = new HashSet<int>(fixedItems.Select(item => item.Slot));
+            var occupiedFixedSlots = new HashSet<int>(inventory.ReservedSlots);
+            occupiedFixedSlots.UnionWith(fixedItems.Select(item => item.Slot));
             var freeSlots = Enumerable.Range(0, inventory.Capacity).Where(slot => !occupiedFixedSlots.Contains(slot)).ToList();
             var placements = new List<SortPlacement>();
 

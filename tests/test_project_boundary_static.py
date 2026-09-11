@@ -26,10 +26,22 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("PluginVersion = GeneratedBuildInfo.Version", self.plugin)
         self.assertIn("CompatibilityGate.Evaluate()", self.plugin)
         self.assertIn("fully disabled before any inventory hooks were installed", self.plugin)
+        self.assertIn("_harmony?.UnpatchSelf()", self.plugin)
+        self.assertIn("RuntimeContext.Disable", self.plugin)
         self.assertLess(
             self.plugin.index("CompatibilityGate.Evaluate()"),
             self.plugin.index("PatchAll"),
         )
+
+    def test_compatibility_gate_fingerprints_the_exact_runtime(self):
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn('SupportedGameVersion = "1.0.12"', gate)
+        self.assertIn('SupportedUnityVersion = "6000.0.75f1"', gate)
+        self.assertIn('SupportedBepInExVersion = "5.4.23.5"', gate)
+        self.assertIn('SupportedHarmonyVersion = "2.9.0.0"', gate)
+        self.assertIn("SupportedValheimMvid", gate)
+        self.assertIn("SupportedValheimSha256", gate)
+        self.assertIn("SHA256.Create()", gate)
 
     def test_plugin_targets_net48_and_does_not_copy_private_references(self):
         self.assertIn("<TargetFramework>net48</TargetFramework>", self.project)
@@ -45,10 +57,13 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_mutation_uses_verified_game_primitive_and_never_claims_blindly(self):
         self.assertIn("MoveItemToThis", self.gameplay)
-        self.assertIn('InvokeRPC("RPC_RequestOpen"', self.gameplay)
-        self.assertIn("RPC_OpenResponse", self.gameplay)
+        self.assertIn("container.StackAll()", self.gameplay)
+        self.assertIn("RPC_StackResponse", self.gameplay)
         self.assertNotIn("ClaimOwnership()", self.gameplay)
         self.assertIn("exactPostcondition", self.gameplay)
+        sort_executor = (PLUGIN_DIR / "SortExecutor.cs").read_text(encoding="utf-8")
+        self.assertIn("inventory.MoveItemToThis", sort_executor)
+        self.assertNotIn("item.m_stack = placement.Quantity", sort_executor)
 
     def test_inventory_mutation_hooks_are_installed_only_after_gate(self):
         self.assertIn("[HarmonyPatch(typeof(InventoryGui)", self.gameplay)
@@ -63,6 +78,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("Dictionary<Slot, ProtectionRecord>", core)
         self.assertIn("player.m_customData", runtime)
         self.assertIn("CharacterDataKey", runtime)
+        snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
+        self.assertIn("record.TargetItemKey, PersistentItemKey(item)", snapshots)
 
     def test_transfer_revalidates_before_every_game_mutation(self):
         executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
@@ -72,6 +89,38 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(executor.index("destination stack changed before transfer"), move_index)
         self.assertIn("exactPostcondition", executor)
         self.assertIn("FatalPostconditionFailure", executor)
+
+    def test_input_paths_are_narrow_and_modal_safe(self):
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        protection = (PLUGIN_DIR / "ProtectionInteraction.cs").read_text(encoding="utf-8")
+        for guard in (
+            "InventoryGui.IsVisible()",
+            "TextInput.IsVisible()",
+            "UnifiedPopup.IsVisible()",
+            "Menu.IsVisible()",
+            "Console.IsVisible()",
+            "Minimap.IsOpen()",
+            "Hud.InRadial()",
+            "Chat.instance.HasFocus()",
+        ):
+            self.assertIn(guard, action)
+        self.assertIn("modifier != InventoryGrid.Modifier.Select", protection)
+        self.assertIn("grid.GetInventory() != player.GetInventory()", protection)
+        self.assertIn("if (item == null)", protection)
+
+    def test_ownership_flow_recaptures_after_network_refresh(self):
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        refresh_comment = action.index("Re-capture and re-plan from the synchronized inventories")
+        fresh_capture = action.index("InventorySnapshots.CapturePlayer", refresh_comment)
+        fresh_discovery = action.index("ContainerDiscovery.Discover", refresh_comment)
+        mutation = action.index("TransferExecutor.Execute", refresh_comment)
+        self.assertLess(fresh_capture, mutation)
+        self.assertLess(fresh_discovery, mutation)
+        self.assertIn("Target container changed or became unavailable before transfer", action)
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        self.assertIn("RPC_StackResponse", ownership)
+        self.assertIn("LateResponseSuppressions", ownership)
+        self.assertIn("previous ownership response is still pending", ownership)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

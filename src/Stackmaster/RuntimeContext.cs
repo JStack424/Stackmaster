@@ -17,6 +17,11 @@ namespace Stackmaster
             Compatibility = compatibility;
         }
 
+        internal static void Disable(string reason)
+        {
+            Compatibility = new CompatibilityResult(false, reason);
+        }
+
         internal static void Shutdown()
         {
             Plugin = null;

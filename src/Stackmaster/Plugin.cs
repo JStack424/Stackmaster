@@ -44,9 +44,19 @@ namespace Stackmaster
                 return;
             }
 
-            _harmony = new Harmony(PluginGuid);
-            _harmony.PatchAll(typeof(Plugin).Assembly);
-            Logger.LogInfo("Compatibility gate passed for Steam build 25253764 reference surface; gameplay hooks enabled.");
+            try
+            {
+                _harmony = new Harmony(PluginGuid);
+                _harmony.PatchAll(typeof(Plugin).Assembly);
+                Logger.LogInfo("Compatibility gate passed for Steam build 25253764 reference surface; gameplay hooks enabled.");
+            }
+            catch (System.Exception exception)
+            {
+                _harmony?.UnpatchSelf();
+                _harmony = null;
+                RuntimeContext.Disable("Harmony patch installation failed: " + exception.GetType().Name);
+                Logger.LogError("Stackmaster disabled after patch installation failed: " + exception);
+            }
         }
 
         private void Update()
@@ -72,6 +82,7 @@ namespace Stackmaster
                 _harmony.UnpatchSelf();
             }
 
+            InventoryIntegration.Shutdown();
             RuntimeContext.Shutdown();
             Instance = null;
             Logger.LogInfo($"{PluginName} {PluginVersion} unloaded cleanly.");

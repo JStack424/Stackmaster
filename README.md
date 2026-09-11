@@ -6,7 +6,7 @@ Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines auto
 
 ## Status
 
-The 18-checkpoint behavior contract was approved on September 11, 2026. Joe's installed environment is now validated, and implementation preparation has begun with pure inventory planners plus a harmless load-and-log plugin skeleton. No gameplay mutation code is enabled.
+The 18-checkpoint behavior contract was approved on September 11, 2026. Joe then authorized the complete local v0.1 implementation without a separate skeleton-only Windows smoke test, using the first clean-profile Windows run as the integrated gate. The gameplay implementation and automated local verification are complete; no plugin has been installed, packaged for testing, or published.
 
 - [Approved behavior contract](docs/DESIGN-QUESTIONNAIRE.md)
 - [Environment-validation and implementation plan](docs/NEXT-STEPS.md)
@@ -57,29 +57,25 @@ Review the report before sharing it. The generated report is gitignored.
 
 The deployable plugin targets `net48`, matching current Valheim Modding guidance and the installed BepInEx 5/Mono environment. Pure planners target `netstandard2.0`; automated tests run on `net8.0`. See [ADR 0001](docs/architecture/0001-target-framework-and-reference-boundary.md) and the [pure-planning safety boundary](docs/architecture/0002-pure-planning-boundary.md).
 
-## Planned layout
+## Current layout
 
 ```text
 valheim-qol-mods/
 ├── README.md
-├── docs/
-│   ├── DESIGN-QUESTIONNAIRE.md
-│   ├── RESEARCH.md
-│   └── NEXT-STEPS.md
+├── docs/                      # approved contract, research, architecture, test plan
 ├── Environment.props.example
 ├── Stackmaster.sln
 ├── src/
-│   └── Stackmaster/
+│   ├── Stackmaster.Core/      # deterministic snapshots, planners, validation, persistence model
+│   └── Stackmaster/           # BepInEx entry point and audited Valheim adapters
 ├── tests/
-│   └── Stackmaster.Tests/
-├── packages/
-│   └── Stackmaster/
-├── scripts/
-│   ├── Inspect-StackmasterEnvironment.ps1
-│   ├── build.ps1
-│   ├── package.ps1
-│   └── verify-package.ps1
-└── artifacts/                 # ignored
+│   ├── Stackmaster.Tests/     # executable pure-domain test suite
+│   └── test_*_static.py       # repository, compatibility, and private-reference checks
+└── scripts/
+    ├── Collect-StackmasterReferences.ps1
+    ├── Inspect-StackmasterEnvironment.ps1
+    ├── build.sh
+    └── dotnet.sh
 ```
 
 Project files consume the private, gitignored reference bundle from `lib/local/StackmasterReferences/`. Reference DLLs are compile-time-only and are never copied into build or package output.
@@ -93,7 +89,7 @@ The repository uses the workspace-local .NET 8 SDK wrapper; it does not require 
 ./scripts/build.sh
 ```
 
-The build compiles the pure planner library, runs the planner test executable, compiles the harmless `net48` BepInEx skeleton against the private reference bundle, runs repository safety checks, and fails if private BepInEx or Unity DLLs leak into plugin output.
+The build compiles the pure planner library and the integrated `net48` BepInEx plugin, runs the pure-domain test executable and repository safety checks, and fails if private BepInEx, Valheim, or Unity DLLs leak into plugin output. The current gate passes with 18/18 pure-domain tests, 29/29 static checks, zero compiler warnings, zero compiler errors, and only `Stackmaster.dll` plus its PDB in plugin output.
 
 ## Project principles
 

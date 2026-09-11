@@ -9,9 +9,9 @@ namespace Stackmaster
 {
     internal static class ProtectionInteraction
     {
-        internal static bool TryHandle(InventoryGrid grid, ItemDrop.ItemData item, Vector2i position)
+        internal static bool TryHandle(InventoryGrid grid, ItemDrop.ItemData item, Vector2i position, InventoryGrid.Modifier modifier)
         {
-            if (!Input.GetKey(KeyCode.LeftAlt))
+            if (modifier != InventoryGrid.Modifier.Select || !Input.GetKey(KeyCode.LeftAlt))
             {
                 return false;
             }
@@ -32,7 +32,12 @@ namespace Stackmaster
                 return true;
             }
 
-            if (item == null || item.m_shared.m_maxStackSize <= 1)
+            if (item == null)
+            {
+                return false;
+            }
+
+            if (item.m_shared.m_maxStackSize <= 1)
             {
                 state.Protect(slot, null, null);
                 RuntimeContext.SaveProtection(player, state);
@@ -101,9 +106,9 @@ namespace Stackmaster
     [HarmonyPatch(typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier))]
     internal static class InventoryProtectionClickPatch
     {
-        private static bool Prefix(InventoryGrid grid, ItemDrop.ItemData item, Vector2i pos)
+        private static bool Prefix(InventoryGrid grid, ItemDrop.ItemData item, Vector2i pos, InventoryGrid.Modifier mod)
         {
-            return !ProtectionInteraction.TryHandle(grid, item, pos);
+            return !ProtectionInteraction.TryHandle(grid, item, pos, mod);
         }
     }
 }

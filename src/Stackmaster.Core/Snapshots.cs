@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace Stackmaster.Core
 {
@@ -62,7 +63,11 @@ namespace Stackmaster.Core
 
     public sealed class InventorySnapshot
     {
-        public InventorySnapshot(string inventoryId, int capacity, IEnumerable<ItemStackSnapshot> items)
+        public InventorySnapshot(
+            string inventoryId,
+            int capacity,
+            IEnumerable<ItemStackSnapshot> items,
+            IEnumerable<int>? reservedSlots = null)
         {
             if (string.IsNullOrWhiteSpace(inventoryId)) throw new ArgumentException("An inventory id is required.", nameof(inventoryId));
             if (capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
@@ -70,14 +75,19 @@ namespace Stackmaster.Core
 
             var copy = new List<ItemStackSnapshot>(items);
             ValidateSlots(copy, capacity, nameof(items));
+            var reserved = new HashSet<int>(reservedSlots ?? Array.Empty<int>());
+            if (reserved.Any(slot => slot < 0 || slot >= capacity))
+                throw new ArgumentException("A reserved slot is outside the inventory capacity.", nameof(reservedSlots));
             InventoryId = inventoryId;
             Capacity = capacity;
             Items = new ReadOnlyCollection<ItemStackSnapshot>(copy);
+            ReservedSlots = new ReadOnlyCollection<int>(reserved.OrderBy(slot => slot).ToList());
         }
 
         public string InventoryId { get; }
         public int Capacity { get; }
         public IReadOnlyList<ItemStackSnapshot> Items { get; }
+        public IReadOnlyList<int> ReservedSlots { get; }
 
         internal static void ValidateSlots(IList<ItemStackSnapshot> items, int capacity, string parameterName)
         {

@@ -56,7 +56,13 @@ namespace Stackmaster
                 .Select(item => ToSnapshot(inventoryId, item, width, catalog, isPlayer, player, protection))
                 .ToArray();
 
-            return new InventorySnapshot(inventoryId, width * inventory.GetHeight(), items);
+            var height = inventory.GetHeight();
+            var reservedSlots = isPlayer && protection != null
+                ? protection.Records
+                    .Where(record => record.Slot.Column < width && record.Slot.Row < height)
+                    .Select(record => record.Slot.Row * width + record.Slot.Column)
+                : Enumerable.Empty<int>();
+            return new InventorySnapshot(inventoryId, width * inventory.GetHeight(), items, reservedSlots);
         }
 
         internal static ItemStackSnapshot ToSnapshot(

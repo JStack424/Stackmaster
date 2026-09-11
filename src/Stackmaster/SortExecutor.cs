@@ -71,26 +71,70 @@ namespace Stackmaster
 
                 foreach (var group in plan.Placements.Where(item => !item.IsFixed).GroupBy(item => item.CompatibilityKey))
                 {
+                    var placements = group.OrderBy(item => item.Slot).ToArray();
                     var sourceIds = group.SelectMany(item => item.SourceStackIds).Distinct(StringComparer.Ordinal).ToArray();
-                    var available = new Queue<ItemDrop.ItemData>(sourceIds.Select(id => byStackId[id]));
-                    foreach (var placement in group.OrderBy(item => item.Slot))
+                    var available = sourceIds.Select(id => byStackId[id]).ToList();
+                    if (available.Count < placements.Length)
                     {
-                        if (available.Count == 0)
+                        throw new InvalidOperationException("The sort plan requires more source stacks than are available.");
+                    }
+
+                    foreach (var placement in placements)
+                    {
+                        var destination = available
+                            .Where(backing.Contains)
+                            .OrderByDescending(item => item.m_stack)
+                            .FirstOrDefault();
+                        if (destination == null || destination.m_stack > placement.Quantity)
                         {
-                            throw new InvalidOperationException("The sort plan requires more source stacks than are available.");
+                            throw new InvalidOperationException("A movable stack changed before consolidation.");
+                        }
+                        available.Remove(destination);
+
+                        var needed = placement.Quantity - destination.m_stack;
+                        foreach (var donor in available.ToArray())
+                        {
+                            if (needed == 0) break;
+                            if (!backing.Contains(donor) || donor.m_stack <= 0)
+                            {
+                                available.Remove(donor);
+                                continue;
+                            }
+                            if (!destination.IsSameType(donor) || !donor.IsSameType(destination))
+                            {
+                                throw new InvalidOperationException("A planned stack group is no longer compatible.");
+                            }
+
+                            var moved = Math.Min(needed, donor.m_stack);
+                            var beforeDestination = destination.m_stack;
+                            var beforeDonor = donor.m_stack;
+                            inventory.MoveItemToThis(
+                                inventory,
+                                donor,
+                                moved,
+                                destination.m_gridPos.x,
+                                destination.m_gridPos.y);
+                            if (destination.m_stack != beforeDestination + moved ||
+                                (backing.Contains(donor) ? donor.m_stack : 0) != beforeDonor - moved)
+                            {
+                                throw new InvalidOperationException("Vanilla stack consolidation returned an unexpected result.");
+                            }
+                            if (!backing.Contains(donor)) available.Remove(donor);
+                            needed -= moved;
                         }
 
-                        var item = available.Dequeue();
-                        item.m_stack = placement.Quantity;
-                        item.m_gridPos = InventorySnapshots.PositionForSlot(inventory, placement.Slot);
-                        survivors.Add(item);
+                        if (needed != 0 || destination.m_stack != placement.Quantity)
+                        {
+                            throw new InvalidOperationException("The planned stack quantity could not be produced safely.");
+                        }
+                        destination.m_gridPos = InventorySnapshots.PositionForSlot(inventory, placement.Slot);
+                        survivors.Add(destination);
                     }
                 }
 
-                backing.Clear();
-                foreach (var item in originalOrder.Where(survivors.Contains))
+                if (backing.Any(item => !survivors.Contains(item)))
                 {
-                    backing.Add(item);
+                    throw new InvalidOperationException("Vanilla consolidation left an unexpected source stack behind.");
                 }
 
                 var afterCatalog = new CompatibilityCatalog();
