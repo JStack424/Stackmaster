@@ -216,7 +216,8 @@ The first public version will ship the complete core loop together: inventory so
 - v0.1 uses a basic smoke-test release gate rather than an exhaustive strict safety campaign.
 - The smoke test still exercises sorting, depositing, and replenishment in representative conditions across every required environment, and any observed item loss, duplication, crash, or synchronization error blocks release.
 - This gate does not claim proof that no rare defect exists beyond the tested paths.
-- Still to settle: performance, conflict, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
+- Mod-conflict testing is limited to a clean r2modman profile containing BepInEx and Stackmaster's declared dependencies; v0.1 makes no broader coexistence promise for other gameplay or inventory mods.
+- Still to settle: performance, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
 
 ## Deferred decisions
 
