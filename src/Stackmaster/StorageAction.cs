@@ -167,6 +167,14 @@ namespace Stackmaster
                 ownership.Timeout();
             }
 
+            foreach (var handle in neededHandles.Where(handle => ownership.SuccessfulContainerIds.Contains(handle.Id)))
+            {
+                if (!ContainerDiscovery.RefreshFromNetwork(handle.Container))
+                {
+                    ownership.FailedContainerIds[handle.Id] = "latest network state could not be loaded";
+                }
+            }
+
             try
             {
                 var execution = TransferExecutor.Execute(player, handles, plan, catalog, ownership.FailedContainerIds);

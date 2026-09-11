@@ -43,6 +43,7 @@ namespace Stackmaster
         private const double SearchBudgetMilliseconds = 12.0;
         private static readonly FieldInfo NetworkViewField = AccessTools.Field(typeof(Container), "m_nview");
         private static readonly MethodInfo CheckAccessMethod = AccessTools.Method(typeof(Container), "CheckAccess", new[] { typeof(long) });
+        private static readonly MethodInfo CheckForChangesMethod = AccessTools.Method(typeof(Container), "CheckForChanges");
 
         internal static DiscoveryResult Discover(Player player, Container target, CompatibilityCatalog catalog, float radius)
         {
@@ -76,8 +77,9 @@ namespace Stackmaster
                 var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
                 var id = zdo != null ? zdo.m_uid.ToString() : "instance:" + container.GetInstanceID();
                 var isVanilla = container.GetType() == typeof(Container) && container.GetType().Assembly == typeof(Container).Assembly;
-                var inventory = isVanilla ? container.GetInventory() : null;
-                var isKnown = isVanilla && view != null && view.IsValid() && zdo != null && inventory != null;
+                var refreshed = isVanilla && view != null && view.IsValid() && zdo != null && RefreshFromNetwork(container);
+                var inventory = refreshed ? container.GetInventory() : null;
+                var isKnown = refreshed && inventory != null;
                 var inUse = isKnown && (container.IsInUse() || (container.m_wagon != null && container.m_wagon.InUse()));
                 var accessible = isKnown && !inUse && CheckAccess(player, container);
                 var capacity = inventory != null ? inventory.GetWidth() * inventory.GetHeight() : 0;
@@ -99,6 +101,20 @@ namespace Stackmaster
             }
 
             return new DiscoveryResult(handles, truncated);
+        }
+
+        internal static bool RefreshFromNetwork(Container container)
+        {
+            try
+            {
+                CheckForChangesMethod.Invoke(container, null);
+                return true;
+            }
+            catch (TargetInvocationException exception)
+            {
+                RuntimeContext.Plugin.Log.LogWarning("Container refresh failed safely: " + (exception.InnerException?.Message ?? exception.Message));
+                return false;
+            }
         }
 
         internal static bool CheckAccess(Player player, Container container)

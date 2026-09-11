@@ -56,6 +56,28 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
+    def test_character_persistence_is_versioned_and_slot_scoped(self):
+        core = (ROOT / "src" / "Stackmaster.Core" / "ProtectionState.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        self.assertIn('CurrentVersion = "v1"', core)
+        self.assertIn("Dictionary<Slot, ProtectionRecord>", core)
+        self.assertIn("player.m_customData", runtime)
+        self.assertIn("CharacterDataKey", runtime)
+
+    def test_transfer_revalidates_before_every_game_mutation(self):
+        executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
+        move_index = executor.index("MoveItemToThis")
+        self.assertLess(executor.index("RevalidateAndOwn"), move_index)
+        self.assertLess(executor.index("source stack changed before transfer"), move_index)
+        self.assertLess(executor.index("destination stack changed before transfer"), move_index)
+        self.assertIn("exactPostcondition", executor)
+        self.assertIn("FatalPostconditionFailure", executor)
+
+    def test_release_output_is_single_plugin_binary_and_symbols(self):
+        output = ROOT / "src" / "Stackmaster" / "bin" / "Release"
+        files = sorted(path.name for path in output.iterdir() if path.is_file())
+        self.assertEqual(["Stackmaster.dll", "Stackmaster.pdb"], files)
+
     def test_no_dll_is_tracked(self):
         tracked = subprocess.run(
             ["git", "ls-files", "*.dll"],

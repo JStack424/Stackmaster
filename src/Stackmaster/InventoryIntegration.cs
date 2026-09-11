@@ -73,7 +73,7 @@ namespace Stackmaster
                 RuntimeContext.Plugin.Log.LogWarning("Player auto-sort skipped safely: " + failure);
             }
 
-            if (container != null && container.GetType() == typeof(Container) && container.GetInventory() != null)
+            if (container != null && container.GetType() == typeof(Container) && container.IsOwner() && container.GetInventory() != null)
             {
                 if (!SortExecutor.Sort(container.GetInventory(), false, null, null, out failure))
                 {
