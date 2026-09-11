@@ -204,7 +204,7 @@ Rules:
 - [x] Log plugin version, game version, and compatibility-gate result.
 - [x] Build without copying local game DLLs into output.
 - [ ] Load in a dedicated clean r2modman profile and verify startup/shutdown without gameplay patches.
-- [ ] Commit before adding gameplay behavior.
+- [x] Commit before adding gameplay behavior (`7a9a6c2`).
 
 Exit criterion: the exact environment is documented and a harmless plugin loads cleanly.
 
