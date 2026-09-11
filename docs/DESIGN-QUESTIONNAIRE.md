@@ -221,7 +221,8 @@ The first public version will ship the complete core loop together: inventory so
 - Updating an older package and uninstalling cleanly are not required release-gate tests for v0.1.
 - Persistence gate: after protecting slots and setting replenishment targets, fully quit and relaunch Valheim with the same character and verify those choices remain intact.
 - Cross-world persistence and separate-character isolation are part of the intended behavior but are not separate required release-gate tests for v0.1.
-- Still to settle: performance and automated-test requirements before v0.1 is publishable.
+- Automated tests for deterministic sorting and item-transfer logic must pass before release, including protected-slot behavior, partial-stack priority, routing order, replenishment, shortages, excess handling, and no item-count drift.
+- Still to settle: the required performance test before v0.1 is publishable.
 
 ## Deferred decisions
 
