@@ -128,7 +128,9 @@ The first public version will ship the complete core loop together: inventory so
 - Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
 - When a stack is first protected, immediately ask the player to enter its target quantity rather than inferring the target from its current quantity or maximum stack size.
 - For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
-- Still to settle: later target editing, shortage behavior, and excess handling.
+- If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected slot partially replenished rather than making the transfer all-or-nothing.
+- Report the remaining shortfall in the action feedback.
+- Still to settle: later target editing and excess handling.
 
 ## Deferred decisions
 
