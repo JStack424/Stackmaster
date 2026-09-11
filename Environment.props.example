@@ -1,0 +1,15 @@
+<Project>
+  <!--
+    Copy this file to Environment.props only after running the Windows environment
+    inspector and verifying the paths. Environment.props is gitignored.
+
+    Reference local assemblies in place. Do not copy Valheim, Unity, BepInEx, or
+    Harmony DLLs into this repository.
+  -->
+  <PropertyGroup>
+    <ValheimInstall>LOCAL_PATH_HERE</ValheimInstall>
+    <ValheimManaged>LOCAL_PATH_HERE</ValheimManaged>
+    <BepInExCore>LOCAL_PATH_HERE</BepInExCore>
+    <ModDeployPath>LOCAL_PATH_HERE</ModDeployPath>
+  </PropertyGroup>
+</Project>

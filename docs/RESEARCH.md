@@ -5,9 +5,11 @@
 - **Distribution:** Thunderstore
 - **Installation and test manager:** r2modman
 
+> **Status note (2026-09-11):** This document preserves the pre-design ecosystem research. Product choices and release gates are now settled in [DESIGN-QUESTIONNAIRE.md](DESIGN-QUESTIONNAIRE.md), and the reconciled implementation sequence is in [NEXT-STEPS.md](NEXT-STEPS.md). Those documents override any earlier option or broader test suggestion below.
+
 ## Executive recommendation
 
-Start with **one deployable BepInEx 5 plugin and one Thunderstore package** for the first inventory/storage feature set. Keep inventory sorting and chest auto-stack as separate internal feature modules, with configuration boundaries that allow either feature to be disabled. Do not create a separately installed shared library yet.
+Start with **one deployable BepInEx 5 plugin and one Thunderstore package** for the first inventory/storage feature set. Keep inventory sorting, protection, and the deposit/replenish action as separate internal modules for testing and maintenance. Do not create a separately installed shared library yet.
 
 Use **plain BepInEx + its bundled HarmonyX** unless implementation proves that Jötunn provides something the first release actually needs. Jötunn is viable and has already published a Valheim 1.0 compatibility update, but a vanilla-code inventory plugin does not automatically need its larger runtime dependency.
 
@@ -207,7 +209,7 @@ Use a transaction-like plan/validate/execute flow:
 1. Snapshot eligible source stacks and reachable target containers.
 2. Exclude protected, equipped, hotbar, favorited, quest, or otherwise unsafe items.
 3. Build a deterministic move plan against available compatible partial stacks first.
-4. Optionally consider empty target slots only if configuration allows it.
+4. After every compatible partial stack is full, consider empty slots only in containers that already hold a compatible item, following the approved targeted-chest then nearest-to-farthest routing.
 5. Revalidate source amount, target capacity, access, range, and ownership immediately before each mutation.
 6. Use vanilla inventory/container mutation and network-notification paths.
 7. Abort or recompute on stale state; never “force” the expected state.
@@ -217,37 +219,15 @@ Preserve item identity and metadata, including quality, durability, custom data,
 
 ## 7. Configuration design
 
-Likely initial settings:
+The approved v0.1 surface contains exactly three profile-wide settings:
 
-### General
+- auto-sort, edited through the inventory checkbox and enabled by default;
+- nearby-storage radius, exposed through BepInEx/r2modman and defaulting to 20 meters;
+- the deposit/replenish keybind, exposed through BepInEx/r2modman and defaulting to Left Alt + E.
 
-- master enable;
-- notification verbosity;
-- diagnostic logging.
+Do not add master-enable, feature-toggle, preset, filter, verbosity, per-container, or advanced settings in v0.1. Diagnostic detail may use ordinary BepInEx logging without becoming a public configuration option.
 
-### Sorting
-
-- trigger: hotkey, inventory-open button, or both;
-- sort order/rule preset;
-- ascending/descending where meaningful;
-- protected slot or hotbar exclusions;
-- favorited/ignored item list;
-- combine partial stacks: on/off.
-
-### Auto-stack
-
-- trigger: explicit hotkey/button at first; automatic triggers should be opt-in;
-- search radius;
-- eligible container types;
-- ignored item/container lists;
-- fill compatible existing stacks only versus allow empty slots;
-- source exclusions;
-- per-container opt-out if a durable, non-destructive marker can be designed;
-- feedback/notification detail.
-
-Defaults should be conservative: explicit trigger, no equipped/hotbar/favorite moves, respect access, nearby containers only, and no hidden recurring scan.
-
-Avoid a world/character persistence schema in 0.1 unless a requirement demands one. BepInEx config is sufficient for user settings; world-linked metadata creates migration and uninstall obligations.
+Protected exact slots and optional replenishment targets are character data rather than profile settings; they follow that character across worlds. Use a small versioned persistence schema, validate it before use, and fail without moving items if it is malformed or incompatible.
 
 ## 8. Logging and debugging
 
@@ -270,7 +250,7 @@ For each user-triggered operation, log a concise summary at Info or Debug level.
 1. Reproduce on a backed-up disposable character/world.
 2. Reduce to a clean r2modman profile with BepInEx and this plugin.
 3. Read `LogOutput.log` from startup through the failure.
-4. Confirm all patches applied to the expected Valheim 1.0.7 methods.
+4. Confirm all patches applied to the exact supported Valheim build recorded from the installed game.
 5. Reproduce with deterministic inventory/container contents.
 6. Add narrow diagnostic logs around the failing state transition.
 7. Inspect/decompile the locally installed game assemblies as needed.
@@ -305,7 +285,7 @@ Launch with r2modman's modded launch action and inspect `BepInEx/LogOutput.log`.
 3. Import the ZIP using r2modman's local-mod import action under profile settings.
 4. Confirm the installed paths.
 5. Launch modded from the clean profile.
-6. Test uninstall, reinstall, and config regeneration.
+6. Verify a clean launch, intended defaults, and the representative core workflow.
 
 The exact UI label has appeared as **Import Local Mod** in current community examples, but wording may vary by r2modman release. Local imports do not automatically install dependencies, receive updates, or appear in exported profiles; those behaviors must be tested separately with the published package.
 
@@ -328,74 +308,38 @@ Console crossplay does not make PC plugin DLLs loadable on consoles. If unmodded
 
 **Unverified:** some community discussions claim broader crossplay limitations for BepInEx/modded servers. No sufficiently current upstream statement was established in this research pass. If crossplay matters, test the real deployment rather than copying a blanket claim.
 
-## 11. Required test matrix
+## 11. Approved v0.1 test matrix
 
-Use backed-up disposable worlds and characters.
+Use backed-up disposable worlds and characters. The exact release gate is maintained in [NEXT-STEPS.md](NEXT-STEPS.md); the condensed requirements are:
 
-### Baselines
+### Automated coverage
 
-1. Vanilla launch with the same world/character.
-2. Clean r2modman profile with BepInEx only.
-3. Mod enabled in a local world.
-4. Mod disabled, uninstalled, and config regenerated.
+- deterministic sorting and compatible stack consolidation;
+- exact protected-slot behavior;
+- partial-stack priority, targeted-chest priority, nearest routing, and stable slot order;
+- replenishment, partial shortages, excess-above-target handling, overflow, and no destination;
+- item-count and metadata conservation;
+- safe time-budget exhaustion and incomplete-search feedback;
+- compatibility-check failure disabling all item-changing behavior.
 
-### Peer-hosted co-op
+### Gameplay smoke environments
 
-- host and guest both modded, same version and config;
-- host only modded;
-- guest only modded;
-- deliberate version mismatch;
-- reconnect after transfer;
-- both players attempt to use the same chest.
+- solo;
+- co-op host with an unmodded peer;
+- co-op guest of a vanilla host;
+- modded client on a vanilla dedicated server with no server-side Stackmaster installation.
 
-### Dedicated server
+Each multiplayer run checks peer compatibility and synchronized container state. Any observed item loss, duplication, crash, corrupt metadata, or synchronization error blocks release.
 
-- vanilla server, modded client;
-- modded server, vanilla client;
-- server and clients modded;
-- two clients race to stack into the same target;
-- server restart after operations.
+### Additional release gates
 
-### Inputs/platforms
+- clean profile containing only BepInEx, Stackmaster, and declared dependencies;
+- one complete quit/relaunch with the same character to verify protected-slot/target persistence;
+- one normal-sized base at the 20-meter default to verify responsiveness and profile the internal time budget;
+- fresh r2modman import of the exact ZIP with intended defaults;
+- package structure validation and exclusion of local paths, game DLLs, credentials, test binaries, and development debris.
 
-- keyboard and mouse;
-- controller;
-- Windows;
-- Linux/Proton or Steam Deck if those platforms will be claimed as supported.
-
-### Inventory/container edge cases
-
-- source or target full;
-- compatible partial stacks;
-- no compatible target;
-- mixed qualities, durability, variants, and custom data;
-- equipped, hotbar, favorited, or ignored items;
-- chest actively used by another player;
-- private/access-denied/ward-protected storage;
-- cart, ship, personal chest, black-metal chest, and any 1.0 storage types intended for support;
-- target destroyed or moved out of range mid-operation;
-- death, portal, teleport, save, load, and disconnect during/after operation;
-- another popular inventory/storage mod installed.
-
-### Data-integrity assertions
-
-For every mutation test:
-
-- total item counts are conserved;
-- no duplicates appear;
-- no item disappears;
-- metadata remains unchanged;
-- all peers converge on the same state;
-- world/character loads cleanly with the plugin removed;
-- logs contain no uncaught exception.
-
-### Packaging assertions
-
-- local ZIP imports in a clean profile with declared dependencies preinstalled;
-- published-package installation resolves declared dependencies automatically;
-- root structure is valid;
-- ZIP contains no local paths, game DLLs, PDBs unless intentionally shipped, tokens, or development-only dependencies;
-- README accurately states compatibility and configuration.
+A deliberately oversized stress base, other-mod conflicts, controller support, upgrade behavior, clean removal, cross-world persistence, and separate-character isolation are outside the v0.1 release gate. Broader testing can still be added when evidence warrants it, but must not silently replace the approved definition of done.
 
 ## 12. Thunderstore package format
 
@@ -425,18 +369,18 @@ Recommended plugin payload:
 
 ```text
 plugins/
-└── InventoryStorage/
-    └── Valheim.QoL.InventoryStorage.dll
+└── Stackmaster/
+    └── Stackmaster.dll
 ```
 
 Example manifest shape — placeholders are intentional:
 
 ```json
 {
-  "name": "InventoryStorage",
+  "name": "Stackmaster",
   "version_number": "0.1.0",
   "website_url": "",
-  "description": "Configurable inventory sorting and safe nearby-container stacking for Valheim.",
+  "description": "Turn a messy Viking inventory into a tidy, adventure-ready loadout.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-<verify-current-version>"
   ]
@@ -460,15 +404,17 @@ Pin dependency versions in each release artifact. Re-check the current live vers
 
 Manual upload is the safest first-release path.
 
-Before publishing, Joe must choose or confirm:
+Approved identity before publishing:
 
-- Thunderstore account/team;
-- permanent team namespace;
-- permanent package name;
-- public source/homepage URL, if any;
-- license;
-- final icon and description;
-- actual compatibility claims based on tests.
+- Thunderstore team: `JStack424`;
+- permanent package name: `Stackmaster`, unless the final creation flow reveals a collision;
+- BepInEx GUID: `com.jstack424.stackmaster`;
+- license: MIT;
+- public GitHub source with Issues enabled, using that repository as the Thunderstore homepage;
+- original square chest-stack icon direction and the approved public lead;
+- actual compatibility claims remain limited to the environments that pass the release matrix.
+
+The exact GitHub owner/remote creation and the final publication action still require Joe's approval.
 
 Team plus package name becomes the durable package identity. Published versions are immutable; even a README correction requires a new version. Thunderstore displays the highest semantic version, not necessarily the latest upload by date. Never reuse an existing version number for a changed ZIP.
 

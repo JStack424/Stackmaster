@@ -18,8 +18,16 @@ profiles/
 BepInEx/
 Environment.props
 Directory.Build.props.local
+scripts/stackmaster-environment-report*.json
+scripts/stackmaster-environment-report*.txt
+stackmaster-environment-report*.json
+stackmaster-environment-report*.txt
 *.dll
 *.pdb
+
+# Test/runtime caches
+__pycache__/
+*.py[cod]
 
 # Thunderstore publishing secrets or local credentials
 .env
