@@ -197,7 +197,9 @@ The first public version will ship the complete core loop together: inventory so
 
 - Public mod name: **Stackmaster**.
 - Reserve the matching package and assembly naming direction (`Stackmaster`) unless Thunderstore's final creation flow reveals a collision.
-- Still to settle: plugin GUID, Thunderstore team identity, license, source/homepage plan, icon direction, and short public description.
+- Thunderstore author/team identity: **JStack424**.
+- BepInEx plugin GUID: `com.jstack424.stackmaster`.
+- Still to settle: license, source/homepage plan, icon direction, and short public description.
 
 ## Deferred decisions
 
