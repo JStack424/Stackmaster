@@ -102,6 +102,15 @@ The first public version will ship the complete core loop together: inventory so
 - This includes eligible carts, ships, personal storage, and world containers when the player can legitimately access them.
 - Skip anything the game treats as locked, private to someone else, inaccessible, or otherwise unavailable for mutation.
 
+## Current checkpoint notes
+
+### Question 9 — deposit and routing rules
+
+- Deposit an item only into nearby containers that already hold a stack-compatible item of that type.
+- If no eligible nearby container already holds the item, leave it in the player's inventory rather than claiming unrelated empty storage.
+- After the hotkey finishes, show a brief popup with the number of items deposited and the number left behind/not deposited. Final wording and whether counts mean units, stacks, or item types remain for Question 13.
+- Still to settle within this checkpoint: priority when several matching containers can accept the same item.
+
 ## Deferred decisions
 
 None yet.
