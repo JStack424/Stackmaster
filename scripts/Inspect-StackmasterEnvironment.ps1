@@ -42,7 +42,7 @@ Optional exact r2modman profile name to include.
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$OutputPath = (Join-Path $PSScriptRoot 'stackmaster-environment-report.json'),
+    [string]$OutputPath,
 
     [Parameter()]
     [ValidateSet('Json', 'Text')]
@@ -60,6 +60,26 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+
+# Some Windows launch methods leave $PSScriptRoot empty while parameter defaults are
+# evaluated. Resolve the script folder after startup and fall back safely to the current
+# directory so a simple right-click "Run with PowerShell" still works.
+$scriptDirectory = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptDirectory) -and
+    -not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+    $scriptDirectory = Split-Path -Parent $PSCommandPath
+}
+if ([string]::IsNullOrWhiteSpace($scriptDirectory) -and
+    $null -ne $MyInvocation.MyCommand -and
+    -not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)) {
+    $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($scriptDirectory)) {
+    $scriptDirectory = (Get-Location).Path
+}
+if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+    $OutputPath = Join-Path -Path $scriptDirectory -ChildPath 'stackmaster-environment-report.json'
+}
 
 function ConvertTo-SanitizedPath {
     param([AllowNull()][string]$Path)

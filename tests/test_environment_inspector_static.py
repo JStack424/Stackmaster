@@ -51,6 +51,20 @@ class EnvironmentInspectorStaticTests(unittest.TestCase):
         ):
             self.assertIn(parameter, self.script)
 
+    def test_default_output_survives_empty_psscriptroot(self):
+        self.assertNotIn(
+            "[string]$OutputPath = (Join-Path $PSScriptRoot",
+            self.script,
+        )
+        self.assertIn("[string]::IsNullOrWhiteSpace($scriptDirectory)", self.script)
+        self.assertIn("$PSCommandPath", self.script)
+        self.assertIn("$MyInvocation.MyCommand.Path", self.script)
+        self.assertIn("$scriptDirectory = (Get-Location).Path", self.script)
+        self.assertIn(
+            "$OutputPath = Join-Path -Path $scriptDirectory -ChildPath",
+            self.script,
+        )
+
     def test_script_contains_no_network_install_or_mutating_commands(self):
         forbidden_commands = (
             "Invoke-WebRequest",
