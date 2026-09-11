@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>Stackmaster</AssemblyName>
+    <RootNamespace>Stackmaster</RootNamespace>
+    <Description>Inventory sorting and nearby-storage planning for Valheim.</Description>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Build-only reference assemblies let the Linux SDK compile net48. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(StackmasterReferencePath)/BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(StackmasterReferencePath)/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(StackmasterReferencePath)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Compile the pure policy source into the one plugin DLL. Tests reference the
+       separate netstandard2.0 project, but Stackmaster ships no runtime Core DLL. -->
+  <ItemGroup>
+    <Compile Include="../Stackmaster.Core/**/*.cs"
+             Exclude="../Stackmaster.Core/bin/**;../Stackmaster.Core/obj/**"
+             Link="Core/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="GeneratePluginVersion" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <GeneratedPluginVersionFile>$(IntermediateOutputPath)GeneratedBuildInfo.g.cs</GeneratedPluginVersionFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(GeneratedPluginVersionFile)"
+                      Lines="namespace Stackmaster { internal static class GeneratedBuildInfo { public const string Version = &quot;$(StackmasterVersion)&quot;%3B } }"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(GeneratedPluginVersionFile)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ValidatePrivateReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(StackmasterReferencePath)/BepInEx.dll')"
+           Text="Private BepInEx reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
+    <Error Condition="!Exists('$(StackmasterReferencePath)/UnityEngine.dll')"
+           Text="Private Unity facade reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
+    <Error Condition="!Exists('$(StackmasterReferencePath)/UnityEngine.CoreModule.dll')"
+           Text="Private Unity reference missing. Set StackmasterReferencePath or populate the ignored lib/local/StackmasterReferences directory." />
+  </Target>
+
+  <Target Name="VerifyReferencesWereNotCopied" AfterTargets="Build">
+    <Error Condition="Exists('$(TargetDir)BepInEx.dll')"
+           Text="Private reference leaked into plugin output: BepInEx.dll" />
+    <Error Condition="Exists('$(TargetDir)UnityEngine.dll')"
+           Text="Private reference leaked into plugin output: UnityEngine.dll" />
+    <Error Condition="Exists('$(TargetDir)UnityEngine.CoreModule.dll')"
+           Text="Private reference leaked into plugin output: UnityEngine.CoreModule.dll" />
+  </Target>
+</Project>

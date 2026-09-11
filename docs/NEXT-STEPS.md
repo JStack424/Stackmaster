@@ -94,32 +94,21 @@ Before choosing a compiler or creating project files, confirm:
 
 The inspector intentionally does not read BepInEx logs or r2modman configuration contents. If a later validation step needs one, inspect that specific file manually and record only the minimum relevant fact.
 
-### Step C — create local reference settings later
+### Step C — keep compile-time references private
 
-After the paths are verified, create an ignored `Environment.props` locally from a committed example:
+The exact compile-time reference bundle is installed under the ignored `lib/local/StackmasterReferences/` directory, with a local checksum manifest. The project may instead receive an ignored `StackmasterReferencePath` override.
 
-```xml
-<Project>
-  <PropertyGroup>
-    <ValheimInstall>LOCAL_PATH_HERE</ValheimInstall>
-    <ValheimManaged>LOCAL_PATH_HERE</ValheimManaged>
-    <BepInExCore>LOCAL_PATH_HERE</BepInExCore>
-    <ModDeployPath>LOCAL_PATH_HERE</ModDeployPath>
-  </PropertyGroup>
-</Project>
-```
+Never commit these assemblies, copy them into plugin output, or include them in a release ZIP. The project uses `<Private>false>` on each game/runtime reference, and the build fails if BepInEx or Unity reference DLLs appear beside `Stackmaster.dll`.
 
-Do not commit the filled local file. Reference local assemblies in place; do not copy them into tracked paths.
-
-### Step D — choose and install only the minimum toolchain later
+### Step D — use only the minimum toolchain
 
 The environment and current Valheim Modding guidance support a `net48` deployable plugin. Pure planners use `netstandard2.0`, and automated tests use `net8.0`; .NET 8 is only the local build/test SDK. The rationale and private-reference boundary are recorded in [ADR 0001](architecture/0001-target-framework-and-reference-boundary.md).
 
-When separately authorized:
+Current status:
 
 - [x] Choose the target framework from the installed environment and current template evidence.
 - [x] Install a repository-external .NET 8 SDK under `~/workspace/toolchains/dotnet-8`; no system or gaming-PC installation.
-- [ ] Verify the compiler with a harmless minimal build.
+- [x] Verify the compiler with the harmless load-and-log `Stackmaster.dll` skeleton and pure planner tests.
 - [ ] Do not install Unity unless custom assets become an actual requirement.
 - [ ] Do not copy or redistribute Valheim, Unity, BepInEx, Harmony, or Jötunn assemblies unless a package license and implementation requirement explicitly justify it.
 
@@ -208,12 +197,12 @@ Rules:
 
 ### Milestone 0 — environment and harmless skeleton
 
-- [ ] Complete the inspection report and record the validated versions/paths.
+- [x] Complete the inspection report and record the validated versions/paths.
 - [ ] Back up the character and world selected for later gameplay testing.
-- [ ] Create the solution/project using the validated target framework and local references.
-- [ ] Add stable metadata: Stackmaster, `com.jstack424.stackmaster`, one shared version source.
-- [ ] Log plugin version, game version, and compatibility-gate result.
-- [ ] Build without copying local game DLLs into output.
+- [x] Create the solution/project using the validated target framework and local references.
+- [x] Add stable metadata: Stackmaster, `com.jstack424.stackmaster`, one shared version source.
+- [x] Log plugin version, game version, and compatibility-gate result.
+- [x] Build without copying local game DLLs into output.
 - [ ] Load in a dedicated clean r2modman profile and verify startup/shutdown without gameplay patches.
 - [ ] Commit before adding gameplay behavior.
 
@@ -221,11 +210,11 @@ Exit criterion: the exact environment is documented and a harmless plugin loads 
 
 ### Milestone 1 — pure sorting and transfer models
 
-- [ ] Define item identity, stack compatibility, protected-slot, inventory, container, and result models.
-- [ ] Implement stable alphabetical sorting and compatible stack consolidation.
-- [ ] Implement deterministic routing: targeted chest first, then nearest to farthest, partial stacks before new stacks, stable slot order.
-- [ ] Implement replenishment, partial shortages, target trimming, and no-destination results.
-- [ ] Test empty/full inventories, duplicates, metadata differences, max stacks, protected slots, shortages, overflow, and no item-count drift.
+- [x] Define item identity, stack compatibility, protected-slot, inventory, container, and result models.
+- [x] Implement stable alphabetical sorting and compatible stack consolidation.
+- [x] Implement deterministic routing: targeted chest first, then nearest to farthest, partial stacks before new stacks, stable slot order.
+- [x] Implement replenishment, partial shortages, target trimming, and no-destination results.
+- [x] Test empty/full inventories, duplicates, metadata differences, max stacks, protected slots, shortages, overflow, and no item-count drift.
 
 Exit criterion: comprehensive automated tests pass without launching Valheim.
 

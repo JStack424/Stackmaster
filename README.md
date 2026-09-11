@@ -55,7 +55,7 @@ Review the report before sharing it. The generated report is gitignored.
 - Thunderstore distribution and fresh-profile r2modman package validation.
 - Local game/BepInEx assemblies referenced in place through ignored machine-local paths; never copied into git or a release ZIP.
 
-The deployable plugin targets `net48`, matching current Valheim Modding guidance and the installed BepInEx 5/Mono environment. Pure planners target `netstandard2.0`; automated tests run on `net8.0`. See [ADR 0001](docs/architecture/0001-target-framework-and-reference-boundary.md).
+The deployable plugin targets `net48`, matching current Valheim Modding guidance and the installed BepInEx 5/Mono environment. Pure planners target `netstandard2.0`; automated tests run on `net8.0`. See [ADR 0001](docs/architecture/0001-target-framework-and-reference-boundary.md) and the [pure-planning safety boundary](docs/architecture/0002-pure-planning-boundary.md).
 
 ## Planned layout
 
@@ -83,6 +83,17 @@ valheim-qol-mods/
 ```
 
 Project files consume the private, gitignored reference bundle from `lib/local/StackmasterReferences/`. Reference DLLs are compile-time-only and are never copied into build or package output.
+
+## Local build
+
+The repository uses the workspace-local .NET 8 SDK wrapper; it does not require or modify a system-wide SDK:
+
+```bash
+./scripts/dotnet.sh --info
+./scripts/build.sh
+```
+
+The build compiles the pure planner library, runs the planner test executable, compiles the harmless `net48` BepInEx skeleton against the private reference bundle, runs repository safety checks, and fails if private BepInEx or Unity DLLs leak into plugin output.
 
 ## Project principles
 

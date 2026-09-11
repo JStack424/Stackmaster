@@ -20,7 +20,7 @@ The current Valheim Modding guidance still recommends .NET Framework 4.8 for a p
 - Pure inventory models and planners target **.NET Standard 2.0 (`netstandard2.0`)**, which is consumable by the `net48` plugin and by the local modern test runner.
 - Automated planner tests target **.NET 8 (`net8.0`)**. .NET 8 is a build/test tool only; it is not Stackmaster's in-game runtime target.
 - The plugin source-compiles the pure planner files rather than shipping a second runtime DLL. The package remains one deployable plugin assembly.
-- The local build uses the .NET 8 SDK installed under `~/workspace/toolchains/dotnet-8`. It does not alter the system toolchain or Joe's gaming PC.
+- The local build pins .NET SDK `8.0.425` in `global.json` and uses the SDK installed under `~/workspace/toolchains/dotnet-8`. It does not alter the system toolchain or Joe's gaming PC.
 - `net48` reference assemblies come from Microsoft's build-only reference package. They are not copied into output.
 - Valheim, Unity, BepInEx, and Harmony references come only from `lib/local/StackmasterReferences/` (or an ignored `StackmasterReferencePath` override). All such DLLs remain private and gitignored, use `<Private>false>`, and must never be copied into build or release output.
 
