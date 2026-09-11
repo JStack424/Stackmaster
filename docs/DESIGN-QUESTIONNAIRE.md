@@ -5,8 +5,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 ## Progress
 
 - **Completed:** 18 of 18
-- **Current:** Consolidated behavior-contract review
-- **Build readiness:** Awaiting Joe's explicit approval of the consolidated contract
+- **Current:** Approved; ready for implementation-environment validation
+- **Build readiness:** Approved by Joe on September 11, 2026
 
 ## How the interview works
 
@@ -224,7 +224,7 @@ The first public version will ship the complete core loop together: inventory so
 - The supported Valheim version must be recorded from the installed game. Before claiming compatibility after a later game update, rerun the same smoke gate; automated coverage must also verify that a failed compatibility check disables all item-changing behavior and surfaces the warning.
 - The exact release ZIP must pass structural validation: required Thunderstore files present, 256×256 PNG icon, valid manifest and dependency versions, matching plugin/package version, and no game assemblies, machine-local paths, credentials, test binaries, or development debris.
 
-All 18 checkpoints are now complete. Gameplay coding remains blocked until Joe approves the consolidated behavior contract.
+All 18 checkpoints are complete. Joe approved the consolidated behavior contract on September 11, 2026. Implementation may begin with environment validation; any material behavior change must return to Joe for approval.
 
 ## Deferred decisions
 
