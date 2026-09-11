@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 3 of 18
-- **Current:** Question 4 — Sort scope and protected areas
+- **Completed:** 4 of 18
+- **Current:** Question 5 — Sort order and grouping
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -23,7 +23,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **1. Ideal gameplay flow** — Describe what should happen from the player's point of view during ordinary adventuring, returning to base, opening inventory, and using storage.
 - [x] **2. First-release boundary** — Decide the must-have behavior for v0.1, what can wait, and whether sorting, depositing, and replenishment ship together initially.
 - [x] **3. Sorting trigger and timing** — Decide what “always sorted” means in practice: after pickups, inventory changes, opening the inventory, explicit input, or another event model.
-- [ ] **4. Sort scope and protected areas** — Decide which inventories and slots may move, including hotbar, equipped items, arbitrary protected slots, and an open container.
+- [x] **4. Sort scope and protected areas** — Decide which inventories and slots may move, including hotbar, equipped items, arbitrary protected slots, and an open container.
 - [ ] **5. Sort order and grouping** — Define the category order, within-category order, naming basis, quality/durability handling, and stable tie-breakers.
 - [ ] **6. Stack consolidation** — Decide whether sorting also merges partial stacks and how stack limits, item metadata, and exceptional items should behave.
 - [ ] **7. Deposit trigger and timing** — Decide exactly when nearby-chest stacking or depositing runs and whether automatic behavior is opt-in.
@@ -67,6 +67,13 @@ The first public version will ship the complete core loop together: inventory so
 - Do not continuously reorder items after every pickup or inventory change.
 - Add an in-game checkbox that immediately enables or disables automatic inventory sorting without requiring an external configuration editor.
 - The checkbox's exact placement, wording, and persistence will be finalized in the controls/interface and configuration checkpoints.
+
+### 4. Sort scope and protected areas
+
+- Automatically sort both the player's movable inventory area and the chest that is opened.
+- The player quick bar, equipped items, and user-favorited/held items remain protected, fixed in their chosen slots, and excluded from sorting.
+- Opening a chest should organize that chest automatically rather than requiring a separate chest-sort button.
+- Chest-specific exclusions and category rules remain assigned to the chest-controls checkpoint.
 
 ## Deferred decisions
 
