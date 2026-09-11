@@ -1,104 +1,89 @@
 # Stackmaster
 
-Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines automatic inventory sorting, deliberate nearby-storage depositing, and protected-stack replenishment in one workflow.
-
 > Turn a messy Viking inventory into a tidy, adventure-ready loadout.
 
-## Status
+Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines automatic inventory sorting, deliberate nearby-storage depositing, and protected-stack replenishment in one tidy workflow.
 
-The 18-checkpoint behavior contract was approved on September 11, 2026 and later refined so each protection record follows one compatible matching stack rather than an unrelated replacement in an old slot. The current approved controls also let the configured storage shortcut act on an already open vanilla chest without closing it, and prefill/select a stackable item's full legal replenishment target for immediate Enter acceptance. Joe authorized the complete local v0.1 implementation and clean-profile testing. An earlier integrated test package was exercised; this source now contains the completed feedback corrections for its replacement. Nothing has been published.
+## Early public test release
 
-- [Approved behavior contract](docs/DESIGN-QUESTIONNAIRE.md)
-- [Environment-validation and implementation plan](docs/NEXT-STEPS.md)
-- [Valheim 1.0 modding research](docs/RESEARCH.md)
+Version 0.1.0 has passed the automated test suite and solo smoke testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this release does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
 
-Nothing has been installed, published, or copied from Valheim into this repository.
+Stackmaster is designed as an optional client-side install: each player who wants its features installs it, while the host, other players, and dedicated server should not need Stackmaster. That installation model still needs confirmation across the remaining multiplayer matrix.
 
-## Approved v0.1 direction
+## Features
 
-Build one deployable `Stackmaster` BepInEx plugin/package with separate internal modules for:
+- Sorts movable backpack slots alphabetically whenever the inventory opens.
+- Sorts an opened vanilla container at the same time.
+- Keeps the whole quick bar, equipped items, and protected stacks fixed.
+- Lets one protected record follow one compatible stack when it moves or survives a merge.
+- Deposits only into nearby eligible vanilla containers that already hold a compatible item.
+- Fills compatible partial stacks before creating new stacks.
+- Uses the targeted chest first, then searches other matching storage nearest to farthest.
+- Replenishes protected stacks to optional target quantities during the same storage action.
+- Leaves unmatched items and overflow safely in the player inventory.
+- Skips inaccessible, unknown, modded, or actively used containers.
+- Shows compact unit totals, shortages, meaningful skips, and incomplete-search notices.
+- Disables all item-changing behavior if its runtime compatibility checks fail.
 
-1. automatic alphabetical inventory/chest sorting;
-2. matching-stack protection with a preferred slot and optional replenishment targets;
-3. the explicit nearby-storage deposit/replenish action;
-4. container discovery, validation, and safe transfer execution;
-5. compact visual result feedback.
+## Controls
 
-The public identity is `JStack424-Stackmaster`, with BepInEx GUID `com.jstack424.stackmaster` and an MIT license. Public repository creation and Thunderstore publication remain separate, explicitly approved future actions.
+- **Open inventory:** Sort the movable player inventory and any opened vanilla container when Auto-sort is enabled.
+- **Left Alt-click an unprotected stackable item:** Choose protection with a replenishment target. The legal full-stack amount is prefilled and selected; press Enter to accept it, type a lower legal amount, or enter `0` for protection only.
+- **Left Alt-click an unprotected non-stackable item:** Protect it immediately.
+- **Left Alt-click a protected item:** Unprotect it.
+- **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
+- **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing its inventory.
 
-## Safe environment inspection
+Version 0.1.0 supports keyboard and mouse. Controller-specific controls are not included yet.
 
-On the Windows gaming PC, from the repository root:
+## Configuration
 
-```powershell
-.\scripts\Inspect-StackmasterEnvironment.ps1
-```
+Stackmaster exposes exactly three BepInEx settings:
 
-The script writes `scripts\stackmaster-environment-report.json` by default. It reads likely Steam/r2modman paths and file metadata only; it does not install software, alter game/profile files, read logs or configuration contents, copy assemblies, or use the network. Paths under the Windows user profile are replaced with `%USERPROFILE%`.
+1. **Auto-sort enabled** — defaults to on and is also available through the checkbox below the player inventory.
+2. **Nearby-storage radius** — defaults to 20 metres and can be set from 1 to 50 metres.
+3. **Storage-action keybind** — defaults to Left Alt + E.
 
-If auto-discovery misses a nonstandard location:
+Radius and keybind can be changed through the normal r2modman/BepInEx configuration editor after the first launch.
 
-```powershell
-.\scripts\Inspect-StackmasterEnvironment.ps1 `
-  -ValheimPath 'D:\SteamLibrary\steamapps\common\Valheim' `
-  -R2ModManDataPath "$env:APPDATA\r2modmanPlus-local\Valheim" `
-  -ProfileName 'Stackmaster Dev'
-```
+## Installation
 
-Review the report before sharing it. The generated report is gitignored.
+### Thunderstore or r2modman
 
-## Technical baseline
+Install **Stackmaster by JStack424** with a Thunderstore-compatible mod manager. Its declared BepInExPack Valheim dependency is installed separately by the manager; Stackmaster does not bundle BepInEx or Harmony.
 
-- Valheim-specific BepInEx 5 pack from Thunderstore.
-- HarmonyX supplied by that BepInEx profile.
-- Plain BepInEx first; add Jötunn only if current Valheim APIs, networking, UI, assets, or synchronization make it necessary.
-- Thunderstore distribution and fresh-profile r2modman package validation.
-- Local game/BepInEx assemblies referenced in place through ignored machine-local paths; never copied into git or a release ZIP.
+### Manual
 
-The deployable plugin targets `net48`, matching current Valheim Modding guidance and the installed BepInEx 5/Mono environment. Pure planners target `netstandard2.0`; automated tests run on `net8.0`. See [ADR 0001](docs/architecture/0001-target-framework-and-reference-boundary.md) and the [pure-planning safety boundary](docs/architecture/0002-pure-planning-boundary.md).
+1. Install `denikson-BepInExPack_Valheim` version 5.4.2350 or newer.
+2. Copy `Stackmaster.dll` into `BepInEx/plugins/Stackmaster/`.
+3. Launch Valheim through the BepInEx-enabled game entry point.
 
-## Current layout
+## Compatibility
 
-```text
-valheim-qol-mods/
-├── README.md
-├── docs/                      # approved contract, research, architecture, test plan
-├── Environment.props.example
-├── Stackmaster.sln
-├── src/
-│   ├── Stackmaster.Core/      # deterministic snapshots, planners, validation, persistence model
-│   └── Stackmaster/           # BepInEx entry point and audited Valheim adapters
-├── tests/
-│   ├── Stackmaster.Tests/     # executable pure-domain test suite
-│   └── test_*_static.py       # repository, compatibility, and private-reference checks
-└── scripts/
-    ├── Collect-StackmasterReferences.ps1
-    ├── Inspect-StackmasterEnvironment.ps1
-    ├── build.sh
-    └── dotnet.sh
-```
+Stackmaster 0.1.0 is built and fail-closed for the reference environment used during development:
 
-Project files consume the private, gitignored reference bundle from `lib/local/StackmasterReferences/`. Reference DLLs are compile-time-only and are never copied into build or package output.
+- Valheim API version 1.0.12 / Steam build 25253764
+- Unity 6000.0.75f1
+- BepInEx runtime 5.4.23.5, supplied by BepInExPack Valheim 5.4.2350
+- Harmony 2.9.0.0, supplied by BepInExPack Valheim
+- Vanilla containers only
 
-## Local build
+A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items. Compatibility with other inventory or storage mods is not claimed in 0.1.0.
 
-The repository uses the workspace-local .NET 8 SDK wrapper; it does not require or modify a system-wide SDK:
+## Source, issues, and license
+
+- Source and issue tracker: <https://github.com/JStack424/Stackmaster>
+- Plugin GUID: `com.jstack424.stackmaster`
+- License: [MIT](LICENSE)
+
+## Development
+
+The repository keeps pure inventory policy separate from Valheim/Unity adapters. The deployable plugin targets .NET Framework 4.8, pure planners target .NET Standard 2.0, and automated tests target .NET 8.
+
+Private compile-time references must come from your own Valheim/BepInEx installation and remain under the ignored `lib/local/StackmasterReferences/` directory (or an ignored path override). They are never committed or packaged. On Windows, `scripts/Inspect-StackmasterEnvironment.ps1` performs a read-only environment inventory, and `scripts/Collect-StackmasterReferences.ps1` copies only the required compile-time assemblies from paths you explicitly provide.
 
 ```bash
-./scripts/dotnet.sh --info
 ./scripts/build.sh
 ```
 
-The build compiles the pure planner library and the integrated `net48` BepInEx plugin, runs the pure-domain test executable and repository safety checks, and fails if private BepInEx, Valheim, or Unity DLLs leak into plugin output. The current gate passes with 28/28 pure-domain tests, 37/37 static checks, zero compiler warnings, zero compiler errors, and only `Stackmaster.dll` plus its PDB in plugin output.
-
-## Project principles
-
-- The approved behavior contract is the source of truth; material changes return to Joe for approval.
-- Keep policy logic deterministic and unit-testable outside Unity.
-- Preserve exact item identity, quantity, quality, durability, custom data, and legal stack limits.
-- Never move quick-bar, equipped, or currently resolved protected-stack contents.
-- Treat shared-container mutation as network-affecting until the complete host/guest/dedicated test matrix passes.
-- If compatibility cannot be trusted, disable all Stackmaster item-changing behavior for that session.
-- Keep generated reports, local assemblies, profiles, machine paths, credentials, and build output out of git.
-- Build and test the exact Thunderstore ZIP before any manual upload.
-- Keep public repository creation and publishing separate and explicitly approved.
+The build restores locked dependencies, builds Release, runs the pure-domain suite, runs repository safety checks, and rejects copied runtime/game assemblies in plugin output. See the [approved behavior contract](docs/DESIGN-QUESTIONNAIRE.md) and [implementation/test plan](docs/NEXT-STEPS.md) for the full design and release gates.

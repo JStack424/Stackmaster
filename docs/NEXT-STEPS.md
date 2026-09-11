@@ -2,9 +2,9 @@
 
 This plan follows the behavior contract approved on September 11, 2026. [DESIGN-QUESTIONNAIRE.md](DESIGN-QUESTIONNAIRE.md) is the product source of truth; [RESEARCH.md](RESEARCH.md) retains the ecosystem evidence and provisional technical findings.
 
-Environment validation and the complete local v0.1 gameplay implementation are complete. On September 11, 2026, Joe explicitly superseded the earlier skeleton-first hold and authorized uninterrupted implementation. The first clean-profile Windows pass produced the feedback corrections now integrated here, and Joe authorized a replacement test package after those fixes. Do not create a public repository or publish until a later explicit gate.
+Environment validation, the complete local v0.1 gameplay implementation, and the solo clean-profile smoke gate are complete. On September 11, 2026, Joe explicitly approved the consolidated contract, authorized uninterrupted implementation, accepted the corrected Build 4 candidate after solo testing, and authorized the first public GitHub/Thunderstore release for co-op testing.
 
-Current local verification: zero compiler warnings/errors, 28/28 pure-domain tests, 37/37 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. These results do **not** establish live UI behavior, multiplayer, or network safety; the replacement clean-profile test and combined Windows matrix remain mandatory.
+Current local verification: zero compiler warnings/errors, 28/28 pure-domain tests, 37/37 static/repository checks, only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output, and a passed solo smoke checklist. These results do **not** establish multiplayer or network safety: co-op host, co-op guest, and unmodded dedicated-server validation remain mandatory before any proven multiplayer claim.
 
 ## 1. Approved release boundary
 
@@ -147,10 +147,11 @@ valheim-qol-mods/
 │       ├── CHANGELOG.md
 │       └── icon.png
 ├── scripts/
+│   ├── Collect-StackmasterReferences.ps1
 │   ├── Inspect-StackmasterEnvironment.ps1
-│   ├── build.ps1
-│   ├── package.ps1
-│   └── verify-package.ps1
+│   ├── build.sh
+│   ├── dotnet.sh
+│   └── package.py
 └── artifacts/                 # ignored build/package output
 ```
 
@@ -229,7 +230,7 @@ Exit criterion: comprehensive automated tests pass without launching Valheim.
 - [x] Trigger required vanilla inventory/UI refresh methods.
 - [x] Verify deterministic conservation and idempotence in the local automated gate; repeat in Valheim during the combined Windows gate.
 
-Exit criterion: source integration and automated losslessness checks are complete; in-game confirmation remains part of the combined Windows gate.
+Exit criterion: source integration, automated losslessness checks, and solo in-game confirmation are complete; multiplayer confirmation remains open.
 
 ### Milestone 3 — protection UI and character persistence
 
@@ -239,9 +240,9 @@ Exit criterion: source integration and automated losslessness checks are complet
 - [x] Reconcile each record to exactly one matching stack, preferring its current slot and otherwise choosing in deterministic row-major order; never protect a nonmatching replacement.
 - [x] Show a noninteractive soft teal border plus a top-left target quantity in the exact border color or protection-only lock on resolved stacks, clear of the vanilla lower-right stack quantity.
 - [x] Validate saved data before use and skip malformed or incompatible records safely.
-- [ ] Verify one complete quit/relaunch with the same character preserves choices.
+- [x] Verify one complete quit/relaunch with the same character preserves choices in the solo smoke gate.
 
-Exit criterion: serialization, v1 migration, malformed-record handling, matching-stack reconciliation, replacement-item non-inheritance, deterministic duplicates, merge survivors, and dormant-record behavior pass locally; the quit/relaunch check remains in the combined Windows gate.
+Exit criterion: serialization, v1 migration, malformed-record handling, matching-stack reconciliation, replacement-item non-inheritance, deterministic duplicates, merge survivors, dormant-record behavior, and solo quit/relaunch persistence pass.
 
 ### Milestone 4 — discovery and storage planning
 
@@ -261,11 +262,12 @@ Exit criterion: the local dry-run path explains moves and meaningful skips; game
 - [x] Refresh from synchronized ZDO state, then revalidate source, destination, identity, capacity, access, ownership, and use state before every move.
 - [x] Enforce exact before/after unit conservation; isolate ordinary per-container failures and stop the remaining action on an unexpected postcondition.
 - [x] Skip containers currently in use and bound ownership waits to two seconds.
-- [ ] Verify inventory/container notifications and synchronization in live solo/host/guest/dedicated play.
-- [ ] Exercise access denial, destroyed targets, disconnects, and simultaneous clients.
+- [x] Verify inventory/container notifications in live solo play.
+- [ ] Verify inventory/container synchronization in live co-op host, co-op guest, and unmodded dedicated-server play.
+- [ ] Exercise multiplayer access denial, destroyed targets, disconnects, and simultaneous clients.
 - [ ] Confirm the optional client-only install contract through the full unmodded-peer/server matrix.
 
-Exit criterion: source follows the inspected vanilla authority path; only the Windows multiplayer matrix can establish observed synchronization safety.
+Exit criterion: source follows the inspected vanilla authority path and solo behavior passes; only the remaining Windows multiplayer matrix can establish observed synchronization safety.
 
 ### Milestone 6 — configuration and feedback
 
@@ -280,26 +282,26 @@ Local gameplay checkpoints: integrated implementation `03d8c4d`; synchronized-co
 
 ### Milestone 7 — exact package candidate
 
-- [ ] Create original 256×256 chest-stack icon artwork.
-- [ ] Write the public README, MIT license, and changelog.
-- [ ] Pin live dependency versions from the final tested profile.
-- [ ] Build one deterministic ZIP from an allowlist.
-- [ ] Run automated structural validation.
-- [ ] Import the ZIP into a fresh r2modman profile with declared dependencies and intended defaults.
-- [ ] Archive the tested ZIP, checksum, test record, and source commit locally.
+- [x] Create original 256×256 RGBA chest-stack icon artwork.
+- [x] Write the public README, MIT license, and changelog.
+- [x] Pin the current Thunderstore dependency: `denikson-BepInExPack_Valheim-5.4.2350` (BepInEx runtime 5.4.23.5).
+- [ ] Build one deterministic ZIP from the committed allowlist.
+- [ ] Run automated and independent structural validation.
+- [ ] Import the exact public ZIP into a fresh r2modman profile with declared dependencies and intended defaults.
+- [ ] Archive the exact public ZIP, sidecar checksum, validation record, and source commit locally.
 
 Updating an older package and clean uninstall are **not** v0.1 release gates.
 
 ### Milestone 8 — manual first release
 
-- [ ] Joe reviews the final name, description, icon, compatibility claims, changelog, and exact candidate.
-- [ ] Create/confirm the public GitHub repository and GitHub Issues only with Joe's approval.
-- [ ] Validate the manifest and README against Thunderstore's current rules.
-- [ ] Upload manually to the JStack424 Thunderstore team only with Joe's approval.
+- [x] Joe reviews the release direction, name, description, icon, compatibility position, and changelog scope and authorizes publication.
+- [ ] Create/confirm the public GitHub repository with GitHub Issues enabled.
+- [x] Validate the manifest and README against Thunderstore's current package rules.
+- [ ] Upload to the JStack424 Thunderstore team with the **AI Generated** category selected, as required for this significantly AI-assisted release.
 - [ ] Install the published package through r2modman after cache propagation and verify startup plus one core workflow.
 - [ ] Tag the exact source commit only after publication is confirmed.
 
-No automated publishing until a manual release process is proven and Joe asks for it.
+Publication remains a separate explicit action so local building cannot accidentally release. Joe authorized this first public release on September 11, 2026; the live GitHub and Thunderstore actions are tracked separately from local preparation.
 
 ## 6. v0.1 release test matrix
 
@@ -329,14 +331,14 @@ Pass/fail:
 Required gates:
 
 - [x] Automated sorting/transfer and repository-boundary tests pass: protection persistence, compatible merging, partial-stack priority, routing, replenishment, shortages, excess, budget exhaustion, compatibility-gate-before-patching, stale-state rejection, and no item-count drift.
-- [ ] Clean-profile startup contains no Stackmaster exception.
-- [ ] Basic sorting/deposit/replenishment smoke tests pass in solo play.
-- [ ] With a vanilla chest open, the configured storage shortcut uses that chest as the target, deposits/replenishes normally, and leaves the chest UI open.
-- [ ] A stackable-item target prompt opens with the full legal stack size prefilled/selected; Enter accepts it immediately, a lower legal value replaces it, `0` selects protection only, and non-stackable items remain protection-only.
+- [x] Clean-profile startup contains no Stackmaster exception in the passed solo smoke gate.
+- [x] Basic sorting/deposit/replenishment smoke tests pass in solo play.
+- [x] With a vanilla chest open, the configured storage shortcut uses that chest as the target, deposits/replenishes normally, and leaves the chest UI open.
+- [x] A stackable-item target prompt opens with the full legal stack size prefilled/selected; Enter accepts it immediately, a lower legal value replaces it, `0` selects protection only, and non-stackable items remain protection-only.
 - [ ] The same basic flow passes while hosting co-op with an unmodded peer; state stays synchronized.
 - [ ] The same basic flow passes as a guest of a vanilla host; state stays synchronized.
 - [ ] The same basic flow passes on a vanilla dedicated server with no server-side Stackmaster installation; unmodded peers remain compatible.
-- [ ] One full game quit/relaunch preserves protected-stack identities, preferred slots, and targets for the same character.
+- [x] The solo smoke gate's full game quit/relaunch preserves protected-stack identities, preferred slots, and targets for the same character.
 - [ ] A normal-sized base at the 20-meter default remains acceptably responsive and supplies profiling data for the internal time budget.
 - [ ] A fresh r2modman profile imports the exact ZIP and launches with declared dependencies and intended defaults.
 - [ ] The exact ZIP contains valid required Thunderstore files and no game assemblies, local paths, credentials, tests, or development debris.
@@ -346,40 +348,33 @@ Conflict testing is limited to BepInEx, Stackmaster, and declared dependencies i
 
 Before claiming compatibility after a later Valheim update, rerun the supported smoke gate. The compatibility gate itself must have automated coverage proving that an unsafe version disables every item-changing path and displays/logs the reason.
 
-## 7. Package automation to build later
+## 7. Package automation
 
-`verify-package.ps1` should fail on:
+`scripts/package.py` refuses a dirty or uncommitted working tree and fails on:
 
-- missing root `manifest.json`, `README.md`, `CHANGELOG.md`, `LICENSE`, plugin DLL, or `icon.png`;
-- invalid JSON, missing manifest fields, invalid package name/version/description length, or placeholder dependency versions;
-- icon not exactly 256×256 PNG;
-- unexpected root nesting;
-- local path/property files, generated environment reports, or credentials;
-- Valheim/Unity/BepInEx/Harmony/Jötunn DLLs unless deliberately licensed and required;
-- test assemblies, source, or development debris;
-- mismatch between manifest, plugin, assembly, and changelog versions.
+- any ZIP path outside the exact allowlist: root `manifest.json`, `icon.png`, `README.md`, `CHANGELOG.md`, and `plugins/Stackmaster/Stackmaster.dll`;
+- invalid JSON or release metadata that differs from the approved name, version, website, description, or dependency;
+- an icon that is not exactly 256×256 8-bit RGBA PNG;
+- unexpected root nesting or directory entries;
+- private machine-path markers in the DLL;
+- Valheim/Unity/BepInEx/Harmony/Jötunn assemblies, `Stackmaster.Core.dll`, PDBs, tests, source, or development debris;
+- a plugin file that is not a Windows PE/.NET assembly or lacks the expected Stackmaster identity markers.
 
-`package.ps1` should:
+The script reads only committed package metadata and the rebuilt Release DLL, validates them, creates a deterministic timestamped ZIP from the explicit allowlist, reopens and verifies the final archive, and prints the source commit plus ZIP/member checksums. It has no upload capability.
 
-1. clean a staging directory;
-2. copy only an explicit allowlist;
-3. inject one validated version into all package surfaces;
-4. run the verifier;
-5. create a deterministic ZIP under `artifacts/`;
-6. print the artifact path and checksum;
-7. never upload.
+The MIT `LICENSE` is committed at the repository root. It is not duplicated into the package because Thunderstore requires `manifest.json`, `icon.png`, and `README.md` at ZIP root, explicitly accepts `CHANGELOG.md`, and permits additional mod-specific files without requiring a license file.
 
 Publishing remains a separate explicit action so building cannot accidentally release.
 
 ## 8. Current state and next handoff
 
-- Approved contract: complete.
-- Read-only Windows inspector: prepared; not yet run on Joe's gaming PC.
-- Repository: initialized and versioned on `main`.
-- SDK/compiler: not installed here.
-- Game/profile files: not accessed or copied here.
-- Valheim/r2modman: not modified.
-- Gameplay code/project scaffold: not created.
-- Public GitHub repository and Thunderstore package: not created or published.
+- Approved contract and complete Stackmaster 0.1.0 implementation: complete.
+- Windows environment inspection and private compile-reference setup: complete; proprietary/runtime assemblies remain ignored and excluded.
+- Clean-profile solo smoke gate and corrected Test Build 4: passed.
+- Automated verification: 28/28 pure-domain tests and 37/37 static/repository checks, with zero compiler warnings/errors at the latest verified checkpoint.
+- Public source/docs/package metadata: prepared on `main` for a dedicated public Stackmaster repository.
+- Original release icon: prepared as a 256×256 RGBA PNG.
+- Public release position: early testing only; co-op host, co-op guest, and unmodded dedicated-server gates remain incomplete.
+- Public GitHub repository and live Thunderstore listing: pending separate publication/verification steps.
 
-**Next handoff:** Joe runs `scripts\Inspect-StackmasterEnvironment.ps1` on the gaming PC and returns the sanitized report. That report determines the exact framework, references, development-profile steps, and harmless plugin scaffold.
+**Next handoff:** Commit and independently validate the exact public ZIP, publish the committed source to the approved GitHub repository, upload the exact ZIP to the JStack424 Thunderstore team with the AI Generated category, and verify both live surfaces. Continue to treat any item loss, duplication, crash, corruption, or synchronization disagreement as release-blocking.

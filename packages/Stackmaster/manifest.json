@@ -1,0 +1,9 @@
+{
+  "name": "Stackmaster",
+  "version_number": "0.1.0",
+  "website_url": "https://github.com/JStack424/Stackmaster",
+  "description": "Turn a messy Viking inventory into a tidy, adventure-ready loadout.",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2350"
+  ]
+}
