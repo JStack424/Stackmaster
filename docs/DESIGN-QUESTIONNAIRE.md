@@ -147,7 +147,10 @@ The first public version will ship the complete core loop together: inventory so
 ### Question 13 — controls, interface, and feedback
 
 - Already settled: the targeted-container tooltip advertises the deposit/replenish action, auto-sort has an in-game checkbox, protecting a replenished stack opens a target prompt, and the action shows a brief result popup.
-- Still to settle: exact keyboard/controller controls, protection interaction, popup contents and counting units, sounds, and error/skip feedback.
+- On keyboard, trigger the combined deposit/replenish action by holding Left Alt + E while targeting a valid container.
+- This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
+- Keep the binding configurable.
+- Still to settle: controller controls, protection interaction, popup contents and counting units, sounds, and error/skip feedback.
 
 ## Deferred decisions
 
