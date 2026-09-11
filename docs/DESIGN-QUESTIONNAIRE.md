@@ -121,11 +121,13 @@ The first public version will ship the complete core loop together: inventory so
 
 ### 11. Loadout replenishment and target quantities
 
-- Every stackable protected item receives a user-set target quantity and stays in its chosen inventory slot.
-- Non-stackable protected items remain fixed and protected but do not need a quantity target.
+- Any stackable item can be protected with an optional user-set target quantity and stays in its chosen inventory slot.
+- When protecting a stackable item, the player chooses between protection only and protection with replenishment.
+- Protection-only items remain fixed and are never deposited, but are not replenished or trimmed to a target.
+- Non-stackable protected items remain fixed and protected without a quantity target.
 - Each target belongs to that exact protected slot, not to the item type across the player's whole inventory.
 - Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
-- When a stack is first protected, immediately ask the player to enter its target quantity rather than inferring the target from its current quantity or maximum stack size.
+- When the player chooses protection with replenishment, immediately ask for the target quantity rather than inferring it from the stack's current quantity or maximum size.
 - Valid targets are bounded by what that single slot can legally hold.
 - For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
 - If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected slot partially replenished rather than making the transfer all-or-nothing.
