@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 11 of 18
-- **Current:** Question 12 — Chest controls and exceptions
+- **Completed:** 12 of 18
+- **Current:** Question 13 — Controls, interface, and feedback
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -31,7 +31,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
 - [x] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
 - [x] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
-- [ ] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
+- [x] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
 - [ ] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
 - [ ] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
 - [ ] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
@@ -135,15 +135,19 @@ The first public version will ship the complete core loop together: inventory so
 - Do not edit a target in place. To change it, the player unprotects the slot, protects it again, and enters a new target in the normal setup prompt.
 - If a protected slot contains more than its target, deposit the excess through the normal matching-container routing and leave exactly the target quantity in that slot.
 
+### 12. Chest controls and exceptions
+
+- All eligible nearby containers participate automatically in both depositing and replenishment.
+- Do not add per-container opt-in or opt-out controls.
+- Do not add item-type or category filters; the matching-content rule is the only routing rule a container needs.
+- Containers that Valheim considers locked, private, inaccessible, or unavailable remain excluded under the general eligibility rules from Question 8.
+
 ## Current checkpoint notes
 
-### Question 12 — chest controls and exceptions
+### Question 13 — controls, interface, and feedback
 
-- All eligible nearby containers participate by default.
-- Let players independently opt an individual container out of receiving deposits, supplying replenishment, or both.
-- Show these as two checkboxes in the container UI while that container is open.
-- Do not add item-type or category filters; the matching-content rule is the only routing rule a participating container needs.
-- Still to settle: whether these controls are shared with the world or personal to each player.
+- Already settled: the targeted-container tooltip advertises the deposit/replenish action, auto-sort has an in-game checkbox, protecting a replenished stack opens a target prompt, and the action shows a brief result popup.
+- Still to settle: exact keyboard/controller controls, protection interaction, popup contents and counting units, sounds, and error/skip feedback.
 
 ## Deferred decisions
 
