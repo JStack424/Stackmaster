@@ -2,7 +2,7 @@
 
 This plan follows the behavior contract approved on September 11, 2026. [DESIGN-QUESTIONNAIRE.md](DESIGN-QUESTIONNAIRE.md) is the product source of truth; [RESEARCH.md](RESEARCH.md) retains the ecosystem evidence and provisional technical findings.
 
-The current phase is **environment validation only**. Do not install a toolchain, copy game assemblies, scaffold gameplay code, modify Valheim/r2modman, create a public repository, or publish a package until the relevant later step is approved.
+Environment validation is complete. The current phase is **implementation preparation**: pure inventory planning and a harmless load-and-log skeleton only. Do not mutate Valheim inventory state, modify Valheim/r2modman, create a public repository, install the plugin, or publish a package until the relevant later gate is approved.
 
 ## 1. Approved release boundary
 
@@ -83,12 +83,12 @@ The output directory must already exist. Review the report before sharing it; ge
 
 Before choosing a compiler or creating project files, confirm:
 
-- [ ] Exact installed Valheim Steam build and executable version.
-- [ ] Actual `Valheim_Data\Managed` location and assembly filenames.
-- [ ] Active r2modman profile path.
-- [ ] Installed BepInEx DLL version and Thunderstore pack version where r2modman displays it.
-- [ ] HarmonyX (`0Harmony.dll`) version supplied by that profile.
-- [ ] Whether the current clean profile already exists or must later be created.
+- [x] Exact installed Valheim Steam build and executable version: build `25253764`, Unity `6000.0.75f1`.
+- [x] Actual `Valheim_Data\Managed` location and assembly filenames.
+- [x] Existing r2modman profile path: `VanillaPlus` (not the clean release-test profile).
+- [x] Installed BepInEx DLL version: `5.4.23.5`; Thunderstore pack display version remains a later UI check.
+- [x] HarmonyX (`0Harmony.dll`) version: `2.9.0.0`.
+- [x] A separate clean profile must be created later; the existing `VanillaPlus` profile has five plugin DLLs.
 - [ ] Whether current public game APIs are sufficient without a publicized assembly.
 - [ ] Whether plain BepInEx is sufficient or Jötunn provides a demonstrated requirement.
 
@@ -113,12 +113,12 @@ Do not commit the filled local file. Reference local assemblies in place; do not
 
 ### Step D — choose and install only the minimum toolchain later
 
-The research found conflicting pre-1.0 guidance: raw BepInEx examples commonly use .NET Framework 4.8, while Jötunn guidance has named 4.6.2. Neither is a decision for Stackmaster until the current assemblies and a current working template are inspected.
+The environment and current Valheim Modding guidance support a `net48` deployable plugin. Pure planners use `netstandard2.0`, and automated tests use `net8.0`; .NET 8 is only the local build/test SDK. The rationale and private-reference boundary are recorded in [ADR 0001](architecture/0001-target-framework-and-reference-boundary.md).
 
 When separately authorized:
 
-- [ ] Choose the target framework from the installed environment and current template evidence.
-- [ ] Install only the matching .NET/Visual Studio or Mono/MSBuild components.
+- [x] Choose the target framework from the installed environment and current template evidence.
+- [x] Install a repository-external .NET 8 SDK under `~/workspace/toolchains/dotnet-8`; no system or gaming-PC installation.
 - [ ] Verify the compiler with a harmless minimal build.
 - [ ] Do not install Unity unless custom assets become an actual requirement.
 - [ ] Do not copy or redistribute Valheim, Unity, BepInEx, Harmony, or Jötunn assemblies unless a package license and implementation requirement explicitly justify it.

@@ -6,7 +6,7 @@ Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines auto
 
 ## Status
 
-The 18-checkpoint behavior contract was approved on September 11, 2026. The project is ready for **environment validation**, not gameplay implementation yet: Joe's installed Valheim, r2modman, BepInEx, Harmony, and managed-assembly layout must be inspected before selecting a C# target or scaffolding the plugin.
+The 18-checkpoint behavior contract was approved on September 11, 2026. Joe's installed environment is now validated, and implementation preparation has begun with pure inventory planners plus a harmless load-and-log plugin skeleton. No gameplay mutation code is enabled.
 
 - [Approved behavior contract](docs/DESIGN-QUESTIONNAIRE.md)
 - [Environment-validation and implementation plan](docs/NEXT-STEPS.md)
@@ -55,7 +55,7 @@ Review the report before sharing it. The generated report is gitignored.
 - Thunderstore distribution and fresh-profile r2modman package validation.
 - Local game/BepInEx assemblies referenced in place through ignored machine-local paths; never copied into git or a release ZIP.
 
-Every concrete runtime/framework choice remains provisional until checked against the installed Valheim 1.0 environment.
+The deployable plugin targets `net48`, matching current Valheim Modding guidance and the installed BepInEx 5/Mono environment. Pure planners target `netstandard2.0`; automated tests run on `net8.0`. See [ADR 0001](docs/architecture/0001-target-framework-and-reference-boundary.md).
 
 ## Planned layout
 
@@ -82,7 +82,7 @@ valheim-qol-mods/
 └── artifacts/                 # ignored
 ```
 
-Project files and build scripts beyond the read-only inspector will be created only after the local environment determines the correct target framework and references.
+Project files consume the private, gitignored reference bundle from `lib/local/StackmasterReferences/`. Reference DLLs are compile-time-only and are never copied into build or package output.
 
 ## Project principles
 
