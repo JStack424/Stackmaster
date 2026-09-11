@@ -308,7 +308,8 @@ internal static class Program
         True(!ProtectionState.TryParse(valid + ";bad", out parsed), "malformed record invalidates the payload");
         Equal(0, parsed.Records.Count, "invalid payload exposes no partial protection state");
         True(!ProtectionState.TryParse(valid + ";1,-2,,", out parsed), "invalid slot invalidates the payload");
-        True(!ProtectionState.TryParse(valid + ";3,4,2,%%%not-base64%%%", out parsed), "invalid item key invalidates the payload");
+        True(!ProtectionState.TryParse(valid + ";3,4,2,%%%not-base64%%%", out parsed), "invalid base64 item key invalidates the payload");
+        True(!ProtectionState.TryParse("v1;0,1,1,/w==", out parsed), "invalid UTF-8 item key invalidates the payload");
     }
 
     private static void ProtectionStateRejectsUnknownVersions()

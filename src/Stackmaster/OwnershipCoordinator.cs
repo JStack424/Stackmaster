@@ -184,7 +184,10 @@ namespace Stackmaster
     {
         private static bool Prefix(Container __instance, bool granted)
         {
-            return !RuntimeContext.Compatibility.IsCompatible || !OwnershipCoordinator.HandleResponse(__instance, granted);
+            // Even after a session-fatal disable, a delayed response caused by Stackmaster
+            // must remain suppressed or vanilla RPC_StackResponse would perform Stack All.
+            // Unrelated responses still fall through normally.
+            return !OwnershipCoordinator.HandleResponse(__instance, granted);
         }
     }
 }

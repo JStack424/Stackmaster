@@ -141,6 +141,10 @@ namespace Stackmaster.Core
                 {
                     return false;
                 }
+                catch (System.Text.DecoderFallbackException)
+                {
+                    return false;
+                }
 
                 if (target.HasValue && string.IsNullOrEmpty(itemKey))
                 {
@@ -161,7 +165,8 @@ namespace Stackmaster.Core
 
         private static string Encode(string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
 
-        private static string Decode(string value) => System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value));
+        private static string Decode(string value)
+            => new System.Text.UTF8Encoding(false, true).GetString(Convert.FromBase64String(value));
     }
 
     public sealed class ProtectionRecord

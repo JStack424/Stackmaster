@@ -84,6 +84,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ProtectionState.TryParse", runtime)
         self.assertIn("Saved protection data is malformed or from an unsupported version", runtime)
         self.assertIn("saved protection payload", runtime)
+        self.assertIn("new System.Text.UTF8Encoding(false, true)", core)
+        self.assertIn("DecoderFallbackException", core)
         snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
         self.assertIn("record.TargetItemKey, PersistentItemKey(item)", snapshots)
 
@@ -130,6 +132,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RPC_StackResponse", ownership)
         self.assertIn("LateResponseSuppressions", ownership)
         self.assertIn("previous ownership response is still pending", ownership)
+        self.assertIn("Even after a session-fatal disable", ownership)
+        self.assertNotIn("!RuntimeContext.Compatibility.IsCompatible || !OwnershipCoordinator.HandleResponse", ownership)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"
