@@ -99,7 +99,8 @@ The first public version will ship the complete core loop together: inventory so
 ### Question 8 — eligible storage and search area
 
 - Nearby-storage discovery is centered on the player's character, not on the chest being targeted.
-- Still to settle within this checkpoint: radius, eligible container types, and access restrictions.
+- The search radius is configurable, with a default of 20 meters.
+- Still to settle within this checkpoint: eligible container types and access restrictions.
 
 ## Deferred decisions
 
