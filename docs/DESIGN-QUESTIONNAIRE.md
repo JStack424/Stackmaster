@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 8 of 18
-- **Current:** Question 9 — Deposit and routing rules
+- **Completed:** 9 of 18
+- **Current:** Question 10 — Inventory keep and ignore rules
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -28,7 +28,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **6. Stack consolidation** — Decide whether sorting also merges partial stacks and how stack limits, item metadata, and exceptional items should behave.
 - [x] **7. Deposit trigger and timing** — Decide exactly when nearby-chest stacking or depositing runs and whether automatic behavior is opt-in.
 - [x] **8. Eligible storage and search area** — Define container types, search radius or area, access rules, carts/ships/personal chests, and what counts as “nearby.”
-- [ ] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
+- [x] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
 - [ ] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
 - [ ] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
 - [ ] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
@@ -102,14 +102,22 @@ The first public version will ship the complete core loop together: inventory so
 - This includes eligible carts, ships, personal storage, and world containers when the player can legitimately access them.
 - Skip anything the game treats as locked, private to someone else, inaccessible, or otherwise unavailable for mutation.
 
-## Current checkpoint notes
-
-### Question 9 — deposit and routing rules
+### 9. Deposit and routing rules
 
 - Deposit an item only into nearby containers that already hold a stack-compatible item of that type.
 - If no eligible nearby container already holds the item, leave it in the player's inventory rather than claiming unrelated empty storage.
+- Complete every compatible partial stack before creating a new stack anywhere.
+- Within the partial-stack pass, fill partial stacks in the targeted chest first, then work outward through other eligible matching containers from nearest to farthest. If a container has multiple compatible partial stacks, use a stable slot order.
+- Only after all compatible partial stacks are full may remaining items start new stacks. For those new stacks, use the targeted chest first when it is an eligible matching container with room, then the nearest eligible matching container.
+- Any quantity that cannot fit remains in the player's inventory.
 - After the hotkey finishes, show a brief popup with the number of items deposited and the number left behind/not deposited. Final wording and whether counts mean units, stacks, or item types remain for Question 13.
-- Still to settle within this checkpoint: priority when several matching containers can accept the same item.
+
+## Current checkpoint notes
+
+### Question 10 — inventory keep and ignore rules
+
+- Already protected: quick-bar items, equipped items, and user-favorited/held items.
+- Still to settle: whether every other item is eligible for deposit or whether the player can define additional item/category exclusions.
 
 ## Deferred decisions
 
