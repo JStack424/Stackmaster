@@ -130,7 +130,8 @@ The first public version will ship the complete core loop together: inventory so
 - For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
 - If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected slot partially replenished rather than making the transfer all-or-nothing.
 - Report the remaining shortfall in the action feedback.
-- Still to settle: later target editing and excess handling.
+- Do not edit a target in place. To change it, the player unprotects the slot, protects it again, and enters a new target in the normal setup prompt.
+- Still to settle: excess handling.
 
 ## Deferred decisions
 
