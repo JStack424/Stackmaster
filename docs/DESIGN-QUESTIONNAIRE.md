@@ -187,7 +187,10 @@ The first public version will ship the complete core loop together: inventory so
 - Unknown or modded container types are excluded rather than being modified speculatively.
 - If one container fails during a storage action, skip that container, continue safely with the others, and report the failure in the result popup.
 - Completed safe transfers remain completed; do not attempt a risky whole-action rollback.
-- Still to settle: practical performance limits and safe behavior after incompatible game or mod updates.
+- Use a time budget rather than a fixed chest-count cap when a large configured radius contains many containers.
+- Process containers in the already-set routing order until the action reaches its responsiveness budget, then stop safely and report that the action ended before every eligible container was checked.
+- Choose the exact budget during profiling so the action avoids noticeable gameplay hitches across the supported test machines; do not expose it as a fourth user setting.
+- Still to settle: safe behavior after incompatible game or mod updates.
 
 ## Deferred decisions
 
