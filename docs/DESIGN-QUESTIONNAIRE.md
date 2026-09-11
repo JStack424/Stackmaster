@@ -185,7 +185,9 @@ The first public version will ship the complete core loop together: inventory so
 - Nearby-container discovery and routing run only when needed rather than continuously scanning the world.
 - Limit v0.1 support to vanilla Valheim containers. Do not claim automatic compatibility with modded storage or ship one-off patches for other storage mods yet.
 - Unknown or modded container types are excluded rather than being modified speculatively.
-- Still to settle: handling partial failures, practical performance limits, and safe behavior after incompatible game or mod updates.
+- If one container fails during a storage action, skip that container, continue safely with the others, and report the failure in the result popup.
+- Completed safe transfers remain completed; do not attempt a risky whole-action rollback.
+- Still to settle: practical performance limits and safe behavior after incompatible game or mod updates.
 
 ## Deferred decisions
 
