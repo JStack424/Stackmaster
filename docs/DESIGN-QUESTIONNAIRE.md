@@ -200,7 +200,9 @@ The first public version will ship the complete core loop together: inventory so
 - Thunderstore author/team identity: **JStack424**.
 - BepInEx plugin GUID: `com.jstack424.stackmaster`.
 - License: MIT, allowing reuse and modification with the required copyright and license notice.
-- Still to settle: source/homepage plan, icon direction, and short public description.
+- Publish the source in a public GitHub repository and enable GitHub Issues for bug reports and support.
+- Use that repository as Stackmaster's Thunderstore homepage/source link; choose the exact GitHub owner and create the remote only when Joe approves publication.
+- Still to settle: icon direction and short public description.
 
 ## Deferred decisions
 
