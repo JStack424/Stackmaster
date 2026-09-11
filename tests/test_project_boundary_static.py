@@ -71,6 +71,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("AccessTools.DeclaredMethod", installer)
         self.assertIn("Resolve the complete exact target set before installing the first patch", installer)
         self.assertNotIn("PatchAll", self.plugin)
+        self.assertNotIn('Postfix(typeof(InventoryGui), "Update"', installer)
+        self.assertIn('Postfix(typeof(InventoryGrid), "UpdateInventory"', installer)
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
@@ -116,14 +118,24 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn('"</color>] Stackmaster: deposit + replenish"', action)
         self.assertIn("new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt)", self.plugin)
 
-    def test_auto_sort_toggle_uses_visible_bottom_anchor_and_stays_interactive(self):
+    def test_auto_sort_toggle_is_purpose_built_visible_and_synchronized(self):
         integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
         self.assertIn('ToggleAnchorName = "StackmasterAutoSortAnchor"', integration)
         self.assertIn("_toggleAnchor.transform.SetParent(gui.m_player, false)", integration)
         self.assertIn("anchorRect.anchorMin = new Vector2(0f, 0f)", integration)
         self.assertIn("anchorRect.anchoredPosition = new Vector2(12f, 4f)", integration)
         self.assertIn("ignoreLayout = true", integration)
-        self.assertIn("_toggle.gameObject.SetActive(true)", integration)
+        self.assertIn('typeof(Toggle)', integration)
+        self.assertIn('new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI))', integration)
+        self.assertIn('label.text = "Auto-sort"', integration)
+        self.assertIn('CreateImage(_toggleAnchor.transform, "HitArea", Color.clear)', integration)
+        self.assertIn("hitArea.raycastTarget = true", integration)
+        self.assertIn('CreateCheckmarkStroke(checkRect, "ShortStroke"', integration)
+        self.assertIn('CreateCheckmarkStroke(checkRect, "LongStroke"', integration)
+        self.assertNotIn('checkText.text = "✓"', integration)
+        self.assertNotIn("Object.Instantiate(gui.m_pvp", integration)
+        self.assertNotIn('label.text = "Enable PvP"', integration)
+        self.assertIn("_toggleAnchor.SetActive(true)", integration)
         self.assertIn("_toggle.interactable = true", integration)
         self.assertIn("_toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value)", integration)
         unsubscribe = integration.index("AutoSortEnabled.SettingChanged -= OnAutoSortSettingChanged")
@@ -131,17 +143,22 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(unsubscribe, subscribe)
         self.assertIn("Object.Destroy(_toggleAnchor)", integration)
 
-    def test_explicit_target_is_inspected_before_budgeted_nearby_search(self):
+    def test_explicit_target_and_ordinary_base_are_inspected_before_budget_can_stop_search(self):
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
         target_inspection = discovery.index("handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic))")
-        stopwatch = discovery.index("var stopwatch = Stopwatch.StartNew()")
         object_search = discovery.index("FindObjectsByType<Container>")
-        budget_check = discovery.index("stopwatch.Elapsed.TotalMilliseconds >= SearchBudgetMilliseconds")
-        self.assertLess(target_inspection, stopwatch)
+        inspection_timer = discovery.index("var inspectionStopwatch = Stopwatch.StartNew()")
+        budget_check = discovery.index("NearbyPolicy.CanInspectNext")
+        nearby_inspection = discovery.index("handles.Add(Inspect(player, candidate.Container")
         self.assertLess(target_inspection, object_search)
-        self.assertLess(target_inspection, budget_check)
+        self.assertLess(object_search, inspection_timer)
+        self.assertLess(inspection_timer, budget_check)
+        self.assertLess(budget_check, nearby_inspection)
+        self.assertIn("MinimumNearbyContainersBeforeBudget = 8", discovery)
+        self.assertIn("MaximumNearbyContainers = 128", discovery)
+        self.assertIn("SearchBudgetMilliseconds = 25.0", discovery)
         self.assertIn("container != target", discovery)
-        self.assertIn("return new DiscoveryResult(handles, inspectedNearby < nearby.Length", discovery)
+        self.assertIn("var truncated = inspectedNearby < nearby.Length", discovery)
         self.assertIn("observedType == typeof(Container)", discovery)
         self.assertIn("TryRefreshFromNetwork(container, out refreshFailure)", discovery)
         self.assertIn("TryCheckAccess(player, container, out accessFailure)", discovery)
@@ -192,7 +209,16 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("_lockIcon.SetActive(!hasTarget)", integration)
         self.assertIn("image.raycastTarget = false", integration)
         self.assertIn("targetLabel.raycastTarget = false", integration)
-        self.assertIn("InventoryGuiUpdatePatch", integration)
+        self.assertNotIn("InventoryGuiUpdatePatch", integration)
+        self.assertNotIn('[HarmonyPatch(typeof(InventoryGui), "Update")]', integration)
+        self.assertIn("_observedPlayerInventory.m_onChanged += InventoryChangedHandler", integration)
+        self.assertIn("_observedPlayerInventory.m_onChanged -= InventoryChangedHandler", integration)
+        self.assertIn("_overlayRefreshPending = true", integration)
+        self.assertIn('[HarmonyPatch(typeof(InventoryGrid), "UpdateInventory"', integration)
+        self.assertIn("InventoryIntegration.FlushPendingProtectionOverlayRefresh(__instance, inventory)", integration)
+        self.assertIn("!ReferenceEquals(grid, gui.m_playerGrid)", integration)
+        self.assertIn("InventoryIntegration.BindPlayerInventory(Player.m_localPlayer)", integration)
+        self.assertIn("InventoryIntegration.RequestProtectionOverlayRefresh()", integration)
         self.assertGreaterEqual(interaction.count("InventoryIntegration.RefreshProtectionOverlays()"), 2)
         self.assertIn("HideProtectionOverlays();", integration)
         self.assertIn("DestroyProtectionOverlays();", integration)
@@ -209,7 +235,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RuntimeContext.Plugin.Log.LogWarning", action)
         for signal in (
             "targetPresent=", "discovered=", "distance=", "radius=", "withinRadius=",
-            "searchTruncated=", "searchMs=", "budgetMs=", "type=", "vanilla=",
+            "searchTruncated=", "truncationReason=", "searchMs=", "objectScanMs=", "inspectionMs=",
+            "budgetMs=", "candidates=", "inspected=", "minimumBeforeBudget=", "maximumNearby=", "type=", "vanilla=",
             "nview=", "nviewValid=", "zdo=", "refresh=", "inventory=", "inUse=", "access=",
         ):
             self.assertIn(signal, discovery)

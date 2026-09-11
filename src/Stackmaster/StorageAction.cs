@@ -324,7 +324,7 @@ namespace Stackmaster
             }
             if (plan.SearchTruncated)
             {
-                lines.Add("Partial search: time budget reached.");
+                lines.Add("Partial search: responsiveness limit reached.");
             }
             RuntimeContext.ShowTopLeft(string.Join("\n", lines));
         }
@@ -333,10 +333,7 @@ namespace Stackmaster
         {
             RuntimeContext.Plugin.Log.LogWarning(
                 "Storage action rejected at " + stage + ": " +
-                discovery.TargetDiagnostic.Format(
-                    discovery.Truncated,
-                    discovery.SearchMilliseconds,
-                    ContainerDiscovery.SearchBudgetMilliseconds));
+                discovery.TargetDiagnostic.Format(discovery));
         }
 
         private static string MeaningfulFailureReason(string reason)

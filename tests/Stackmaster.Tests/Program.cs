@@ -22,6 +22,9 @@ internal static class Program
             ReplenishmentReportsPartialStockShortage,
             ExcessProtectedQuantityUsesDepositRouting,
             EligibilityAndInitialMatchingAreEnforced,
+            OrdinaryBaseInspectionIgnoresElapsedBudgetUntilComplete,
+            OrdinaryBaseRoutesItemsIntoNonTargetChest,
+            DenseBaseInspectionStopsAfterGuaranteedPrefix,
             PlanningBudgetStopsSafelyAndReportsPartialSearch,
             MixedPlanConservesEveryItemCount,
             ProtectionStateRoundTripsTargets,
@@ -270,6 +273,65 @@ internal static class Program
         True(plan.SkippedContainers.Any(item => item.ContainerId == "modded"), "modded container reported skipped");
         True(plan.SkippedContainers.Any(item => item.ContainerId == "in-use" && item.Reason == "in use"), "in-use container reported skipped");
         Valid(PlanValidator.ValidateTransferConservation(player, containers, plan));
+    }
+
+    private static void OrdinaryBaseInspectionIgnoresElapsedBudgetUntilComplete()
+    {
+        var policy = new NearbyInspectionPolicy(minimumBeforeBudget: 8, maximumInspections: 128, budgetMilliseconds: 100);
+        for (var inspected = 0; inspected < 3; inspected++)
+        {
+            True(policy.CanInspectNext(inspected, 5000), "ordinary three-chest base remains fully inspectable after a slow object scan");
+        }
+    }
+
+    private static void OrdinaryBaseRoutesItemsIntoNonTargetChest()
+    {
+        var player = Player(2, Item("player-stone", "stone", "Stone", 10, 50, 0));
+        var target = Chest("target", 0, true, 2, Item("target-wood", "wood", "Wood", 1, 50, 0));
+        var nearbyMatch = Chest("nearby-match", 1, false, 2, Item("nearby-stone", "stone", "Stone", 45, 50, 0));
+        var otherNearby = Chest("other-nearby", 2, false, 2, Item("other-wood", "wood", "Wood", 1, 50, 0));
+        var policy = new NearbyInspectionPolicy(minimumBeforeBudget: 8, maximumInspections: 128, budgetMilliseconds: 100);
+        var discovered = new List<ContainerSnapshot> { target };
+        var nearby = new[] { nearbyMatch, otherNearby };
+        for (var index = 0; index < nearby.Length; index++)
+        {
+            if (!policy.CanInspectNext(index, 5000)) break;
+            discovered.Add(nearby[index]);
+        }
+
+        Equal(3, discovered.Count, "all three ordinary-base chests discovered despite elapsed time");
+        var plan = new StorageTransferPlanner().Plan(player, discovered);
+        True(plan.Steps.Any(step => step.Destination.InventoryId == "nearby-match"), "non-target matching chest receives deposited items");
+        Equal(10, plan.DepositedUnits, "all matching items route beyond the targeted chest");
+        Equal(0, plan.LeftBehindUnits, "ordinary nearby discovery leaves no matching remainder");
+        Valid(PlanValidator.ValidateTransferConservation(player, discovered, plan));
+
+        var replenishPlayer = Player(4, Item("protected-arrows", "arrow", "Wood Arrow", 5, 100, 1, protectedSlot: true, target: 20));
+        var replenishTarget = Chest("replenish-target", 0, true, 2, Item("target-wood", "wood", "Wood", 1, 50, 0));
+        var nearbyStock = Chest("nearby-stock", 1, false, 2, Item("nearby-arrows", "arrow", "Wood Arrow", 20, 100, 0));
+        var replenishDiscovered = new List<ContainerSnapshot> { replenishTarget };
+        var replenishNearby = new[] { nearbyStock, otherNearby };
+        for (var index = 0; index < replenishNearby.Length; index++)
+        {
+            if (!policy.CanInspectNext(index, 5000)) break;
+            replenishDiscovered.Add(replenishNearby[index]);
+        }
+
+        var replenishPlan = new StorageTransferPlanner().Plan(replenishPlayer, replenishDiscovered);
+        True(replenishPlan.Steps.Any(step => step.Kind == TransferKind.Replenishment && step.Source.InventoryId == "nearby-stock"),
+            "non-target nearby chest supplies protected-slot replenishment");
+        Equal(15, replenishPlan.ReplenishedUnits, "full target quantity pulls from a non-target chest");
+        Valid(PlanValidator.ValidateTransferConservation(replenishPlayer, replenishDiscovered, replenishPlan));
+    }
+
+    private static void DenseBaseInspectionStopsAfterGuaranteedPrefix()
+    {
+        var policy = new NearbyInspectionPolicy(minimumBeforeBudget: 8, maximumInspections: 128, budgetMilliseconds: 100);
+        True(policy.CanInspectNext(7, 5000), "guaranteed ordinary-base prefix completes even after budget");
+        True(!policy.CanInspectNext(8, 5000), "elapsed budget stops additional dense-base inspection after guaranteed prefix");
+        Equal("inspection time budget reached", policy.StopReason(8, 5000), "time stop reason remains diagnostic");
+        True(!policy.CanInspectNext(128, 0), "hard maximum bounds dense-base inspection even when fast");
+        Equal("hard safety limit reached", policy.StopReason(128, 0), "hard-limit stop reason remains diagnostic");
     }
 
     private static void PlanningBudgetStopsSafelyAndReportsPartialSearch()

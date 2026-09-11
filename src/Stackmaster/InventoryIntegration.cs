@@ -21,55 +21,152 @@ namespace Stackmaster
         private static readonly Dictionary<InventoryElement, ProtectionOverlay> ProtectionOverlays = new Dictionary<InventoryElement, ProtectionOverlay>();
         private static readonly Color ProtectedBorderColor = new Color(0.22f, 0.78f, 0.84f, 0.82f);
         private static GameObject _toggleAnchor;
+        private static GameObject _toggleCheckmark;
         private static Toggle _toggle;
+        private static Inventory _observedPlayerInventory;
+        private static readonly Action InventoryChangedHandler = OnObservedInventoryChanged;
+        private static bool _overlayRefreshPending;
         private static bool _sortedThisOpen;
         private static bool _overlaysDisabled;
         private static bool _overlayFailureLogged;
 
         internal static void EnsureToggle(InventoryGui gui)
         {
-            if (_toggle != null || gui == null || gui.m_pvp == null || gui.m_player == null)
+            if (_toggle != null || gui == null || gui.m_player == null)
             {
                 return;
             }
 
-            // Use a dedicated anchor on the visible player panel rather than inheriting the
-            // vanilla PvP toggle's potentially hidden or layout-controlled parent.
-            _toggleAnchor = new GameObject(ToggleAnchorName, typeof(RectTransform), typeof(LayoutElement));
+            // Build a dedicated control instead of cloning Valheim's PvP toggle. Cloning the
+            // PvP object also clones its localization behavior, which can restore "Enable PvP"
+            // after Stackmaster changes the visible text.
+            _toggleAnchor = new GameObject(
+                ToggleAnchorName,
+                typeof(RectTransform),
+                typeof(LayoutElement),
+                typeof(Toggle));
             _toggleAnchor.transform.SetParent(gui.m_player, false);
+            _toggleAnchor.transform.SetAsLastSibling();
             var anchorRect = (RectTransform)_toggleAnchor.transform;
             anchorRect.anchorMin = new Vector2(0f, 0f);
             anchorRect.anchorMax = new Vector2(0f, 0f);
             anchorRect.pivot = new Vector2(0f, 0f);
             anchorRect.anchoredPosition = new Vector2(12f, 4f);
-            anchorRect.sizeDelta = new Vector2(Mathf.Max(150f, gui.m_pvp.GetComponent<RectTransform>().rect.width), 28f);
+            anchorRect.sizeDelta = new Vector2(164f, 28f);
             _toggleAnchor.GetComponent<LayoutElement>().ignoreLayout = true;
-            _toggleAnchor.transform.SetAsLastSibling();
 
-            _toggle = Object.Instantiate(gui.m_pvp, _toggleAnchor.transform, false);
+            // A transparent full-width graphic makes both the box and its label clickable.
+            var hitArea = CreateImage(_toggleAnchor.transform, "HitArea", Color.clear);
+            var hitRect = hitArea.rectTransform;
+            hitRect.anchorMin = Vector2.zero;
+            hitRect.anchorMax = Vector2.one;
+            hitRect.offsetMin = Vector2.zero;
+            hitRect.offsetMax = Vector2.zero;
+            hitArea.raycastTarget = true;
+
+            var box = CreateImage(_toggleAnchor.transform, "Box", new Color(0.055f, 0.09f, 0.105f, 0.94f));
+            var boxRect = box.rectTransform;
+            boxRect.anchorMin = new Vector2(0f, 0.5f);
+            boxRect.anchorMax = new Vector2(0f, 0.5f);
+            boxRect.pivot = new Vector2(0f, 0.5f);
+            boxRect.anchoredPosition = Vector2.zero;
+            boxRect.sizeDelta = new Vector2(20f, 20f);
+            var boxOutline = box.gameObject.AddComponent<Outline>();
+            boxOutline.effectColor = new Color(0.22f, 0.78f, 0.84f, 0.9f);
+            boxOutline.effectDistance = new Vector2(1f, -1f);
+
+            // Draw the checkmark from UI images rather than relying on a font glyph that may not
+            // exist in every Valheim font asset.
+            _toggleCheckmark = new GameObject("Checkmark", typeof(RectTransform));
+            _toggleCheckmark.transform.SetParent(_toggleAnchor.transform, false);
+            var checkRect = (RectTransform)_toggleCheckmark.transform;
+            checkRect.anchorMin = new Vector2(0f, 0.5f);
+            checkRect.anchorMax = new Vector2(0f, 0.5f);
+            checkRect.pivot = new Vector2(0f, 0.5f);
+            checkRect.anchoredPosition = Vector2.zero;
+            checkRect.sizeDelta = new Vector2(20f, 20f);
+            CreateCheckmarkStroke(checkRect, "ShortStroke", new Vector2(7f, 9f), new Vector2(3f, 8f), -42f);
+            CreateCheckmarkStroke(checkRect, "LongStroke", new Vector2(12f, 8f), new Vector2(3f, 13f), 43f);
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelObject.transform.SetParent(_toggleAnchor.transform, false);
+            var label = labelObject.GetComponent<TextMeshProUGUI>();
+            CopyTextStyle(gui, label);
+            label.text = "Auto-sort";
+            label.fontSize = Mathf.Max(14f, label.fontSize);
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.color = Color.white;
+            label.raycastTarget = false;
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0f, 0f);
+            labelRect.anchorMax = new Vector2(1f, 1f);
+            labelRect.offsetMin = new Vector2(28f, 0f);
+            labelRect.offsetMax = Vector2.zero;
+
+            _toggle = _toggleAnchor.GetComponent<Toggle>();
             _toggle.gameObject.name = ToggleName;
-            _toggle.gameObject.SetActive(true);
             _toggle.group = null;
             _toggle.interactable = true;
-            _toggle.onValueChanged.RemoveAllListeners();
+            _toggle.transition = Selectable.Transition.ColorTint;
+            _toggle.targetGraphic = hitArea;
+            _toggle.graphic = null;
+            var colors = _toggle.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.82f, 1f, 1f, 1f);
+            colors.pressedColor = new Color(0.62f, 0.9f, 0.92f, 1f);
+            colors.selectedColor = Color.white;
+            colors.disabledColor = new Color(1f, 1f, 1f, 0.35f);
+            colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0.08f;
+            _toggle.colors = colors;
             _toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value);
-            _toggle.onValueChanged.AddListener(enabled => RuntimeContext.Plugin.AutoSortEnabled.Value = enabled);
-
-            var toggleRect = _toggle.GetComponent<RectTransform>();
-            toggleRect.anchorMin = Vector2.zero;
-            toggleRect.anchorMax = Vector2.one;
-            toggleRect.offsetMin = Vector2.zero;
-            toggleRect.offsetMax = Vector2.zero;
-
-            var label = _toggle.GetComponentInChildren<TMP_Text>(true);
-            if (label != null)
+            _toggleCheckmark.SetActive(RuntimeContext.Plugin.AutoSortEnabled.Value);
+            _toggle.onValueChanged.AddListener(enabled =>
             {
-                label.text = "Auto-sort";
-                label.textWrappingMode = TextWrappingModes.NoWrap;
-            }
+                _toggleCheckmark.SetActive(enabled);
+                RuntimeContext.Plugin.AutoSortEnabled.Value = enabled;
+            });
+            _toggleAnchor.SetActive(true);
 
             RuntimeContext.Plugin.AutoSortEnabled.SettingChanged -= OnAutoSortSettingChanged;
             RuntimeContext.Plugin.AutoSortEnabled.SettingChanged += OnAutoSortSettingChanged;
+        }
+
+        private static void CopyTextStyle(InventoryGui gui, TMP_Text target)
+        {
+            var template = gui.m_pvp != null ? gui.m_pvp.GetComponentInChildren<TMP_Text>(true) : null;
+            if (template == null && gui.m_player != null)
+            {
+                template = gui.m_player
+                    .GetComponentsInChildren<TMP_Text>(true)
+                    .FirstOrDefault(candidate => candidate != target && candidate.font != null);
+            }
+            if (template == null || target == null)
+            {
+                return;
+            }
+
+            target.font = template.font;
+            target.fontSharedMaterial = template.fontSharedMaterial;
+            target.fontSize = template.fontSize;
+        }
+
+        private static void CreateCheckmarkStroke(
+            Transform parent,
+            string name,
+            Vector2 anchoredPosition,
+            Vector2 size,
+            float rotation)
+        {
+            var stroke = CreateImage(parent, name, new Color(0.25f, 0.9f, 0.94f, 1f));
+            var rect = stroke.rectTransform;
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0f, 0f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
         }
 
         internal static void RefreshProtectionOverlays()
@@ -147,6 +244,8 @@ namespace Stackmaster
 
         internal static void Shutdown()
         {
+            _overlayRefreshPending = false;
+            UnbindPlayerInventory();
             if (RuntimeContext.Plugin != null && RuntimeContext.Plugin.AutoSortEnabled != null)
             {
                 RuntimeContext.Plugin.AutoSortEnabled.SettingChanged -= OnAutoSortSettingChanged;
@@ -155,6 +254,7 @@ namespace Stackmaster
             {
                 Object.Destroy(_toggleAnchor);
                 _toggleAnchor = null;
+                _toggleCheckmark = null;
                 _toggle = null;
             }
             else if (_toggle != null)
@@ -162,6 +262,7 @@ namespace Stackmaster
                 Object.Destroy(_toggle.gameObject);
                 _toggle = null;
             }
+            _toggleCheckmark = null;
 
             DestroyProtectionOverlays();
             _overlaysDisabled = false;
@@ -171,10 +272,71 @@ namespace Stackmaster
 
         private static void OnAutoSortSettingChanged(object sender, EventArgs args)
         {
-            if (_toggle != null && _toggle.isOn != RuntimeContext.Plugin.AutoSortEnabled.Value)
+            var enabled = RuntimeContext.Plugin.AutoSortEnabled.Value;
+            if (_toggle != null && _toggle.isOn != enabled)
             {
-                _toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value);
+                _toggle.SetIsOnWithoutNotify(enabled);
             }
+            if (_toggleCheckmark != null)
+            {
+                _toggleCheckmark.SetActive(enabled);
+            }
+        }
+
+        internal static void BindPlayerInventory(Player player)
+        {
+            var inventory = player != null ? player.GetInventory() : null;
+            if (ReferenceEquals(_observedPlayerInventory, inventory))
+            {
+                return;
+            }
+
+            UnbindPlayerInventory();
+            _observedPlayerInventory = inventory;
+            if (_observedPlayerInventory != null)
+            {
+                _observedPlayerInventory.m_onChanged += InventoryChangedHandler;
+            }
+        }
+
+        private static void UnbindPlayerInventory()
+        {
+            if (_observedPlayerInventory != null)
+            {
+                _observedPlayerInventory.m_onChanged -= InventoryChangedHandler;
+                _observedPlayerInventory = null;
+            }
+        }
+
+        private static void OnObservedInventoryChanged()
+        {
+            // Inventory.m_onChanged can run before InventoryGrid rebuilds its element positions.
+            // Defer the actual overlay walk until the matching player grid has finished UpdateGui.
+            _overlayRefreshPending = true;
+        }
+
+        internal static void RequestProtectionOverlayRefresh()
+        {
+            _overlayRefreshPending = true;
+        }
+
+        internal static void FlushPendingProtectionOverlayRefresh(InventoryGrid grid, Inventory inventory)
+        {
+            if (!_overlayRefreshPending || grid == null || inventory == null)
+            {
+                return;
+            }
+
+            var gui = InventoryGui.instance;
+            var player = Player.m_localPlayer;
+            if (gui == null || player == null || !ReferenceEquals(grid, gui.m_playerGrid) ||
+                !ReferenceEquals(inventory, player.GetInventory()))
+            {
+                return;
+            }
+
+            _overlayRefreshPending = false;
+            RefreshProtectionOverlays();
         }
 
         internal static void SortOpenedInventories(Container container)
@@ -219,6 +381,8 @@ namespace Stackmaster
         internal static void OnInventoryHidden()
         {
             _sortedThisOpen = false;
+            _overlayRefreshPending = false;
+            UnbindPlayerInventory();
             HideProtectionOverlays();
         }
 
@@ -407,13 +571,13 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(InventoryGui), "Update")]
-    internal static class InventoryGuiUpdatePatch
+    [HarmonyPatch(typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData))]
+    internal static class InventoryGridUpdateInventoryPatch
     {
-        private static void Postfix()
+        private static void Postfix(InventoryGrid __instance, Inventory inventory)
         {
             if (!RuntimeContext.Compatibility.IsCompatible) return;
-            InventoryIntegration.RefreshProtectionOverlays();
+            InventoryIntegration.FlushPendingProtectionOverlayRefresh(__instance, inventory);
         }
     }
 
@@ -424,8 +588,9 @@ namespace Stackmaster
         {
             if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
+            InventoryIntegration.BindPlayerInventory(Player.m_localPlayer);
             InventoryIntegration.SortOpenedInventories(container);
-            InventoryIntegration.RefreshProtectionOverlays();
+            InventoryIntegration.RequestProtectionOverlayRefresh();
         }
     }
 }

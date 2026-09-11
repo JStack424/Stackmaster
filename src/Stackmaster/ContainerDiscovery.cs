@@ -54,19 +54,26 @@ namespace Stackmaster
         internal string RefreshFailure { get; set; }
         internal string AccessFailure { get; set; }
 
-        internal string Format(bool searchTruncated, double searchMilliseconds, double searchBudgetMilliseconds)
+        internal string Format(DiscoveryResult discovery)
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "targetPresent={0} discovered={1} distance={2} radius={3:0.0} withinRadius={4} searchTruncated={5} searchMs={6:0.00} budgetMs={7:0.00} type={8} vanilla={9} nview={10} nviewValid={11} zdo={12} refresh={13} inventory={14} inUse={15} access={16} refreshError={17} accessError={18}",
+                "targetPresent={0} discovered={1} distance={2} radius={3:0.0} withinRadius={4} searchTruncated={5} truncationReason={6} searchMs={7:0.00} objectScanMs={8:0.00} inspectionMs={9:0.00} budgetMs={10:0.00} candidates={11} inspected={12} minimumBeforeBudget={13} maximumNearby={14} type={15} vanilla={16} nview={17} nviewValid={18} zdo={19} refresh={20} inventory={21} inUse={22} access={23} refreshError={24} accessError={25}",
                 TargetPresent,
                 Discovered,
                 double.IsPositiveInfinity(Distance) ? "n/a" : Distance.ToString("0.0", CultureInfo.InvariantCulture),
                 Radius,
                 WithinRadius,
-                searchTruncated,
-                searchMilliseconds,
-                searchBudgetMilliseconds,
+                discovery.Truncated,
+                discovery.TruncationReason ?? "none",
+                discovery.SearchMilliseconds,
+                discovery.ObjectScanMilliseconds,
+                discovery.InspectionMilliseconds,
+                ContainerDiscovery.SearchBudgetMilliseconds,
+                discovery.NearbyCandidates,
+                discovery.InspectedNearby,
+                ContainerDiscovery.MinimumNearbyContainersBeforeBudget,
+                ContainerDiscovery.MaximumNearbyContainers,
                 ObservedType ?? "n/a",
                 FormatNullable(IsVanilla),
                 FormatNullable(HasNetworkView),
@@ -99,23 +106,48 @@ namespace Stackmaster
             IReadOnlyList<ContainerHandle> containers,
             bool truncated,
             double searchMilliseconds,
+            double objectScanMilliseconds,
+            double inspectionMilliseconds,
+            int nearbyCandidates,
+            int inspectedNearby,
+            string truncationReason,
             TargetDiscoveryDiagnostic targetDiagnostic)
         {
             Containers = containers;
             Truncated = truncated;
             SearchMilliseconds = searchMilliseconds;
+            ObjectScanMilliseconds = objectScanMilliseconds;
+            InspectionMilliseconds = inspectionMilliseconds;
+            NearbyCandidates = nearbyCandidates;
+            InspectedNearby = inspectedNearby;
+            TruncationReason = truncationReason;
             TargetDiagnostic = targetDiagnostic;
         }
 
         internal IReadOnlyList<ContainerHandle> Containers { get; }
         internal bool Truncated { get; }
         internal double SearchMilliseconds { get; }
+        internal double ObjectScanMilliseconds { get; }
+        internal double InspectionMilliseconds { get; }
+        internal int NearbyCandidates { get; }
+        internal int InspectedNearby { get; }
+        internal string TruncationReason { get; }
         internal TargetDiscoveryDiagnostic TargetDiagnostic { get; }
     }
 
     internal static class ContainerDiscovery
     {
-        internal const double SearchBudgetMilliseconds = 12.0;
+        // Container discovery runs only for an explicit storage action. Always inspect a useful
+        // normal-base prefix, then enforce a relaxed interaction budget and a hard dense-base
+        // backstop. The budget starts after Unity's global object query and distance ordering so
+        // ordinary scenes cannot spend the entire allowance before the first nearby chest.
+        internal const double SearchBudgetMilliseconds = 25.0;
+        internal const int MinimumNearbyContainersBeforeBudget = 8;
+        internal const int MaximumNearbyContainers = 128;
+        private static readonly NearbyInspectionPolicy NearbyPolicy = new NearbyInspectionPolicy(
+            MinimumNearbyContainersBeforeBudget,
+            MaximumNearbyContainers,
+            SearchBudgetMilliseconds);
         private static readonly FieldInfo NetworkViewField = AccessTools.Field(typeof(Container), "m_nview");
         private static readonly MethodInfo CheckAccessMethod = AccessTools.Method(typeof(Container), "CheckAccess", new[] { typeof(long) });
         private static readonly MethodInfo CheckForChangesMethod = AccessTools.Method(typeof(Container), "CheckForChanges");
@@ -136,9 +168,8 @@ namespace Stackmaster
                 handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic));
             }
 
-            // The 12 ms limit applies only to discovering and inspecting the remaining nearby
-            // containers. Target validation above is intentionally never truncated by it.
-            var stopwatch = Stopwatch.StartNew();
+            var totalStopwatch = Stopwatch.StartNew();
+            var objectScanStopwatch = Stopwatch.StartNew();
             var nearby = UnityEngine.Object.FindObjectsByType<Container>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
                 .Where(container => container != null && container != target)
                 .Select(container => new
@@ -150,12 +181,20 @@ namespace Stackmaster
                 .OrderBy(candidate => candidate.Distance)
                 .ThenBy(candidate => candidate.Container.GetInstanceID())
                 .ToArray();
+            objectScanStopwatch.Stop();
 
+            // Do not charge Unity's scene-wide object query and deterministic ordering against
+            // nearby inventory inspection. On Joe's test machine that query alone could exceed
+            // the previous 12 ms wall-clock limit even with only three nearby chests.
+            var inspectionStopwatch = Stopwatch.StartNew();
             var inspectedNearby = 0;
+            string truncationReason = null;
             foreach (var candidate in nearby)
             {
-                if (stopwatch.Elapsed.TotalMilliseconds >= SearchBudgetMilliseconds)
+                var elapsedInspectionMilliseconds = inspectionStopwatch.Elapsed.TotalMilliseconds;
+                if (!NearbyPolicy.CanInspectNext(inspectedNearby, elapsedInspectionMilliseconds))
                 {
+                    truncationReason = NearbyPolicy.StopReason(inspectedNearby, elapsedInspectionMilliseconds);
                     break;
                 }
 
@@ -163,8 +202,23 @@ namespace Stackmaster
                 inspectedNearby++;
             }
 
-            stopwatch.Stop();
-            return new DiscoveryResult(handles, inspectedNearby < nearby.Length, stopwatch.Elapsed.TotalMilliseconds, targetDiagnostic);
+            inspectionStopwatch.Stop();
+            totalStopwatch.Stop();
+            var truncated = inspectedNearby < nearby.Length;
+            if (truncated && string.IsNullOrEmpty(truncationReason))
+            {
+                truncationReason = "responsiveness limit reached";
+            }
+            return new DiscoveryResult(
+                handles,
+                truncated,
+                totalStopwatch.Elapsed.TotalMilliseconds,
+                objectScanStopwatch.Elapsed.TotalMilliseconds,
+                inspectionStopwatch.Elapsed.TotalMilliseconds,
+                nearby.Length,
+                inspectedNearby,
+                truncationReason,
+                targetDiagnostic);
         }
 
         private static ContainerHandle Inspect(
