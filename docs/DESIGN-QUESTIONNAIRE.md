@@ -213,7 +213,10 @@ The first public version will ship the complete core loop together: inventory so
   - Non-host guest in a co-op world.
   - Vanilla dedicated server, with no server-side Stackmaster installation.
 - Each multiplayer test must verify that unmodded peers remain compatible and that chest state stays synchronized.
-- Still to settle: safety, performance, conflict, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
+- v0.1 uses a basic smoke-test release gate rather than an exhaustive strict safety campaign.
+- The smoke test still exercises sorting, depositing, and replenishment in representative conditions across every required environment, and any observed item loss, duplication, crash, or synchronization error blocks release.
+- This gate does not claim proof that no rare defect exists beyond the tested paths.
+- Still to settle: performance, conflict, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
 
 ## Deferred decisions
 
