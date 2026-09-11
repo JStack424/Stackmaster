@@ -285,8 +285,8 @@ Local gameplay checkpoints: integrated implementation `03d8c4d`; synchronized-co
 - [x] Create original 256×256 RGBA chest-stack icon artwork.
 - [x] Write the public README, MIT license, and changelog.
 - [x] Pin the current Thunderstore dependency: `denikson-BepInExPack_Valheim-5.4.2350` (BepInEx runtime 5.4.23.5).
-- [ ] Build one deterministic ZIP from the committed allowlist.
-- [ ] Run automated and independent structural validation.
+- [x] Build one deterministic ZIP from the committed allowlist.
+- [x] Run automated and independent structural validation.
 - [ ] Import the exact public ZIP into a fresh r2modman profile with declared dependencies and intended defaults.
 - [ ] Archive the exact public ZIP, sidecar checksum, validation record, and source commit locally.
 
@@ -372,7 +372,8 @@ Publishing remains a separate explicit action so building cannot accidentally re
 - Windows environment inspection and private compile-reference setup: complete; proprietary/runtime assemblies remain ignored and excluded.
 - Clean-profile solo smoke gate and corrected Test Build 4: passed.
 - Automated verification: 28/28 pure-domain tests and 37/37 static/repository checks, with zero compiler warnings/errors at the latest verified checkpoint.
-- Public source/docs/package metadata: prepared on `main` for a dedicated public Stackmaster repository.
+- Public source/docs/package metadata: committed on `main` for a dedicated public Stackmaster repository.
+- Exact public ZIP: built reproducibly from the committed allowlist and independently validated; fresh import of this exact public archive remains pending.
 - Original release icon: prepared as a 256×256 RGBA PNG.
 - Public release position: early testing only; co-op host, co-op guest, and unmodded dedicated-server gates remain incomplete.
 - Public GitHub repository and live Thunderstore listing: pending separate publication/verification steps.
