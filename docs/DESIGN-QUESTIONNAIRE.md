@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 10 of 18
-- **Current:** Question 11 — Loadout replenishment and target quantities
+- **Completed:** 11 of 18
+- **Current:** Question 12 — Chest controls and exceptions
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -30,7 +30,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **8. Eligible storage and search area** — Define container types, search radius or area, access rules, carts/ships/personal chests, and what counts as “nearby.”
 - [x] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
 - [x] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
-- [ ] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
+- [x] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
 - [ ] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
 - [ ] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
 - [ ] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
@@ -119,20 +119,25 @@ The first public version will ship the complete core loop together: inventory so
 - Do not add a separate item or category ignore list.
 - Target-quantity loadout items and their excess/shortage behavior are handled by Question 11.
 
-## Current checkpoint notes
+### 11. Loadout replenishment and target quantities
 
-### Question 11 — loadout replenishment and target quantities
-
-- Protected food and ammunition can carry user-set target quantities and stay in their chosen inventory slots.
+- Every stackable protected item receives a user-set target quantity and stays in its chosen inventory slot.
+- Non-stackable protected items remain fixed and protected but do not need a quantity target.
 - Each target belongs to that exact protected slot, not to the item type across the player's whole inventory.
 - Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
 - When a stack is first protected, immediately ask the player to enter its target quantity rather than inferring the target from its current quantity or maximum stack size.
+- Valid targets are bounded by what that single slot can legally hold.
 - For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
 - If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected slot partially replenished rather than making the transfer all-or-nothing.
 - Report the remaining shortfall in the action feedback.
 - Do not edit a target in place. To change it, the player unprotects the slot, protects it again, and enters a new target in the normal setup prompt.
 - If a protected slot contains more than its target, deposit the excess through the normal matching-container routing and leave exactly the target quantity in that slot.
-- Still to settle: which protected items receive a target.
+
+## Current checkpoint notes
+
+### Question 12 — chest controls and exceptions
+
+- Still to settle: whether nearby accessible containers participate automatically or need per-container opt-in/opt-out controls, and whether containers can accept or reject particular item categories.
 
 ## Deferred decisions
 
