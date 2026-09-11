@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using Stackmaster.Core;
 using UnityEngine;
@@ -12,18 +13,43 @@ namespace Stackmaster
     internal static class StorageAction
     {
         private const float OwnershipTimeoutSeconds = 2f;
+        private static readonly FieldInfo CurrentContainerField = AccessTools.Field(typeof(InventoryGui), "m_currentContainer");
+        private static readonly FieldInfo CraftTimerField = AccessTools.Field(typeof(InventoryGui), "m_craftTimer");
+        private static readonly FieldInfo DragItemField = AccessTools.Field(typeof(InventoryGui), "m_dragItem");
         private static int _lastActionFrame = -1;
         private static bool _actionRunning;
 
         internal static void Update()
         {
             var plugin = RuntimeContext.Plugin;
-            if (plugin == null || InputIsBlocked() || !plugin.StorageActionShortcut.Value.IsDown() || _lastActionFrame == Time.frameCount)
+            if (plugin == null || !plugin.StorageActionShortcut.Value.IsDown() || _lastActionFrame == Time.frameCount)
             {
                 return;
             }
 
             var player = Player.m_localPlayer;
+            var gui = InventoryGui.instance;
+            var openContainer = CurrentOpenContainer(gui);
+            if (openContainer != null)
+            {
+                if (InputIsBlocked(true))
+                {
+                    return;
+                }
+
+                // Valheim normally treats Use while an inventory is visible as a close command.
+                // Consume only that named action for this frame; the matching narrow UI prefix
+                // also suppresses the one vanilla update that could close a configured shortcut.
+                ZInput.ResetButtonStatus("Use");
+                Begin(player, openContainer);
+                return;
+            }
+
+            if (InputIsBlocked(false))
+            {
+                return;
+            }
+
             var hover = player != null ? player.GetHoverObject() : null;
             var container = hover != null ? hover.GetComponentInParent<Container>() : null;
             if (container == null)
@@ -40,7 +66,7 @@ namespace Stackmaster
         internal static bool HandleContainerInteraction(Container container, Humanoid character)
         {
             var plugin = RuntimeContext.Plugin;
-            if (plugin == null || InputIsBlocked() || character != Player.m_localPlayer || !plugin.StorageActionShortcut.Value.IsPressed())
+            if (plugin == null || InputIsBlocked(false) || character != Player.m_localPlayer || !plugin.StorageActionShortcut.Value.IsPressed())
             {
                 return false;
             }
@@ -52,10 +78,74 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool InputIsBlocked()
+        internal static bool HandleOpenContainerShortcut(InventoryGui gui)
         {
-            return !ZInput.IsKeyboardAvailable()
-                || InventoryGui.IsVisible()
+            var plugin = RuntimeContext.Plugin;
+            if (plugin == null || !plugin.StorageActionShortcut.Value.IsDown() || InputIsBlocked(true))
+            {
+                return true;
+            }
+
+            var openContainer = CurrentOpenContainer(gui);
+            if (openContainer == null)
+            {
+                return true;
+            }
+
+            // Consume Valheim's named Use action and skip only this one InventoryGui.Update frame.
+            // That preserves the open chest for any configured shortcut, including a binding that
+            // Valheim itself would otherwise interpret as an inventory-close command.
+            ZInput.ResetButtonStatus("Use");
+            if (_lastActionFrame != Time.frameCount)
+            {
+                Begin(Player.m_localPlayer, openContainer);
+            }
+            return false;
+        }
+
+        internal static bool IsLocalOpenTarget(Container container)
+        {
+            return container != null && CurrentOpenContainer(InventoryGui.instance) == container;
+        }
+
+        private static Container CurrentOpenContainer(InventoryGui gui)
+        {
+            if (gui == null || !InventoryGui.IsVisible() || !gui.IsContainerOpen() || InventoryUiHasBlockingState(gui))
+            {
+                return null;
+            }
+
+            return CurrentContainerField?.GetValue(gui) as Container;
+        }
+
+        private static bool InventoryUiHasBlockingState(InventoryGui gui)
+        {
+            if (CraftTimerField == null || DragItemField == null || (float)CraftTimerField.GetValue(gui) >= 0f ||
+                DragItemField.GetValue(gui) != null)
+            {
+                return true;
+            }
+
+            return (gui.m_trophiesPanel != null && gui.m_trophiesPanel.activeSelf)
+                || (gui.m_achievementsPanel != null && gui.m_achievementsPanel.gameObject.activeSelf)
+                || (gui.m_skillsDialog != null && gui.m_skillsDialog.gameObject.activeSelf)
+                || (gui.m_textsDialog != null && gui.m_textsDialog.gameObject.activeSelf)
+                || (gui.m_splitDialog != null && gui.m_splitDialog.IsActive)
+                || (gui.m_variantDialog != null && gui.m_variantDialog.gameObject.activeSelf);
+        }
+
+        private static bool InputIsBlocked(bool allowOpenContainerUi)
+        {
+            var player = Player.m_localPlayer;
+            var textViewer = TextViewer.instance;
+            return player == null
+                || player.IsDead()
+                || player.InCutscene()
+                || player.IsTeleporting()
+                || (textViewer != null && textViewer.IsVisible())
+                || GameCamera.InFreeFly()
+                || !ZInput.IsKeyboardAvailable()
+                || (!allowOpenContainerUi && InventoryGui.IsVisible())
                 || TextInput.IsVisible()
                 || UnifiedPopup.IsVisible()
                 || Menu.IsVisible()
@@ -345,6 +435,15 @@ namespace Stackmaster
             if (reason.IndexOf("access", StringComparison.OrdinalIgnoreCase) >= 0) return "inaccessible";
             if (reason.IndexOf("in use", StringComparison.OrdinalIgnoreCase) >= 0) return "in use";
             return "changed/failed";
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), "Update")]
+    internal static class InventoryGuiStorageActionPatch
+    {
+        private static bool Prefix(InventoryGui __instance)
+        {
+            return !RuntimeContext.Compatibility.IsCompatible || StorageAction.HandleOpenContainerShortcut(__instance);
         }
     }
 

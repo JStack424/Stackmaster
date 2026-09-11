@@ -1,14 +1,18 @@
 #nullable disable
 using System;
 using System.Globalization;
+using System.Reflection;
 using HarmonyLib;
 using Stackmaster.Core;
+using TMPro;
 using UnityEngine;
 
 namespace Stackmaster
 {
     internal static class ProtectionInteraction
     {
+        private static readonly FieldInfo TextInputField = AccessTools.Field(typeof(TextInput), "m_inputField");
+
         internal static bool TryHandle(InventoryGrid grid, ItemDrop.ItemData item, Vector2i position, InventoryGrid.Modifier modifier)
         {
             if (modifier != InventoryGrid.Modifier.Select || !Input.GetKey(KeyCode.LeftAlt))
@@ -60,11 +64,26 @@ namespace Stackmaster
             }
 
             var receiver = new TargetPromptReceiver(player, slot, item);
+            var defaultTargetText = receiver.GetText();
             TextInput.instance.RequestText(
                 receiver,
                 "Stackmaster: 0 = protect only; 1-" + item.m_shared.m_maxStackSize.ToString(CultureInfo.InvariantCulture) + " = target",
-                4);
+                Math.Max(4, defaultTargetText.Length));
+            SelectPrefilledTarget(TextInput.instance, defaultTargetText.Length);
             return true;
+        }
+
+        private static void SelectPrefilledTarget(TextInput textInput, int textLength)
+        {
+            var inputField = TextInputField?.GetValue(textInput) as TMP_InputField;
+            if (inputField == null)
+            {
+                RuntimeContext.Plugin.Log.LogWarning("Stackmaster target prompt opened with its full-stack default, but the text selection field was unavailable.");
+                return;
+            }
+
+            inputField.selectionAnchorPosition = 0;
+            inputField.selectionFocusPosition = textLength;
         }
 
         private sealed class TargetPromptReceiver : TextReceiver
@@ -81,6 +100,7 @@ namespace Stackmaster
                 _slot = slot;
                 _itemKey = InventorySnapshots.PersistentItemKey(item);
                 _maxStack = item.m_shared.m_maxStackSize;
+                _text = _maxStack.ToString(CultureInfo.InvariantCulture);
             }
 
             public string GetText() => _text;

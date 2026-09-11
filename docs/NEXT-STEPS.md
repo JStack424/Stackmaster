@@ -4,7 +4,7 @@ This plan follows the behavior contract approved on September 11, 2026. [DESIGN-
 
 Environment validation and the complete local v0.1 gameplay implementation are complete. On September 11, 2026, Joe explicitly superseded the earlier skeleton-first hold and authorized uninterrupted implementation. The first clean-profile Windows pass produced the feedback corrections now integrated here, and Joe authorized a replacement test package after those fixes. Do not create a public repository or publish until a later explicit gate.
 
-Current local verification: zero compiler warnings/errors, 25/25 pure-domain tests, 35/35 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. These results do **not** establish multiplayer or network safety; the replacement clean-profile test and combined Windows matrix remain mandatory.
+Current local verification: zero compiler warnings/errors, 28/28 pure-domain tests, 37/37 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. These results do **not** establish live UI behavior, multiplayer, or network safety; the replacement clean-profile test and combined Windows matrix remain mandatory.
 
 ## 1. Approved release boundary
 
@@ -24,8 +24,8 @@ Keep internal modules separate for testability and safe maintenance, but do not 
 
 - Auto-sort runs when inventory opens and sorts the movable player inventory plus the opened chest alphabetically.
 - The entire quick bar, equipped items, and each resolved protected stack remain fixed; protected partial stacks are untouched.
-- Left Alt-click manages one-record/one-matching-stack protection and optional legal per-stack replenishment targets. Preferred-slot matches win; moved stacks reattach deterministically; unrelated replacements never inherit.
-- Configurable Left Alt + E performs the combined deposit/replenish action only while deliberately targeting a valid container.
+- Left Alt-click manages one-record/one-matching-stack protection and optional legal per-stack replenishment targets. Stackable-item prompts prefill and select the legal full-stack target for immediate Enter acceptance while still allowing a lower value or `0` for protection only. Preferred-slot matches win; moved stacks reattach deterministically; unrelated replacements never inherit.
+- Configurable Left Alt + E performs the combined deposit/replenish action while deliberately targeting a valid container, or against the currently open vanilla chest without closing its UI.
 - Discovery is player-centered, on demand, and 20 meters by default.
 - Only accessible vanilla containers participate; unknown/modded or in-use containers are skipped safely.
 - Deposit only to containers that already hold a compatible item. Fill every compatible partial stack before creating a new stack, using the targeted chest first and then nearest-to-farthest routing.
@@ -234,7 +234,7 @@ Exit criterion: source integration and automated losslessness checks are complet
 ### Milestone 3 — protection UI and character persistence
 
 - [x] Add Left Alt-click Protect only / Protect with target / Unprotect behavior.
-- [x] Prompt stackable items immediately for a legal single-slot target quantity (`0` means Protect only).
+- [x] Prompt stackable items immediately for a legal single-slot target quantity, with the full legal stack size prefilled/selected for Enter acceptance (`0` still means Protect only).
 - [x] Store versioned per-character protection identity, preferred slot, and optional target data across worlds; migrate the safe subset of v1 exact-slot records.
 - [x] Reconcile each record to exactly one matching stack, preferring its current slot and otherwise choosing in deterministic row-major order; never protect a nonmatching replacement.
 - [x] Show a noninteractive soft teal border plus a bottom-left target quantity or protection-only lock on resolved stacks.
@@ -272,6 +272,7 @@ Exit criterion: source follows the inspected vanilla authority path; only the Wi
 - [x] Bind exactly three settings: auto-sort, 20-meter radius, and Left Alt + E action binding.
 - [x] Clamp the radius and report unsafe startup compatibility clearly.
 - [x] Add the targeted-container tooltip and compact visual result popup.
+- [x] Run the configured storage shortcut against an already open vanilla chest without closing its UI, while preserving the closed-UI targeted-container path.
 - [x] Count individual units and name shortages, in-use/failed containers, and incomplete searches without listing every success.
 - [x] Add no custom sounds and make no controller UI/binding claims.
 
@@ -330,6 +331,8 @@ Required gates:
 - [x] Automated sorting/transfer and repository-boundary tests pass: protection persistence, compatible merging, partial-stack priority, routing, replenishment, shortages, excess, budget exhaustion, compatibility-gate-before-patching, stale-state rejection, and no item-count drift.
 - [ ] Clean-profile startup contains no Stackmaster exception.
 - [ ] Basic sorting/deposit/replenishment smoke tests pass in solo play.
+- [ ] With a vanilla chest open, the configured storage shortcut uses that chest as the target, deposits/replenishes normally, and leaves the chest UI open.
+- [ ] A stackable-item target prompt opens with the full legal stack size prefilled/selected; Enter accepts it immediately, a lower legal value replaces it, `0` selects protection only, and non-stackable items remain protection-only.
 - [ ] The same basic flow passes while hosting co-op with an unmodded peer; state stays synchronized.
 - [ ] The same basic flow passes as a guest of a vanilla host; state stays synchronized.
 - [ ] The same basic flow passes on a vanilla dedicated server with no server-side Stackmaster installation; unmodded peers remain compatible.

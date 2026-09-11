@@ -181,6 +181,64 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("grid.GetInventory() != player.GetInventory()", protection)
         self.assertIn("if (item == null)", protection)
 
+    def test_open_container_shortcut_uses_open_target_without_closing_inventory(self):
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn("var openContainer = CurrentOpenContainer(gui)", action)
+        self.assertIn("gui.IsContainerOpen()", action)
+        self.assertIn('AccessTools.Field(typeof(InventoryGui), "m_currentContainer")', action)
+        self.assertIn('ZInput.ResetButtonStatus("Use")', action)
+        self.assertIn("Begin(player, openContainer)", action)
+        self.assertLess(action.index('ZInput.ResetButtonStatus("Use")'), action.index("Begin(player, openContainer)"))
+        self.assertIn('[HarmonyPatch(typeof(InventoryGui), "Update")]', action)
+        self.assertIn("return !RuntimeContext.Compatibility.IsCompatible || StorageAction.HandleOpenContainerShortcut(__instance)", action)
+        self.assertIn("return false;", action[action.index("internal static bool HandleOpenContainerShortcut"):action.index("internal static bool IsLocalOpenTarget")])
+        self.assertIn('Prefix(typeof(InventoryGui), "Update"', installer)
+        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "Update")', gate)
+        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string))', gate)
+        self.assertIn('RequireMethod(failures, typeof(SplitDialog), "get_IsActive")', gate)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_currentContainer")', gate)
+        self.assertIn('AccessTools.Field(typeof(InventoryGui), "m_craftTimer")', action)
+        self.assertIn('AccessTools.Field(typeof(InventoryGui), "m_dragItem")', action)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_craftTimer")', gate)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_dragItem")', gate)
+        self.assertIn("InventoryUiHasBlockingState(gui)", action)
+        for guard in (
+            "player.IsDead()", "player.InCutscene()", "player.IsTeleporting()",
+            "textViewer.IsVisible()", "GameCamera.InFreeFly()",
+        ):
+            self.assertIn(guard, action)
+        for modal in (
+            "m_trophiesPanel", "m_achievementsPanel", "m_skillsDialog", "m_textsDialog",
+            "m_splitDialog", "m_variantDialog",
+        ):
+            self.assertIn(modal, action)
+            self.assertIn(f'RequireField(failures, typeof(InventoryGui), "{modal}")', gate)
+        self.assertIn("isTarget && StorageAction.IsLocalOpenTarget(container)", discovery)
+        self.assertIn("handle.Snapshot.IsTarget && StorageAction.IsLocalOpenTarget(container)", executor)
+        self.assertIn("(!locallyOpenTarget && container.IsInUse())", discovery)
+        self.assertIn("(!locallyOpenTarget && container.IsInUse())", executor)
+        self.assertIn("(!allowOpenContainerUi && InventoryGui.IsVisible())", action)
+        self.assertNotIn("InventoryIntegration.RefreshProtectionOverlays", action)
+
+    def test_target_prompt_prefills_and_selects_full_legal_stack_size(self):
+        protection = (PLUGIN_DIR / "ProtectionInteraction.cs").read_text(encoding="utf-8")
+        self.assertIn("if (item.m_shared.m_maxStackSize <= 1)", protection)
+        self.assertIn("_text = _maxStack.ToString(CultureInfo.InvariantCulture)", protection)
+        self.assertIn("Math.Max(4, defaultTargetText.Length)", protection)
+        request = protection.index("TextInput.instance.RequestText")
+        select = protection.index("SelectPrefilledTarget(TextInput.instance", request)
+        self.assertLess(request, select)
+        self.assertIn("inputField.selectionAnchorPosition = 0", protection)
+        self.assertIn("inputField.selectionFocusPosition = textLength", protection)
+        self.assertIn("target < 0 || target > _maxStack", protection)
+        self.assertIn("if (target == 0)", protection)
+        self.assertIn("state.Protect(_slot, target, _itemKey)", protection)
+
     def test_ownership_flow_recaptures_after_network_refresh(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         refresh_comment = action.index("Re-capture and re-plan from the synchronized inventories")

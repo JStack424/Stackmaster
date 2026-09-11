@@ -163,7 +163,8 @@ namespace Stackmaster
                 failure = "container is no longer a known vanilla container";
                 return false;
             }
-            if (container.IsInUse() || (container.m_wagon != null && container.m_wagon.InUse()))
+            var locallyOpenTarget = handle.Snapshot.IsTarget && StorageAction.IsLocalOpenTarget(container);
+            if ((!locallyOpenTarget && container.IsInUse()) || (container.m_wagon != null && container.m_wagon.InUse()))
             {
                 failure = "container became in use";
                 return false;

@@ -46,7 +46,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 Joe returns from adventuring, approaches and looks directly at a chest, and presses one hotkey. That single action should organize the player's loadout in both directions:
 
 - Deposit unwanted collected items into correctly organized nearby chests where matching item types already exist.
-- Search only while the player is deliberately targeting a chest, so storage is not accessible remotely from arbitrary distance.
+- Search only while the player is deliberately targeting a chest or has that chest open, so storage is not accessible remotely from arbitrary distance.
 - Add the action to the targeted chest's interaction tooltip alongside the normal open prompt.
 - Never remove items from the quick bar, equipped items, or user-protected items.
 - Let the player mark one specific matching inventory stack as kept/favorited/held from the inventory UI through an Alt-click interaction.
@@ -129,8 +129,8 @@ The first public version will ship the complete core loop together: inventory so
 - Non-stackable protected items remain fixed and protected without a quantity target.
 - Each target belongs to that single resolved matching stack. Loose compatible copies elsewhere do not satisfy it.
 - Replenishment fills the resolved protected stack toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
-- When the player chooses protection with replenishment, immediately ask for the target quantity rather than inferring it from the stack's current quantity or maximum size.
-- Valid targets are bounded by what that single slot can legally hold.
+- When the player chooses protection with replenishment, immediately ask for the target quantity. The editable prompt starts with the item's full legal stack size prefilled and selected, so Enter accepts a full-stack target while typing replaces it with a lower value.
+- Entering `0` in that prompt chooses protection only; positive targets are bounded by what that single slot can legally hold.
 - For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
 - If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected stack partially replenished rather than making the transfer all-or-nothing.
 - Report the remaining shortfall in the action feedback.
@@ -148,6 +148,7 @@ The first public version will ship the complete core loop together: inventory so
 
 - The targeted-container tooltip advertises the deposit/replenish action.
 - On keyboard, trigger the combined deposit/replenish action by holding Left Alt + E while targeting a valid container.
+- While a vanilla chest is already open, the same shortcut uses that open chest as the deliberate target and leaves its inventory UI open throughout the action. When no chest is open, the existing world-target requirement remains unchanged.
 - This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
 - Keep the binding configurable.
 - In the inventory UI, Left Alt-clicking an item opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.

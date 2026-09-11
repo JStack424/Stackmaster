@@ -6,7 +6,7 @@ Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines auto
 
 ## Status
 
-The 18-checkpoint behavior contract was approved on September 11, 2026 and later refined so each protection record follows one compatible matching stack rather than an unrelated replacement in an old slot. Joe authorized the complete local v0.1 implementation and clean-profile testing. An earlier integrated test package was exercised; this source now contains the completed feedback corrections for its replacement. Nothing has been published.
+The 18-checkpoint behavior contract was approved on September 11, 2026 and later refined so each protection record follows one compatible matching stack rather than an unrelated replacement in an old slot. The current approved controls also let the configured storage shortcut act on an already open vanilla chest without closing it, and prefill/select a stackable item's full legal replenishment target for immediate Enter acceptance. Joe authorized the complete local v0.1 implementation and clean-profile testing. An earlier integrated test package was exercised; this source now contains the completed feedback corrections for its replacement. Nothing has been published.
 
 - [Approved behavior contract](docs/DESIGN-QUESTIONNAIRE.md)
 - [Environment-validation and implementation plan](docs/NEXT-STEPS.md)
@@ -89,7 +89,7 @@ The repository uses the workspace-local .NET 8 SDK wrapper; it does not require 
 ./scripts/build.sh
 ```
 
-The build compiles the pure planner library and the integrated `net48` BepInEx plugin, runs the pure-domain test executable and repository safety checks, and fails if private BepInEx, Valheim, or Unity DLLs leak into plugin output. The current gate passes with 25/25 pure-domain tests, 35/35 static checks, zero compiler warnings, zero compiler errors, and only `Stackmaster.dll` plus its PDB in plugin output.
+The build compiles the pure planner library and the integrated `net48` BepInEx plugin, runs the pure-domain test executable and repository safety checks, and fails if private BepInEx, Valheim, or Unity DLLs leak into plugin output. The current gate passes with 28/28 pure-domain tests, 37/37 static checks, zero compiler warnings, zero compiler errors, and only `Stackmaster.dll` plus its PDB in plugin output.
 
 ## Project principles
 

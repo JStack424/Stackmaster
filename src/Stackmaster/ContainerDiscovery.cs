@@ -239,7 +239,9 @@ namespace Stackmaster
             var refreshed = isVanilla && viewValid && zdo != null && TryRefreshFromNetwork(container, out refreshFailure);
             var inventory = refreshed ? container.GetInventory() : null;
             var isKnown = refreshed && inventory != null;
-            var inUse = isKnown && (container.IsInUse() || (container.m_wagon != null && container.m_wagon.InUse()));
+            var locallyOpenTarget = isTarget && StorageAction.IsLocalOpenTarget(container);
+            var inUse = isKnown &&
+                ((!locallyOpenTarget && container.IsInUse()) || (container.m_wagon != null && container.m_wagon.InUse()));
             string accessFailure = null;
             var accessible = isKnown && !inUse && TryCheckAccess(player, container, out accessFailure);
             var capacity = inventory != null ? inventory.GetWidth() * inventory.GetHeight() : 0;
