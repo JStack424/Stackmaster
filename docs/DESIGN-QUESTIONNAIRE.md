@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 7 of 18
-- **Current:** Question 8 — Eligible storage and search area
+- **Completed:** 8 of 18
+- **Current:** Question 9 — Deposit and routing rules
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -27,7 +27,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **5. Sort order and grouping** — Define the category order, within-category order, naming basis, quality/durability handling, and stable tie-breakers.
 - [x] **6. Stack consolidation** — Decide whether sorting also merges partial stacks and how stack limits, item metadata, and exceptional items should behave.
 - [x] **7. Deposit trigger and timing** — Decide exactly when nearby-chest stacking or depositing runs and whether automatic behavior is opt-in.
-- [ ] **8. Eligible storage and search area** — Define container types, search radius or area, access rules, carts/ships/personal chests, and what counts as “nearby.”
+- [x] **8. Eligible storage and search area** — Define container types, search radius or area, access rules, carts/ships/personal chests, and what counts as “nearby.”
 - [ ] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
 - [ ] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
 - [ ] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
@@ -94,13 +94,13 @@ The first public version will ship the complete core loop together: inventory so
 - The action is available only while the player is deliberately looking at a valid chest.
 - The targeted chest's interaction tooltip should advertise the hotkey alongside the normal open control.
 
-## Current checkpoint notes
+### 8. Eligible storage and search area
 
-### Question 8 — eligible storage and search area
-
-- Nearby-storage discovery is centered on the player's character, not on the chest being targeted.
-- The search radius is configurable, with a default of 20 meters.
-- Still to settle within this checkpoint: eligible container types and access restrictions.
+- Search outward from the player's character, not from the targeted chest.
+- Use a configurable radius with a 20-meter default.
+- Include every nearby container that the game recognizes as accessible to that player, rather than limiting the feature to stationary player-built chests.
+- This includes eligible carts, ships, personal storage, and world containers when the player can legitimately access them.
+- Skip anything the game treats as locked, private to someone else, inaccessible, or otherwise unavailable for mutation.
 
 ## Deferred decisions
 
