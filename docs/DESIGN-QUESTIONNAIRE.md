@@ -183,7 +183,9 @@ The first public version will ship the complete core loop together: inventory so
 
 - The action must never duplicate, delete, or corrupt items, and unsupported or unavailable storage must fail safely.
 - Nearby-container discovery and routing run only when needed rather than continuously scanning the world.
-- Still to settle: modded-container compatibility, handling partial failures, practical performance limits, and safe behavior after incompatible game or mod updates.
+- Limit v0.1 support to vanilla Valheim containers. Do not claim automatic compatibility with modded storage or ship one-off patches for other storage mods yet.
+- Unknown or modded container types are excluded rather than being modified speculatively.
+- Still to settle: handling partial failures, practical performance limits, and safe behavior after incompatible game or mod updates.
 
 ## Deferred decisions
 
