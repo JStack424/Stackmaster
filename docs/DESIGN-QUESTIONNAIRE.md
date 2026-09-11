@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 15 of 18
-- **Current:** Question 16 — Compatibility, performance, and failure safety
+- **Completed:** 16 of 18
+- **Current:** Question 17 — Public package identity
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -35,7 +35,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
 - [x] **14. Multiplayer and installation contract** — Decide the desired host/client/dedicated-server behavior, who must install the mod, and how simultaneous chest use should be handled.
 - [x] **15. Configuration model and defaults** — Decide which settings are exposed, conservative defaults, presets, and whether settings are per-player, per-profile, per-world, or server-controlled.
-- [ ] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
+- [x] **16. Compatibility, performance, and failure safety** — Set expectations for other inventory mods, game updates, scanning cost, rollback-safe behavior, and what the mod does when a patch or transfer cannot be trusted.
 - [ ] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
 - [ ] **18. Test plan and definition of done** — Agree on solo, host, guest, dedicated-server, conflict, update, packaging, and r2modman tests required before v0.1 is publishable.
 
@@ -177,9 +177,7 @@ The first public version will ship the complete core loop together: inventory so
 - Store one set of these settings per r2modman profile; all characters and worlds launched through that profile use the same values.
 - Protected-slot choices and replenishment targets belong to the individual Valheim character and follow that character across every world.
 
-## Current checkpoint notes
-
-### Question 16 — compatibility, performance, and failure safety
+### 16. Compatibility, performance, and failure safety
 
 - The action must never duplicate, delete, or corrupt items, and unsupported or unavailable storage must fail safely.
 - Nearby-container discovery and routing run only when needed rather than continuously scanning the world.
@@ -190,7 +188,14 @@ The first public version will ship the complete core loop together: inventory so
 - Use a time budget rather than a fixed chest-count cap when a large configured radius contains many containers.
 - Process containers in the already-set routing order until the action reaches its responsiveness budget, then stop safely and report that the action ended before every eligible container was checked.
 - Choose the exact budget during profiling so the action avoids noticeable gameplay hitches across the supported test machines; do not expose it as a fourth user setting.
-- Still to settle: safe behavior after incompatible game or mod updates.
+- If a Valheim update or compatibility check shows that any part of the mod is unsafe, disable the entire mod for that session before it can alter items.
+- Show the player a clear incompatibility warning and write the technical reason to the BepInEx log; do not keep trying old behavior or run only a subset of features.
+
+## Current checkpoint notes
+
+### Question 17 — public package identity
+
+- Still to settle: public mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and short public description.
 
 ## Deferred decisions
 
