@@ -127,7 +127,8 @@ The first public version will ship the complete core loop together: inventory so
 - Each target belongs to that exact protected slot, not to the item type across the player's whole inventory.
 - Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
 - When a stack is first protected, immediately ask the player to enter its target quantity rather than inferring the target from its current quantity or maximum stack size.
-- Still to settle: later target editing, source priority, shortage behavior, and excess handling.
+- For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
+- Still to settle: later target editing, shortage behavior, and excess handling.
 
 ## Deferred decisions
 
