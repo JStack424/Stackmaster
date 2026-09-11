@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 4 of 18
-- **Current:** Question 5 — Sort order and grouping
+- **Completed:** 7 of 18
+- **Current:** Question 8 — Eligible storage and search area
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -24,9 +24,9 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **2. First-release boundary** — Decide the must-have behavior for v0.1, what can wait, and whether sorting, depositing, and replenishment ship together initially.
 - [x] **3. Sorting trigger and timing** — Decide what “always sorted” means in practice: after pickups, inventory changes, opening the inventory, explicit input, or another event model.
 - [x] **4. Sort scope and protected areas** — Decide which inventories and slots may move, including hotbar, equipped items, arbitrary protected slots, and an open container.
-- [ ] **5. Sort order and grouping** — Define the category order, within-category order, naming basis, quality/durability handling, and stable tie-breakers.
-- [ ] **6. Stack consolidation** — Decide whether sorting also merges partial stacks and how stack limits, item metadata, and exceptional items should behave.
-- [ ] **7. Deposit trigger and timing** — Decide exactly when nearby-chest stacking or depositing runs and whether automatic behavior is opt-in.
+- [x] **5. Sort order and grouping** — Define the category order, within-category order, naming basis, quality/durability handling, and stable tie-breakers.
+- [x] **6. Stack consolidation** — Decide whether sorting also merges partial stacks and how stack limits, item metadata, and exceptional items should behave.
+- [x] **7. Deposit trigger and timing** — Decide exactly when nearby-chest stacking or depositing runs and whether automatic behavior is opt-in.
 - [ ] **8. Eligible storage and search area** — Define container types, search radius or area, access rules, carts/ships/personal chests, and what counts as “nearby.”
 - [ ] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
 - [ ] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
@@ -75,13 +75,24 @@ The first public version will ship the complete core loop together: inventory so
 - Opening a chest should organize that chest automatically rather than requiring a separate chest-sort button.
 - Chest-specific exclusions and category rules remain assigned to the chest-controls checkpoint.
 
-## Current checkpoint notes
+### 5. Sort order and grouping
 
-### Question 5 — awaiting one clarification
+- Use the same simple alphabetical order for both the player's movable inventory and opened chests.
+- Sort by the item name shown to the player, with no category grouping or custom category sequence.
+- Locked/favorited items remain fixed and do not participate in ordering.
+- Equal names should use a stable deterministic tie-breaker so repeated sorting does not visibly shuffle items.
 
-- Chests sort in a single alphabetical order with no category grouping.
-- Compatible stacks should merge whenever possible, except that a favorited/locked partial stack must remain untouched. This also supplies the core rule for Question 6.
-- Still to settle: whether the player's movable inventory uses the same alphabetical order or a different arrangement.
+### 6. Stack consolidation
+
+- Merge compatible stacks of the same item whenever the game allows it, respecting normal maximum stack sizes and item metadata.
+- Never move from, merge into, or otherwise alter a favorited/locked partial stack.
+- Items that the game does not consider stack-compatible remain separate even if their visible names match.
+
+### 7. Deposit trigger and timing
+
+- Depositing and replenishment are one explicit hotkey action, not an automatic side effect of opening inventory or storage.
+- The action is available only while the player is deliberately looking at a valid chest.
+- The targeted chest's interaction tooltip should advertise the hotkey alongside the normal open control.
 
 ## Deferred decisions
 
