@@ -150,7 +150,8 @@ The first public version will ship the complete core loop together: inventory so
 - On keyboard, trigger the combined deposit/replenish action by holding Left Alt + E while targeting a valid container.
 - This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
 - Keep the binding configurable.
-- Still to settle: controller controls, protection interaction, popup contents and counting units, sounds, and error/skip feedback.
+- In the inventory UI, Left Alt-clicking an item or slot opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
+- Still to settle: controller controls, popup contents and counting units, sounds, and error/skip feedback.
 
 ## Deferred decisions
 
