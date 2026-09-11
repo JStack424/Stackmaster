@@ -177,7 +177,8 @@ The first public version will ship the complete core loop together: inventory so
 - Put the auto-sort checkbox directly in the inventory UI.
 - Expose the radius and keybinding through the normal r2modman/BepInEx configuration rather than building a separate in-game settings panel for them.
 - Store one set of these settings per r2modman profile; all characters and worlds launched through that profile use the same values.
-- Still to settle: how protected-slot choices and replenishment targets persist, since those are character loadout data rather than general mod settings.
+- Protected-slot choices and replenishment targets belong to the individual Valheim character and follow that character across every world.
+- Still to settle: whether auto-sort defaults on or off for a new profile.
 
 ## Deferred decisions
 
