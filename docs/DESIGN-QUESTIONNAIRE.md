@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 2 of 18
-- **Current:** Question 3 — Sorting trigger and timing
+- **Completed:** 3 of 18
+- **Current:** Question 4 — Sort scope and protected areas
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -22,7 +22,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 - [x] **1. Ideal gameplay flow** — Describe what should happen from the player's point of view during ordinary adventuring, returning to base, opening inventory, and using storage.
 - [x] **2. First-release boundary** — Decide the must-have behavior for v0.1, what can wait, and whether sorting, depositing, and replenishment ship together initially.
-- [ ] **3. Sorting trigger and timing** — Decide what “always sorted” means in practice: after pickups, inventory changes, opening the inventory, explicit input, or another event model.
+- [x] **3. Sorting trigger and timing** — Decide what “always sorted” means in practice: after pickups, inventory changes, opening the inventory, explicit input, or another event model.
 - [ ] **4. Sort scope and protected areas** — Decide which inventories and slots may move, including hotbar, equipped items, arbitrary protected slots, and an open container.
 - [ ] **5. Sort order and grouping** — Define the category order, within-category order, naming basis, quality/durability handling, and stable tie-breakers.
 - [ ] **6. Stack consolidation** — Decide whether sorting also merges partial stacks and how stack limits, item metadata, and exceptional items should behave.
@@ -60,6 +60,13 @@ Details such as exact modifier keys, radius, routing priority, shortage behavior
 ### 2. First-release boundary
 
 The first public version will ship the complete core loop together: inventory sorting, nearby-chest depositing, and loadout replenishment to desired quantities. Replenishment is not deferred to a later release.
+
+### 3. Sorting trigger and timing
+
+- When automatic sorting is enabled, sort the player's inventory once each time the inventory UI is opened.
+- Do not continuously reorder items after every pickup or inventory change.
+- Add an in-game checkbox that immediately enables or disables automatic inventory sorting without requiring an external configuration editor.
+- The checkbox's exact placement, wording, and persistence will be finalized in the controls/interface and configuration checkpoints.
 
 ## Deferred decisions
 
