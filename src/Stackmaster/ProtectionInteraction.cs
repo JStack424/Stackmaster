@@ -28,11 +28,14 @@ namespace Stackmaster
             {
                 return true;
             }
-            if (state.IsProtected(slot))
+            var resolution = InventorySnapshots.ResolveProtection(player, state);
+            ProtectionRecord protectedRecord;
+            if (resolution.TryGet(slot, out protectedRecord))
             {
-                state.Unprotect(slot);
+                state.Unprotect(protectedRecord);
                 RuntimeContext.SaveProtection(player, state);
-                RuntimeContext.ShowTopLeft("Stackmaster: slot unprotected.");
+                InventoryIntegration.RefreshProtectionOverlays();
+                RuntimeContext.ShowTopLeft("Stackmaster: item unprotected.");
                 return true;
             }
 
@@ -43,9 +46,10 @@ namespace Stackmaster
 
             if (item.m_shared.m_maxStackSize <= 1)
             {
-                state.Protect(slot, null, null);
+                state.Protect(slot, null, InventorySnapshots.PersistentItemKey(item));
                 RuntimeContext.SaveProtection(player, state);
-                RuntimeContext.ShowTopLeft("Stackmaster: slot protected.");
+                InventoryIntegration.RefreshProtectionOverlays();
+                RuntimeContext.ShowTopLeft("Stackmaster: item protected.");
                 return true;
             }
 
@@ -98,8 +102,8 @@ namespace Stackmaster
                 }
                 if (target == 0)
                 {
-                    state.Protect(_slot, null, null);
-                    RuntimeContext.ShowTopLeft("Stackmaster: slot protected.");
+                    state.Protect(_slot, null, _itemKey);
+                    RuntimeContext.ShowTopLeft("Stackmaster: item protected.");
                 }
                 else
                 {
@@ -107,6 +111,7 @@ namespace Stackmaster
                     RuntimeContext.ShowTopLeft("Stackmaster: protected with target " + target.ToString(CultureInfo.InvariantCulture) + ".");
                 }
                 RuntimeContext.SaveProtection(_player, state);
+                InventoryIntegration.RefreshProtectionOverlays();
             }
         }
     }

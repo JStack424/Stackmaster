@@ -11,6 +11,7 @@ internal static class Program
         {
             EmptyInventorySortsWithoutPlacements,
             SortKeepsFixedSlotsAndMergesMovableStacks,
+            SortNeverUsesEmptyQuickBarSlots,
             SortReservesEmptyProtectedSlots,
             SortDoesNotMergeIncompatibleStacksWithEqualNames,
             DepositPreservesQuickBarEquippedAndProtectedSlots,
@@ -26,7 +27,13 @@ internal static class Program
             ProtectionStateRoundTripsTargets,
             ProtectionStateRejectsMalformedRecords,
             ProtectionStateRejectsUnknownVersions,
-            ProtectionStateValidatesTargets
+            ProtectionStateValidatesTargets,
+            ReplacementItemDoesNotInheritProtection,
+            MatchingItemAtPreferredSlotWins,
+            MovedMatchingStackInheritsProtection,
+            DuplicateChoiceIsDeterministic,
+            MergeSurvivorKeepsOneRecord,
+            NoMatchingItemProtectsNothingUnrelated
         };
 
         var failures = 0;
@@ -76,6 +83,26 @@ internal static class Program
         Placement(plan, 4, "wood", 50, false);
         Placement(plan, 5, "wood", 10, false);
         Placement(plan, 6, "helmet", 1, true);
+        Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
+    private static void SortNeverUsesEmptyQuickBarSlots()
+    {
+        var inventory = new InventorySnapshot(
+            "player",
+            12,
+            new[]
+            {
+                Item("axe", "axe", "Axe", 1, 1, 1, quickBar: true),
+                Item("wood", "wood", "Wood", 10, 50, 7),
+                Item("stone", "stone", "Stone", 10, 50, 11)
+            },
+            new[] { 0, 1, 2, 3 });
+
+        var plan = new InventorySortPlanner().Plan(inventory);
+        Placement(plan, 1, "axe", 1, true);
+        SequenceEqual(new[] { 1, 4, 5 }, plan.Placements.Select(item => item.Slot), "the entire quick-bar row remains unavailable as a sort destination");
+        True(plan.Placements.All(item => item.IsFixed || item.Slot >= 4), "movable items stay outside every empty quick-bar slot");
         Valid(PlanValidator.ValidateSortConservation(inventory, plan));
     }
 
@@ -290,7 +317,7 @@ internal static class Program
     {
         var state = new ProtectionState();
         state.Protect(new Slot(2, 3), 42, "wood|quality=1;custom=å");
-        state.Protect(new Slot(0, 1), null, null);
+        state.Protect(new Slot(0, 1), null, "hammer|quality=1");
 
         var parsed = ProtectionState.Parse(state.Serialize());
         Equal(2, parsed.Records.Count, "round-trip protected record count");
@@ -303,7 +330,7 @@ internal static class Program
 
     private static void ProtectionStateRejectsMalformedRecords()
     {
-        var valid = new ProtectionState(new[] { new ProtectionRecord(new Slot(1, 2), null, null) }).Serialize();
+        var valid = new ProtectionState(new[] { new ProtectionRecord(new Slot(1, 2), null, "wood") }).Serialize();
         ProtectionState parsed;
         True(!ProtectionState.TryParse(valid + ";bad", out parsed), "malformed record invalidates the payload");
         Equal(0, parsed.Records.Count, "invalid payload exposes no partial protection state");
@@ -327,10 +354,91 @@ internal static class Program
         catch (ArgumentException) { missingKeyThrew = true; }
         True(missingKeyThrew, "target without item identity is rejected");
 
+        var protectionOnlyMissingKeyThrew = false;
+        try { state.Protect(new Slot(0, 0), null, null); }
+        catch (ArgumentException) { protectionOnlyMissingKeyThrew = true; }
+        True(protectionOnlyMissingKeyThrew, "protection-only record without item identity is rejected");
+
         var nonPositiveThrew = false;
         try { state.Protect(new Slot(0, 0), 0, "wood"); }
         catch (ArgumentOutOfRangeException) { nonPositiveThrew = true; }
         True(nonPositiveThrew, "non-positive target is rejected");
+    }
+
+    private static void ReplacementItemDoesNotInheritProtection()
+    {
+        var state = new ProtectionState(new[] { new ProtectionRecord(new Slot(1, 1), null, "wood") });
+        var resolution = state.Reconcile(new[] { new ProtectionCandidate(new Slot(1, 1), "stone") });
+        Equal(0, resolution.Assignments.Count, "replacement item remains unprotected");
+        True(!resolution.TryGet(new Slot(1, 1), out _), "old slot does not confer protection");
+    }
+
+    private static void MatchingItemAtPreferredSlotWins()
+    {
+        var state = new ProtectionState(new[] { new ProtectionRecord(new Slot(2, 1), 20, "arrow") });
+        var resolution = state.Reconcile(new[]
+        {
+            new ProtectionCandidate(new Slot(0, 0), "arrow"),
+            new ProtectionCandidate(new Slot(2, 1), "arrow")
+        });
+        True(resolution.TryGet(new Slot(2, 1), out var record), "preferred matching stack is assigned");
+        Equal(20, record.TargetQuantity, "preferred assignment retains target");
+        True(!resolution.TryGet(new Slot(0, 0), out _), "only one matching stack is protected");
+        True(!resolution.Changed, "unchanged preferred assignment does not rewrite persistence");
+    }
+
+    private static void MovedMatchingStackInheritsProtection()
+    {
+        var state = new ProtectionState(new[] { new ProtectionRecord(new Slot(3, 2), 12, "food") });
+        var resolution = state.Reconcile(new[]
+        {
+            new ProtectionCandidate(new Slot(3, 2), "stone"),
+            new ProtectionCandidate(new Slot(1, 0), "food")
+        });
+        True(resolution.TryGet(new Slot(1, 0), out var record), "moved compatible stack inherits protection");
+        Equal(new Slot(1, 0), record.Slot, "preferred slot follows moved stack");
+        True(resolution.Changed, "moved assignment requests persistence");
+        True(!resolution.TryGet(new Slot(3, 2), out _), "replacement at old slot remains unprotected");
+    }
+
+    private static void DuplicateChoiceIsDeterministic()
+    {
+        var state = new ProtectionState(new[] { new ProtectionRecord(new Slot(3, 3), null, "wood") });
+        var resolution = state.Reconcile(new[]
+        {
+            new ProtectionCandidate(new Slot(2, 2), "wood"),
+            new ProtectionCandidate(new Slot(3, 0), "wood"),
+            new ProtectionCandidate(new Slot(0, 1), "wood")
+        });
+        True(resolution.TryGet(new Slot(3, 0), out _), "row-major first duplicate wins deterministically");
+        Equal(1, resolution.Assignments.Count, "exactly one duplicate stack is protected");
+    }
+
+    private static void MergeSurvivorKeepsOneRecord()
+    {
+        var state = new ProtectionState(new[]
+        {
+            new ProtectionRecord(new Slot(0, 1), null, "wood"),
+            new ProtectionRecord(new Slot(1, 1), null, "wood")
+        });
+        var resolution = state.Reconcile(new[] { new ProtectionCandidate(new Slot(1, 1), "wood") });
+        Equal(1, resolution.Assignments.Count, "merged survivor gets one assignment");
+        Equal(1, state.Records.Count, "merged-away duplicate record is removed");
+        True(resolution.TryGet(new Slot(1, 1), out _), "preferred surviving stack keeps protection");
+        True(resolution.Changed, "record merge requests persistence");
+    }
+
+    private static void NoMatchingItemProtectsNothingUnrelated()
+    {
+        var state = new ProtectionState(new[] { new ProtectionRecord(new Slot(2, 0), 7, "berry") });
+        var resolution = state.Reconcile(new[]
+        {
+            new ProtectionCandidate(new Slot(2, 0), "wood"),
+            new ProtectionCandidate(new Slot(0, 2), "stone")
+        });
+        Equal(0, resolution.Assignments.Count, "no unrelated stack is protected");
+        Equal(1, state.Records.Count, "identified record stays dormant for its item");
+        True(!resolution.Changed, "dormant record does not churn persistence");
     }
 
     private static InventorySnapshot Player(int capacity, params ItemStackSnapshot[] items)

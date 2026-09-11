@@ -74,11 +74,18 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
-    def test_character_persistence_is_versioned_and_slot_scoped(self):
+    def test_player_snapshot_reserves_the_entire_quick_bar_row(self):
+        snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
+        self.assertIn("Enumerable.Range(0, width)", snapshots)
+        self.assertIn("The entire quick-bar row is fixed", snapshots)
+
+    def test_character_persistence_is_versioned_and_item_following(self):
         core = (ROOT / "src" / "Stackmaster.Core" / "ProtectionState.cs").read_text(encoding="utf-8")
         runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
-        self.assertIn('CurrentVersion = "v1"', core)
-        self.assertIn("Dictionary<Slot, ProtectionRecord>", core)
+        self.assertIn('CurrentVersion = "v2"', core)
+        self.assertIn('LegacyVersion = "v1"', core)
+        self.assertIn("List<ProtectionRecord>", core)
+        self.assertIn("ProtectionResolution Reconcile", core)
         self.assertIn("player.m_customData", runtime)
         self.assertIn("CharacterDataKey", runtime)
         self.assertIn("ProtectionState.TryParse", runtime)
@@ -100,6 +107,44 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RuntimeContext.Disable", executor)
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         self.assertIn("Restart Valheim before using it again", action)
+
+    def test_container_tooltip_formats_modifiers_before_main_key_with_exact_action_text(self):
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        self.assertIn("shortcut.Modifiers.Select(key => key.ToString())", action)
+        self.assertIn("Concat(new[] { shortcut.MainKey.ToString() })", action)
+        self.assertIn('"</color>] Auto-Stack All"', action)
+        self.assertNotIn('"</color>] Stackmaster: deposit + replenish"', action)
+        self.assertIn("new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt)", self.plugin)
+
+    def test_auto_sort_toggle_uses_visible_bottom_anchor_and_stays_interactive(self):
+        integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        self.assertIn('ToggleAnchorName = "StackmasterAutoSortAnchor"', integration)
+        self.assertIn("_toggleAnchor.transform.SetParent(gui.m_player, false)", integration)
+        self.assertIn("anchorRect.anchorMin = new Vector2(0f, 0f)", integration)
+        self.assertIn("anchorRect.anchoredPosition = new Vector2(12f, 4f)", integration)
+        self.assertIn("ignoreLayout = true", integration)
+        self.assertIn("_toggle.gameObject.SetActive(true)", integration)
+        self.assertIn("_toggle.interactable = true", integration)
+        self.assertIn("_toggle.SetIsOnWithoutNotify(RuntimeContext.Plugin.AutoSortEnabled.Value)", integration)
+        unsubscribe = integration.index("AutoSortEnabled.SettingChanged -= OnAutoSortSettingChanged")
+        subscribe = integration.index("AutoSortEnabled.SettingChanged += OnAutoSortSettingChanged")
+        self.assertLess(unsubscribe, subscribe)
+        self.assertIn("Object.Destroy(_toggleAnchor)", integration)
+
+    def test_explicit_target_is_inspected_before_budgeted_nearby_search(self):
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        target_inspection = discovery.index("handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic))")
+        stopwatch = discovery.index("var stopwatch = Stopwatch.StartNew()")
+        object_search = discovery.index("FindObjectsByType<Container>")
+        budget_check = discovery.index("stopwatch.Elapsed.TotalMilliseconds >= SearchBudgetMilliseconds")
+        self.assertLess(target_inspection, stopwatch)
+        self.assertLess(target_inspection, object_search)
+        self.assertLess(target_inspection, budget_check)
+        self.assertIn("container != target", discovery)
+        self.assertIn("return new DiscoveryResult(handles, inspectedNearby < nearby.Length", discovery)
+        self.assertIn("observedType == typeof(Container)", discovery)
+        self.assertIn("TryRefreshFromNetwork(container, out refreshFailure)", discovery)
+        self.assertIn("TryCheckAccess(player, container, out accessFailure)", discovery)
 
     def test_input_paths_are_narrow_and_modal_safe(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
@@ -127,13 +172,49 @@ class ProjectBoundaryTests(unittest.TestCase):
         mutation = action.index("TransferExecutor.Execute", refresh_comment)
         self.assertLess(fresh_capture, mutation)
         self.assertLess(fresh_discovery, mutation)
-        self.assertIn("Target container changed or became unavailable before transfer", action)
+        self.assertIn('LogTargetRejection("post-ownership refresh", freshDiscovery)', action)
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         self.assertIn("RPC_StackResponse", ownership)
         self.assertIn("LateResponseSuppressions", ownership)
         self.assertIn("previous ownership response is still pending", ownership)
         self.assertIn("Even after a session-fatal disable", ownership)
         self.assertNotIn("!RuntimeContext.Compatibility.IsCompatible || !OwnershipCoordinator.HandleResponse", ownership)
+
+    def test_protected_item_indicators_use_reconciled_assignments_and_do_not_intercept_input(self):
+        integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        interaction = (PLUGIN_DIR / "ProtectionInteraction.cs").read_text(encoding="utf-8")
+        snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
+        self.assertIn("InventorySnapshots.ResolveProtection(player, state)", integration)
+        self.assertIn("resolution.TryGet(new Slot(element.Position.x, element.Position.y), out record)", integration)
+        self.assertIn("ProtectedBorderColor", integration)
+        self.assertIn("new Color(0.22f, 0.78f, 0.84f, 0.82f)", integration)
+        self.assertIn("_targetLabel.gameObject.SetActive(hasTarget)", integration)
+        self.assertIn("_lockIcon.SetActive(!hasTarget)", integration)
+        self.assertIn("image.raycastTarget = false", integration)
+        self.assertIn("targetLabel.raycastTarget = false", integration)
+        self.assertIn("InventoryGuiUpdatePatch", integration)
+        self.assertGreaterEqual(interaction.count("InventoryIntegration.RefreshProtectionOverlays()"), 2)
+        self.assertIn("HideProtectionOverlays();", integration)
+        self.assertIn("DestroyProtectionOverlays();", integration)
+        self.assertIn("protectionResolution.Assignments.Keys", snapshots)
+
+    def test_generic_target_rejection_is_paired_with_local_diagnostics(self):
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        generic = 'targeted container is inaccessible, in use, unknown, or outside the configured radius.'
+        self.assertIn(generic, action)
+        initial_log = action.index('LogTargetRejection("initial discovery", discovery)')
+        initial_ui = action.index(generic, initial_log)
+        self.assertLess(initial_log, initial_ui)
+        self.assertIn("RuntimeContext.Plugin.Log.LogWarning", action)
+        for signal in (
+            "targetPresent=", "discovered=", "distance=", "radius=", "withinRadius=",
+            "searchTruncated=", "searchMs=", "budgetMs=", "type=", "vanilla=",
+            "nview=", "nviewValid=", "zdo=", "refresh=", "inventory=", "inUse=", "access=",
+        ):
+            self.assertIn(signal, discovery)
+        self.assertIn("RefreshFailure", discovery)
+        self.assertIn("AccessFailure", discovery)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

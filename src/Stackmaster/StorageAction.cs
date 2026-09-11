@@ -28,6 +28,7 @@ namespace Stackmaster
             var container = hover != null ? hover.GetComponentInParent<Container>() : null;
             if (container == null)
             {
+                RuntimeContext.Plugin.Log.LogWarning("Storage action rejected: targetHovered=false reason=no targeted container.");
                 RuntimeContext.ShowTopLeft("Stackmaster: target a valid container.");
                 _lastActionFrame = Time.frameCount;
                 return;
@@ -69,6 +70,7 @@ namespace Stackmaster
             _lastActionFrame = Time.frameCount;
             if (_actionRunning)
             {
+                RuntimeContext.Plugin.Log.LogWarning("Storage action rejected: actionRunning=true reason=another storage action is already running.");
                 RuntimeContext.ShowTopLeft("Stackmaster: storage action already running.");
                 return;
             }
@@ -93,6 +95,7 @@ namespace Stackmaster
                 var targetHandle = discovery.Containers.FirstOrDefault(handle => handle.Container == target);
                 if (targetHandle == null || !targetHandle.Snapshot.IsEligible)
                 {
+                    LogTargetRejection("initial discovery", discovery);
                     RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the configured radius.");
                     _actionRunning = false;
                     return;
@@ -205,7 +208,9 @@ namespace Stackmaster
                 var freshTarget = freshDiscovery.Containers.FirstOrDefault(handle => handle.Container == target);
                 if (freshTarget == null || !freshTarget.Snapshot.IsEligible)
                 {
-                    throw new InvalidOperationException("Target container changed or became unavailable before transfer.");
+                    LogTargetRejection("post-ownership refresh", freshDiscovery);
+                    RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the configured radius.");
+                    yield break;
                 }
                 var freshHandles = freshDiscovery.Containers.ToDictionary(handle => handle.Id, StringComparer.Ordinal);
                 var freshPlan = new StorageTransferPlanner().Plan(
@@ -275,12 +280,15 @@ namespace Stackmaster
 
             var shortageNames = new List<string>();
             var inventory = player.GetInventory();
-            foreach (var record in protection.Records.Where(value => value.TargetQuantity.HasValue).OrderBy(value => value.Slot.Row).ThenBy(value => value.Slot.Column))
+            var resolution = InventorySnapshots.ResolveProtection(player, protection);
+            foreach (var assignment in resolution.Assignments.Where(value => value.Value.TargetQuantity.HasValue)
+                .OrderBy(value => value.Key.Row).ThenBy(value => value.Key.Column))
             {
-                var item = inventory.GetItemAt(record.Slot.Column, record.Slot.Row);
+                var record = assignment.Value;
+                var item = inventory.GetItemAt(assignment.Key.Column, assignment.Key.Row);
                 if (item == null || !string.Equals(InventorySnapshots.PersistentItemKey(item), record.TargetItemKey, StringComparison.Ordinal))
                 {
-                    shortageNames.Add("slot " + (record.Slot.Row * inventory.GetWidth() + record.Slot.Column + 1) + " target missing");
+                    shortageNames.Add("target item missing");
                     continue;
                 }
 
@@ -289,6 +297,11 @@ namespace Stackmaster
                 {
                     shortageNames.Add(InventorySnapshots.VisibleName(item) + " " + missing);
                 }
+            }
+            var assignedRecords = new HashSet<ProtectionRecord>(resolution.Assignments.Values);
+            foreach (var dormant in protection.Records.Where(record => record.TargetQuantity.HasValue && !assignedRecords.Contains(record)))
+            {
+                shortageNames.Add("target item missing");
             }
             if (shortageNames.Count > 0)
             {
@@ -304,11 +317,26 @@ namespace Stackmaster
             {
                 lines.Add("Skipped: " + string.Join(", ", skipReasons));
             }
+            if (execution.FailedContainers.Count > 0)
+            {
+                RuntimeContext.Plugin.Log.LogWarning(
+                    "Storage action completed with safe container rejections: " + string.Join(", ", skipReasons));
+            }
             if (plan.SearchTruncated)
             {
                 lines.Add("Partial search: time budget reached.");
             }
             RuntimeContext.ShowTopLeft(string.Join("\n", lines));
+        }
+
+        private static void LogTargetRejection(string stage, DiscoveryResult discovery)
+        {
+            RuntimeContext.Plugin.Log.LogWarning(
+                "Storage action rejected at " + stage + ": " +
+                discovery.TargetDiagnostic.Format(
+                    discovery.Truncated,
+                    discovery.SearchMilliseconds,
+                    ContainerDiscovery.SearchBudgetMilliseconds));
         }
 
         private static string MeaningfulFailureReason(string reason)
@@ -345,7 +373,11 @@ namespace Stackmaster
         {
             if (RuntimeContext.Compatibility.IsCompatible && __instance.GetType() == typeof(Container) && RuntimeContext.Plugin != null)
             {
-                __result += "\n[<color=yellow>" + RuntimeContext.Plugin.StorageActionShortcut.Value + "</color>] Stackmaster: deposit + replenish";
+                var shortcut = RuntimeContext.Plugin.StorageActionShortcut.Value;
+                var shortcutText = string.Join(" + ", shortcut.Modifiers.Select(key => key.ToString())
+                    .Concat(new[] { shortcut.MainKey.ToString() })
+                    .ToArray());
+                __result += "\n[<color=yellow>" + shortcutText + "</color>] Auto-Stack All";
             }
         }
     }

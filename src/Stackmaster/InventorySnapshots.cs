@@ -51,18 +51,48 @@ namespace Stackmaster
             if (inventory == null) throw new ArgumentNullException(nameof(inventory));
             if (catalog == null) throw new ArgumentNullException(nameof(catalog));
 
+            var protectionResolution = isPlayer && player != null && protection != null
+                ? ResolveProtection(player, protection)
+                : null;
             var width = inventory.GetWidth();
             var items = inventory.GetAllItems()
-                .Select(item => ToSnapshot(inventoryId, item, width, catalog, isPlayer, player, protection))
+                .Select(item => ToSnapshot(inventoryId, item, width, catalog, isPlayer, player, protectionResolution))
                 .ToArray();
 
             var height = inventory.GetHeight();
-            var reservedSlots = isPlayer && protection != null
-                ? protection.Records
-                    .Where(record => record.Slot.Column < width && record.Slot.Row < height)
-                    .Select(record => record.Slot.Row * width + record.Slot.Column)
-                : Enumerable.Empty<int>();
-            return new InventorySnapshot(inventoryId, width * inventory.GetHeight(), items, reservedSlots);
+            IEnumerable<int> reservedSlots = Enumerable.Empty<int>();
+            if (isPlayer)
+            {
+                // The entire quick-bar row is fixed, including empty slots, so sorting can
+                // neither remove from it nor use it as a destination.
+                reservedSlots = height > 0 ? Enumerable.Range(0, width) : Enumerable.Empty<int>();
+                if (protectionResolution != null)
+                {
+                    reservedSlots = reservedSlots.Concat(protectionResolution.Assignments.Keys
+                        .Where(slot => slot.Column < width && slot.Row < height)
+                        .Select(slot => slot.Row * width + slot.Column));
+                }
+            }
+            return new InventorySnapshot(inventoryId, width * height, items, reservedSlots);
+        }
+
+        internal static ProtectionResolution ResolveProtection(Player player, ProtectionState protection)
+        {
+            if (player == null) throw new ArgumentNullException(nameof(player));
+            if (protection == null) throw new ArgumentNullException(nameof(protection));
+
+            var inventory = player.GetInventory();
+            var candidates = inventory.GetAllItems()
+                .Select(item => new ProtectionCandidate(
+                    new Slot(item.m_gridPos.x, item.m_gridPos.y),
+                    PersistentItemKey(item)))
+                .ToArray();
+            var resolution = protection.Reconcile(candidates);
+            if (resolution.Changed)
+            {
+                RuntimeContext.SaveProtection(player, protection);
+            }
+            return resolution;
         }
 
         internal static ItemStackSnapshot ToSnapshot(
@@ -72,12 +102,12 @@ namespace Stackmaster
             CompatibilityCatalog catalog,
             bool isPlayer,
             Player player,
-            ProtectionState protection)
+            ProtectionResolution protectionResolution)
         {
             var slot = item.m_gridPos.y * width + item.m_gridPos.x;
             var protectedSlot = new Slot(item.m_gridPos.x, item.m_gridPos.y);
             ProtectionRecord record = null;
-            var isProtected = isPlayer && protection != null && protection.TryGet(protectedSlot, out record);
+            var isProtected = isPlayer && protectionResolution != null && protectionResolution.TryGet(protectedSlot, out record);
             int? target = null;
             if (isProtected && record.TargetQuantity.HasValue &&
                 string.Equals(record.TargetItemKey, PersistentItemKey(item), StringComparison.Ordinal))

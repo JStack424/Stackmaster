@@ -32,7 +32,7 @@ namespace Stackmaster
                     new AcceptableValueRange<float>(1f, 50f)));
             StorageActionShortcut = Config.Bind("General", "Storage-action keybind",
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
-                "While targeting an eligible container: deposit matching items and replenish protected slot targets.");
+                "While targeting an eligible container: deposit matching items and replenish protected stack targets.");
 
             var compatibility = CompatibilityGate.Evaluate();
             RuntimeContext.Initialize(this, compatibility);

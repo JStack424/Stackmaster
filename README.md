@@ -1,12 +1,12 @@
 # Stackmaster
 
-Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines automatic inventory sorting, deliberate nearby-storage depositing, and protected-slot replenishment in one workflow.
+Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines automatic inventory sorting, deliberate nearby-storage depositing, and protected-stack replenishment in one workflow.
 
 > Turn a messy Viking inventory into a tidy, adventure-ready loadout.
 
 ## Status
 
-The 18-checkpoint behavior contract was approved on September 11, 2026. Joe then authorized the complete local v0.1 implementation without a separate skeleton-only Windows smoke test, using the first clean-profile Windows run as the integrated gate. The gameplay implementation and automated local verification are complete; no plugin has been installed, packaged for testing, or published.
+The 18-checkpoint behavior contract was approved on September 11, 2026 and later refined so each protection record follows one compatible matching stack rather than an unrelated replacement in an old slot. Joe authorized the complete local v0.1 implementation and clean-profile testing. An earlier integrated test package was exercised; this source now contains the completed feedback corrections for its replacement. Nothing has been published.
 
 - [Approved behavior contract](docs/DESIGN-QUESTIONNAIRE.md)
 - [Environment-validation and implementation plan](docs/NEXT-STEPS.md)
@@ -19,7 +19,7 @@ Nothing has been installed, published, or copied from Valheim into this reposito
 Build one deployable `Stackmaster` BepInEx plugin/package with separate internal modules for:
 
 1. automatic alphabetical inventory/chest sorting;
-2. exact-slot protection and optional replenishment targets;
+2. matching-stack protection with a preferred slot and optional replenishment targets;
 3. the explicit nearby-storage deposit/replenish action;
 4. container discovery, validation, and safe transfer execution;
 5. compact visual result feedback.
@@ -89,14 +89,14 @@ The repository uses the workspace-local .NET 8 SDK wrapper; it does not require 
 ./scripts/build.sh
 ```
 
-The build compiles the pure planner library and the integrated `net48` BepInEx plugin, runs the pure-domain test executable and repository safety checks, and fails if private BepInEx, Valheim, or Unity DLLs leak into plugin output. The current gate passes with 18/18 pure-domain tests, 29/29 static checks, zero compiler warnings, zero compiler errors, and only `Stackmaster.dll` plus its PDB in plugin output.
+The build compiles the pure planner library and the integrated `net48` BepInEx plugin, runs the pure-domain test executable and repository safety checks, and fails if private BepInEx, Valheim, or Unity DLLs leak into plugin output. The current gate passes with 25/25 pure-domain tests, 35/35 static checks, zero compiler warnings, zero compiler errors, and only `Stackmaster.dll` plus its PDB in plugin output.
 
 ## Project principles
 
 - The approved behavior contract is the source of truth; material changes return to Joe for approval.
 - Keep policy logic deterministic and unit-testable outside Unity.
 - Preserve exact item identity, quantity, quality, durability, custom data, and legal stack limits.
-- Never move quick-bar, equipped, or protected-slot contents.
+- Never move quick-bar, equipped, or currently resolved protected-stack contents.
 - Treat shared-container mutation as network-affecting until the complete host/guest/dedicated test matrix passes.
 - If compatibility cannot be trusted, disable all Stackmaster item-changing behavior for that session.
 - Keep generated reports, local assemblies, profiles, machine paths, credentials, and build output out of git.

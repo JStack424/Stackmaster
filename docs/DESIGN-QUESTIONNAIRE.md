@@ -49,8 +49,8 @@ Joe returns from adventuring, approaches and looks directly at a chest, and pres
 - Search only while the player is deliberately targeting a chest, so storage is not accessible remotely from arbitrary distance.
 - Add the action to the targeted chest's interaction tooltip alongside the normal open prompt.
 - Never remove items from the quick bar, equipped items, or user-protected items.
-- Let the player mark inventory items or slots as kept/favorited/held from the inventory UI, likely through an Alt-click interaction.
-- Keep protected items in static player-chosen positions and exclude them from sorting.
+- Let the player mark one specific matching inventory stack as kept/favorited/held from the inventory UI through an Alt-click interaction.
+- Prefer the protected stack's current slot, follow that compatible stack if it is moved or survives a merge, and exclude its resolved slot from sorting.
 - Let protected consumables such as food and ammunition carry a desired stack quantity.
 - During the same hotkey action, deposit any amount above each desired quantity and withdraw enough from nearby storage to replenish any shortage.
 - The intended result is one deliberate button press that unloads gathered materials and restores the player's chosen adventuring loadout.
@@ -71,7 +71,7 @@ The first public version will ship the complete core loop together: inventory so
 ### 4. Sort scope and protected areas
 
 - Automatically sort both the player's movable inventory area and the chest that is opened.
-- The player quick bar, equipped items, and user-favorited/held items remain protected, fixed in their chosen slots, and excluded from sorting.
+- The entire player quick bar, equipped items, and each currently resolved user-favorited/held stack remain fixed in place and excluded from sorting.
 - Opening a chest should organize that chest automatically rather than requiring a separate chest-sort button.
 - Chest-specific exclusions and category rules remain assigned to the chest-controls checkpoint.
 
@@ -121,19 +121,21 @@ The first public version will ship the complete core loop together: inventory so
 
 ### 11. Loadout replenishment and target quantities
 
-- Any stackable item can be protected with an optional user-set target quantity and stays in its chosen inventory slot.
+- Any stackable item can be protected with an optional user-set target quantity. One protection record follows one compatible matching player stack.
+- The record prefers its current/original slot while that slot still contains a matching item. If the stack moves or is merged away, the record reattaches to one compatible matching stack in stable row-major inventory order and persists that stack's slot as the new preference.
+- A nonmatching replacement in the old preferred slot never inherits protection, and one record never protects every matching stack. If no compatible stack exists, the record remains safely dormant and protects nothing unrelated.
 - When protecting a stackable item, the player chooses between protection only and protection with replenishment.
 - Protection-only items remain fixed and are never deposited, but are not replenished or trimmed to a target.
 - Non-stackable protected items remain fixed and protected without a quantity target.
-- Each target belongs to that exact protected slot, not to the item type across the player's whole inventory.
-- Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
+- Each target belongs to that single resolved matching stack. Loose compatible copies elsewhere do not satisfy it.
+- Replenishment fills the resolved protected stack toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
 - When the player chooses protection with replenishment, immediately ask for the target quantity rather than inferring it from the stack's current quantity or maximum size.
 - Valid targets are bounded by what that single slot can legally hold.
 - For replenishment, withdraw compatible items from the targeted chest first, then from other eligible nearby containers from nearest to farthest.
-- If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected slot partially replenished rather than making the transfer all-or-nothing.
+- If nearby storage cannot satisfy the full target, take everything available toward it and leave the protected stack partially replenished rather than making the transfer all-or-nothing.
 - Report the remaining shortfall in the action feedback.
-- Do not edit a target in place. To change it, the player unprotects the slot, protects it again, and enters a new target in the normal setup prompt.
-- If a protected slot contains more than its target, deposit the excess through the normal matching-container routing and leave exactly the target quantity in that slot.
+- Do not edit a target in place. To change it, the player unprotects the assigned stack, protects it again, and enters a new target in the normal setup prompt.
+- If the protected stack contains more than its target, deposit the excess through the normal matching-container routing and leave exactly the target quantity in that stack.
 
 ### 12. Chest controls and exceptions
 
@@ -148,7 +150,8 @@ The first public version will ship the complete core loop together: inventory so
 - On keyboard, trigger the combined deposit/replenish action by holding Left Alt + E while targeting a valid container.
 - This deliberately extends Valheim's familiar hold-E container behavior rather than adding an unrelated standalone key.
 - Keep the binding configurable.
-- In the inventory UI, Left Alt-clicking an item or slot opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
+- In the inventory UI, Left Alt-clicking an item opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
+- A resolved protected stack has a soft teal/blue border; its bottom-left shows either the target quantity or, for protection-only, a small lock. These indicators are visual-only and never intercept input.
 - The auto-sort setting appears as an in-game checkbox.
 - v0.1 supports keyboard and mouse only; controller bindings and controller-specific UI are outside the first-release scope.
 - All quantities in the result popup count individual item units, not stacks or distinct item types.
@@ -175,7 +178,7 @@ The first public version will ship the complete core loop together: inventory so
 - Put the auto-sort checkbox directly in the inventory UI.
 - Expose the radius and keybinding through the normal r2modman/BepInEx configuration rather than building a separate in-game settings panel for them.
 - Store one set of these settings per r2modman profile; all characters and worlds launched through that profile use the same values.
-- Protected-slot choices and replenishment targets belong to the individual Valheim character and follow that character across every world.
+- Protected-stack identities, preferred slots, and replenishment targets belong to the individual Valheim character and follow that character across every world.
 
 ### 16. Compatibility, performance, and failure safety
 
@@ -184,6 +187,7 @@ The first public version will ship the complete core loop together: inventory so
 - Limit v0.1 support to vanilla Valheim containers. Do not claim automatic compatibility with modded storage or ship one-off patches for other storage mods yet.
 - Unknown or modded container types are excluded rather than being modified speculatively.
 - If one container fails during a storage action, skip that container, continue safely with the others, and report the failure in the result popup.
+- Pair safe storage-action rejection messages with one concise local BepInEx diagnostic line. For target eligibility, include discovery/radius/budget, vanilla type, network view/ZDO, refresh, inventory, in-use, and access signals without mutating state merely to diagnose.
 - Completed safe transfers remain completed; do not attempt a risky whole-action rollback.
 - Use a time budget rather than a fixed chest-count cap when a large configured radius contains many containers.
 - Process containers in the already-set routing order until the action reaches its responsiveness budget, then stop safely and report that the action ended before every eligible container was checked.
@@ -216,9 +220,9 @@ The first public version will ship the complete core loop together: inventory so
 - Mod-conflict testing is limited to a clean r2modman profile containing BepInEx and Stackmaster's declared dependencies; v0.1 makes no broader coexistence promise for other gameplay or inventory mods.
 - Packaging gate: the release ZIP must install successfully into a fresh r2modman profile and launch with its declared dependencies and intended defaults.
 - Updating an older package and uninstalling cleanly are not required release-gate tests for v0.1.
-- Persistence gate: after protecting slots and setting replenishment targets, fully quit and relaunch Valheim with the same character and verify those choices remain intact.
+- Persistence gate: after protecting stacks and setting replenishment targets, fully quit and relaunch Valheim with the same character and verify those choices remain intact.
 - Cross-world persistence and separate-character isolation are part of the intended behavior but are not separate required release-gate tests for v0.1.
-- Automated tests for deterministic sorting and item-transfer logic must pass before release, including protected-slot behavior, partial-stack priority, routing order, replenishment, shortages, excess handling, and no item-count drift.
+- Automated tests for deterministic sorting and item-transfer logic must pass before release, including protected-stack reconciliation, non-inheritance by replacement items, deterministic duplicate choice, merge survivors, partial-stack priority, routing order, replenishment, shortages, excess handling, and no item-count drift.
 - Performance testing is limited to one normal-sized base representing ordinary play within the configured 20-meter radius. The action must remain acceptably responsive there, and profiling from that run sets the internal time budget.
 - A deliberately oversized stress base is not a separate v0.1 release gate, but automated tests must verify that reaching the time budget stops safely and produces the promised partial-search notice.
 - The supported Valheim version must be recorded from the installed game. Before claiming compatibility after a later game update, rerun the same smoke gate; automated coverage must also verify that a failed compatibility check disables all item-changing behavior and surfaces the warning.

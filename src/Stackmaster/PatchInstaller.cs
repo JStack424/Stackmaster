@@ -18,6 +18,7 @@ namespace Stackmaster
             {
                 Postfix(typeof(InventoryGui), "Awake", Type.EmptyTypes, typeof(InventoryGuiAwakePatch)),
                 Postfix(typeof(InventoryGui), "Hide", Type.EmptyTypes, typeof(InventoryGuiHidePatch)),
+                Postfix(typeof(InventoryGui), "Update", Type.EmptyTypes, typeof(InventoryGuiUpdatePatch)),
                 Postfix(typeof(InventoryGui), "Show", new[] { typeof(Container), typeof(int) }, typeof(InventoryGuiShowPatch)),
                 Prefix(typeof(InventoryGui), "OnSelectedItem", new[]
                 {

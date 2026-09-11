@@ -227,7 +227,7 @@ The approved v0.1 surface contains exactly three profile-wide settings:
 
 Do not add master-enable, feature-toggle, preset, filter, verbosity, per-container, or advanced settings in v0.1. Diagnostic detail may use ordinary BepInEx logging without becoming a public configuration option.
 
-Protected exact slots and optional replenishment targets are character data rather than profile settings; they follow that character across worlds. Use a small versioned persistence schema, validate it before use, and fail without moving items if it is malformed or incompatible.
+Protected-stack identities, preferred slots, and optional replenishment targets are character data rather than profile settings; they follow that character across worlds. The approved refinement supersedes the earlier exact-slot draft: one record follows one compatible stack and a nonmatching replacement never inherits. Use a small versioned persistence schema, validate it before use, and fail without moving items if it is malformed or incompatible.
 
 ## 8. Logging and debugging
 
@@ -315,7 +315,7 @@ Use backed-up disposable worlds and characters. The exact release gate is mainta
 ### Automated coverage
 
 - deterministic sorting and compatible stack consolidation;
-- exact protected-slot behavior;
+- protected-stack reconciliation, including preferred-slot matches, moves, deterministic duplicates, merge survivors, dormant records, and nonmatching replacements;
 - partial-stack priority, targeted-chest priority, nearest routing, and stable slot order;
 - replenishment, partial shortages, excess-above-target handling, overflow, and no destination;
 - item-count and metadata conservation;
@@ -334,7 +334,7 @@ Each multiplayer run checks peer compatibility and synchronized container state.
 ### Additional release gates
 
 - clean profile containing only BepInEx, Stackmaster, and declared dependencies;
-- one complete quit/relaunch with the same character to verify protected-slot/target persistence;
+- one complete quit/relaunch with the same character to verify protected-stack identity/preferred-slot/target persistence;
 - one normal-sized base at the 20-meter default to verify responsiveness and profile the internal time budget;
 - fresh r2modman import of the exact ZIP with intended defaults;
 - package structure validation and exclusion of local paths, game DLLs, credentials, test binaries, and development debris.

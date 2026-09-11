@@ -53,7 +53,7 @@ namespace Stackmaster
             const string reason = "Saved protection data is malformed or from an unsupported version; restart required.";
             Disable(reason);
             Plugin.Log.LogError("Stackmaster disabled without changing the saved protection payload: " + reason);
-            ShowCenter("Stackmaster disabled: protected-slot data could not be read safely. Your saved data was not changed.");
+            ShowCenter("Stackmaster disabled: protected-item data could not be read safely. Your saved data was not changed.");
             return false;
         }
 

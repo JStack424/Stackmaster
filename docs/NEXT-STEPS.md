@@ -2,9 +2,9 @@
 
 This plan follows the behavior contract approved on September 11, 2026. [DESIGN-QUESTIONNAIRE.md](DESIGN-QUESTIONNAIRE.md) is the product source of truth; [RESEARCH.md](RESEARCH.md) retains the ecosystem evidence and provisional technical findings.
 
-Environment validation and the complete local v0.1 gameplay implementation are complete. On September 11, 2026, Joe explicitly superseded the earlier skeleton-first hold: the separate skeleton-only smoke test is skipped, implementation may proceed without routine milestone pauses, and the first clean-profile Windows test will exercise the integrated build. Do not modify Valheim/r2modman, create a public repository, prepare the user-facing smoke-test package, or publish until the next approved gate.
+Environment validation and the complete local v0.1 gameplay implementation are complete. On September 11, 2026, Joe explicitly superseded the earlier skeleton-first hold and authorized uninterrupted implementation. The first clean-profile Windows pass produced the feedback corrections now integrated here, and Joe authorized a replacement test package after those fixes. Do not create a public repository or publish until a later explicit gate.
 
-Current local verification: zero compiler warnings/errors, 18/18 pure-domain tests, 29/29 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. These results do **not** establish multiplayer or network safety; the combined Windows matrix remains mandatory.
+Current local verification: zero compiler warnings/errors, 25/25 pure-domain tests, 35/35 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. These results do **not** establish multiplayer or network safety; the replacement clean-profile test and combined Windows matrix remain mandatory.
 
 ## 1. Approved release boundary
 
@@ -23,8 +23,8 @@ Keep internal modules separate for testability and safe maintenance, but do not 
 ### Behavior implementation must match the approved contract
 
 - Auto-sort runs when inventory opens and sorts the movable player inventory plus the opened chest alphabetically.
-- Quick-bar, equipped, and exact protected slots remain fixed; protected partial stacks are untouched.
-- Left Alt-click manages protection and optional legal per-slot replenishment targets.
+- The entire quick bar, equipped items, and each resolved protected stack remain fixed; protected partial stacks are untouched.
+- Left Alt-click manages one-record/one-matching-stack protection and optional legal per-stack replenishment targets. Preferred-slot matches win; moved stacks reattach deterministically; unrelated replacements never inherit.
 - Configurable Left Alt + E performs the combined deposit/replenish action only while deliberately targeting a valid container.
 - Discovery is player-centered, on demand, and 20 meters by default.
 - Only accessible vanilla containers participate; unknown/modded or in-use containers are skipped safely.
@@ -212,11 +212,11 @@ Exit criterion: the exact environment is documented and the compile/reference bo
 
 ### Milestone 1 — pure sorting and transfer models
 
-- [x] Define item identity, stack compatibility, protected-slot, inventory, container, and result models.
+- [x] Define item identity, stack compatibility, protected-stack assignment, inventory, container, and result models.
 - [x] Implement stable alphabetical sorting and compatible stack consolidation.
 - [x] Implement deterministic routing: targeted chest first, then nearest to farthest, partial stacks before new stacks, stable slot order.
 - [x] Implement replenishment, partial shortages, target trimming, and no-destination results.
-- [x] Test empty/full inventories, duplicates, metadata differences, max stacks, protected slots, shortages, overflow, and no item-count drift.
+- [x] Test empty/full inventories, duplicates, metadata differences, max stacks, protected-stack reconciliation, shortages, overflow, and no item-count drift.
 
 Exit criterion: comprehensive automated tests pass without launching Valheim.
 
@@ -225,7 +225,7 @@ Exit criterion: comprehensive automated tests pass without launching Valheim.
 - [x] Identify the current inventory-open hook and supported mutation APIs.
 - [x] Add the in-inventory auto-sort checkbox, enabled by default.
 - [x] Sort the movable player area and an owner-authorized opened vanilla chest once per inventory open.
-- [x] Preserve quick bar, equipped items, protected slots, and protected partial stacks.
+- [x] Preserve the entire quick bar, equipped items, resolved protected stacks, and protected partial stacks.
 - [x] Trigger required vanilla inventory/UI refresh methods.
 - [x] Verify deterministic conservation and idempotence in the local automated gate; repeat in Valheim during the combined Windows gate.
 
@@ -235,11 +235,13 @@ Exit criterion: source integration and automated losslessness checks are complet
 
 - [x] Add Left Alt-click Protect only / Protect with target / Unprotect behavior.
 - [x] Prompt stackable items immediately for a legal single-slot target quantity (`0` means Protect only).
-- [x] Store versioned protection against exact inventory slots in per-character custom data across worlds.
+- [x] Store versioned per-character protection identity, preferred slot, and optional target data across worlds; migrate the safe subset of v1 exact-slot records.
+- [x] Reconcile each record to exactly one matching stack, preferring its current slot and otherwise choosing in deterministic row-major order; never protect a nonmatching replacement.
+- [x] Show a noninteractive soft teal border plus a bottom-left target quantity or protection-only lock on resolved stacks.
 - [x] Validate saved data before use and skip malformed or incompatible records safely.
 - [ ] Verify one complete quit/relaunch with the same character preserves choices.
 
-Exit criterion: serialization, malformed-record handling, exact-slot mapping, and stale item-key behavior pass locally; the quit/relaunch check remains in the combined Windows gate.
+Exit criterion: serialization, v1 migration, malformed-record handling, matching-stack reconciliation, replacement-item non-inheritance, deterministic duplicates, merge survivors, and dormant-record behavior pass locally; the quit/relaunch check remains in the combined Windows gate.
 
 ### Milestone 4 — discovery and storage planning
 
@@ -331,7 +333,7 @@ Required gates:
 - [ ] The same basic flow passes while hosting co-op with an unmodded peer; state stays synchronized.
 - [ ] The same basic flow passes as a guest of a vanilla host; state stays synchronized.
 - [ ] The same basic flow passes on a vanilla dedicated server with no server-side Stackmaster installation; unmodded peers remain compatible.
-- [ ] One full game quit/relaunch preserves protected slots and targets for the same character.
+- [ ] One full game quit/relaunch preserves protected-stack identities, preferred slots, and targets for the same character.
 - [ ] A normal-sized base at the 20-meter default remains acceptably responsive and supplies profiling data for the internal time budget.
 - [ ] A fresh r2modman profile imports the exact ZIP and launches with declared dependencies and intended defaults.
 - [ ] The exact ZIP contains valid required Thunderstore files and no game assemblies, local paths, credentials, tests, or development debris.
