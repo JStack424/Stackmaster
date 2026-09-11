@@ -152,7 +152,8 @@ The first public version will ship the complete core loop together: inventory so
 - Keep the binding configurable.
 - In the inventory UI, Left Alt-clicking an item or slot opens its protection choices: protect only, protect with replenishment target when stackable, or unprotect when already protected.
 - v0.1 supports keyboard and mouse only; controller bindings and controller-specific UI are outside the first-release scope.
-- Still to settle: popup contents and counting units, sounds, and error/skip feedback.
+- All quantities in the result popup count individual item units, not stacks or distinct item types.
+- Still to settle: exact popup contents, sounds, and error/skip feedback.
 
 ## Deferred decisions
 
