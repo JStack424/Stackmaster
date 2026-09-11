@@ -4,8 +4,8 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 
 ## Progress
 
-- **Completed:** 9 of 18
-- **Current:** Question 10 — Inventory keep and ignore rules
+- **Completed:** 10 of 18
+- **Current:** Question 11 — Loadout replenishment and target quantities
 - **Build readiness:** Not ready yet
 
 ## How the interview works
@@ -29,7 +29,7 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **7. Deposit trigger and timing** — Decide exactly when nearby-chest stacking or depositing runs and whether automatic behavior is opt-in.
 - [x] **8. Eligible storage and search area** — Define container types, search radius or area, access rules, carts/ships/personal chests, and what counts as “nearby.”
 - [x] **9. Deposit and routing rules** — Decide matching stacks versus empty slots, destination priority, overflow behavior, and whether chest names or tags control routing.
-- [ ] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
+- [x] **10. Inventory keep and ignore rules** — Define items, categories, slots, minimum quantities, equipped gear, consumables, and other things that must remain with the player.
 - [ ] **11. Loadout replenishment and target quantities** — Define desired stack sizes, how players configure them, where replacement food/ammo comes from, and how shortages or excess are handled.
 - [ ] **12. Chest controls and exceptions** — Decide how a chest opts in or out, whether it can accept or reject categories, and whether those rules belong to a chest, player, or world.
 - [ ] **13. Controls, interface, and feedback** — Choose keyboard/controller inputs, inventory buttons, configuration access, HUD summaries, sounds, and error/skip messages.
@@ -112,12 +112,19 @@ The first public version will ship the complete core loop together: inventory so
 - Any quantity that cannot fit remains in the player's inventory.
 - After the hotkey finishes, show a brief popup with the number of items deposited and the number left behind/not deposited. Final wording and whether counts mean units, stacks, or item types remain for Question 13.
 
+### 10. Inventory keep and ignore rules
+
+- Quick-bar items, equipped items, and user-favorited/held items are protected and never deposited.
+- Every other item in the player's movable inventory area is eligible for deposit when a compatible destination exists.
+- Do not add a separate item or category ignore list.
+- Target-quantity loadout items and their excess/shortage behavior are handled by Question 11.
+
 ## Current checkpoint notes
 
-### Question 10 — inventory keep and ignore rules
+### Question 11 — loadout replenishment and target quantities
 
-- Already protected: quick-bar items, equipped items, and user-favorited/held items.
-- Still to settle: whether every other item is eligible for deposit or whether the player can define additional item/category exclusions.
+- Protected food and ammunition can carry user-set target quantities and stay in their chosen inventory slots.
+- Still to settle: whether a target belongs to a specific protected slot or applies to that item type across the whole inventory, plus target editing, source priority, shortage behavior, and excess handling.
 
 ## Deferred decisions
 
