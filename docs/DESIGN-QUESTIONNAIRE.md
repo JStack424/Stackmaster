@@ -124,7 +124,9 @@ The first public version will ship the complete core loop together: inventory so
 ### Question 11 — loadout replenishment and target quantities
 
 - Protected food and ammunition can carry user-set target quantities and stay in their chosen inventory slots.
-- Still to settle: whether a target belongs to a specific protected slot or applies to that item type across the whole inventory, plus target editing, source priority, shortage behavior, and excess handling.
+- Each target belongs to that exact protected slot, not to the item type across the player's whole inventory.
+- Replenishment fills that protected slot toward its own target without treating loose copies elsewhere in the inventory as satisfying it.
+- Still to settle: target editing, source priority, shortage behavior, and excess handling.
 
 ## Deferred decisions
 
