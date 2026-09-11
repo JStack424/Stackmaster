@@ -176,7 +176,8 @@ The first public version will ship the complete core loop together: inventory so
 - Do not add separate deposit/replenishment toggles, presets, or an advanced-settings section in v0.1.
 - Put the auto-sort checkbox directly in the inventory UI.
 - Expose the radius and keybinding through the normal r2modman/BepInEx configuration rather than building a separate in-game settings panel for them.
-- Still to settle: whether settings are shared or scoped per player/profile/world.
+- Store one set of these settings per r2modman profile; all characters and worlds launched through that profile use the same values.
+- Still to settle: how protected-slot choices and replenishment targets persist, since those are character loadout data rather than general mod settings.
 
 ## Deferred decisions
 
