@@ -155,7 +155,8 @@ The first public version will ship the complete core loop together: inventory so
 - All quantities in the result popup count individual item units, not stacks or distinct item types.
 - Keep the popup compact: show aggregate totals for deposited, replenished, and left behind, while naming any item-specific replenishment shortages and meaningful skipped items.
 - Do not show a full item-by-item success breakdown.
-- Still to settle: sounds and error feedback.
+- Do not add success or failure sounds; feedback stays visual.
+- Still to settle: error feedback.
 
 ## Deferred decisions
 
