@@ -207,7 +207,13 @@ The first public version will ship the complete core loop together: inventory so
 
 ### Question 18 — test plan and definition of done
 
-- Still to settle: required solo, listen-server host/guest, dedicated-server, safety, performance, conflict, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
+- Required real gameplay environments before v0.1 publication:
+  - Solo world.
+  - Player hosting a co-op world.
+  - Non-host guest in a co-op world.
+  - Vanilla dedicated server, with no server-side Stackmaster installation.
+- Each multiplayer test must verify that unmodded peers remain compatible and that chest state stays synchronized.
+- Still to settle: safety, performance, conflict, persistence, packaging, installation, and clean-removal tests that must pass before v0.1 is publishable.
 
 ## Deferred decisions
 
