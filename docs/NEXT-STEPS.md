@@ -4,11 +4,11 @@ This plan follows the behavior contract approved on September 11, 2026. [DESIGN-
 
 Environment validation, the complete local v0.1 gameplay implementation, and the solo clean-profile smoke gate are complete. On September 11, 2026, Joe explicitly approved the consolidated contract, authorized uninterrupted implementation, accepted the corrected Build 4 candidate after solo testing, and authorized the first public GitHub/Thunderstore release for co-op testing.
 
-The **0.2.1 public-publishing candidate** carries forward independently switchable building and crafting from nearby chests plus aggregate build/craft HUD totals. It reads stable `ZDOVars.s_items` snapshots without claiming ownership, hydrates detached item metadata from resolved prefabs, rejects incomplete chest snapshots as a whole, and fails open to vanilla UI behavior if nearby-resource display calculation fails. At action time the complete player-first plan selects only the minimum distinct chest set it needs, revalidates exact identity, access, revisions, use state, and contents, then withdraws exact quantities with rollback protection.
+The **0.2.2 documentation-only release candidate** carries forward independently switchable building and crafting from nearby chests plus aggregate build/craft HUD totals without changing gameplay behavior. It reads stable `ZDOVars.s_items` snapshots without claiming ownership, hydrates detached item metadata from resolved prefabs, rejects incomplete chest snapshots as a whole, and fails open to vanilla UI behavior if nearby-resource display calculation fails. At action time the complete player-first plan selects only the minimum distinct chest set it needs, revalidates exact identity, access, revisions, use state, and contents, then withdraws exact quantities with rollback protection.
 
 Valheim's owner-authorized response is asynchronous, so it cannot safely finish inside a synchronous Harmony build/craft prefix. Blind `ClaimOwnership` is not used. A remote-owned action cancels its first attempt without mutation while ownership is prepared, then asks the player to retry through the normal vanilla action path. Stackmaster keeps only ownership it demonstrably acquired available for a bounded 10-second retry window, completes reservations and any rollback before cleanup, and then returns the exact ZDO to Valheim's native unowned state after success, cancellation, validation failure, timeout, disable, or disconnect. If immediate release cannot be proven safe, cleanup retries later instead of touching uncertain ownership. A required chest rejected as busy or unavailable shows exactly `The required materials are currently in use`; denial, stale state, a changed plan, or any failed validation cancels without partial consumption.
 
-Joe live-approved the corrected local candidate on September 12, 2026. Current automated verification passes with zero compiler warnings/errors, 61/61 pure-domain tests, and 48/48 static/repository checks. These results and the completed live checks do **not** establish universal multiplayer or network safety: the complete co-op host, co-op guest, and unmodded dedicated-server matrix remains in progress, and the public release retains explicit early-testing language.
+Joe live-approved the corrected gameplay candidate on September 12, 2026 and confirmed it works solo and as a client-only mod connected to a vanilla server, with no Stackmaster installation required for the host, server, or other players. Current automated verification passes with zero compiler warnings/errors, 61/61 pure-domain tests, and 48/48 static/repository checks. These results and completed live checks do **not** establish universal multiplayer or network safety: broader co-op host, co-op guest, and unmodded dedicated-server coverage remains incomplete, and the public README retains a concise early-testing note.
 
 ## 1. Approved release boundary
 
@@ -372,16 +372,16 @@ Publishing remains a separate explicit action so building cannot accidentally re
 
 ## 8. Current state and next handoff
 
-- Joe reported that an earlier 0.2.0 package was accidentally uploaded to Thunderstore; the GitHub release state has not been changed by this packaging work.
-- Joe live-approved the corrected feature candidate as 0.2.0 on September 12, 2026, then requested that the same approved build be reissued as 0.2.1 so Thunderstore can accept it as a distinct version.
-- The 0.2.1 candidate includes independently switchable nearby-chest building and crafting, aggregate requirement totals, ownership-independent display snapshots, complete detached-item hydration, fail-open UI protection, exact player-first/minimum-chest planning, rollback, and bounded ownership cleanup.
+- Joe reported that an earlier 0.2.0 package was accidentally uploaded to Thunderstore, then successfully uploaded the corrected 0.2.1 package. The GitHub release state has not been changed by this packaging work.
+- The 0.2.2 candidate changes documentation and release identity only; there are no gameplay behavior changes from the live-approved 0.2.1 candidate.
+- The carried-forward release includes independently switchable nearby-chest building and crafting, aggregate requirement totals, ownership-independent display snapshots, complete detached-item hydration, fail-open UI protection, exact player-first/minimum-chest planning, rollback, and bounded ownership cleanup.
 - Remote ownership uses Valheim's owner-authorized asynchronous flow rather than blind `ClaimOwnership`: the first attempt prepares required ownership and consumes nothing, and one normal retry may perform the action.
 - Ownership demonstrably acquired by Stackmaster remains available for a 10-second retry window. Cleanup then returns it to Valheim's native unowned state after success, cancellation, failure, timeout, disable, or disconnect, retrying later if immediate release cannot be proven safe. Unrelated or already-local chests are never released.
 - Automated verification passes: zero compiler warnings/errors, 61/61 pure-domain tests, and 48/48 static/repository checks.
-- Exact rollback, vanilla double-charge suppression, original Viking-chest icon, JStack424 identity, MIT license, external BepInEx dependency, deterministic five-file package allowlist, and early-public-testing language are preserved.
-- The complete co-op host, co-op guest, and unmodded dedicated-server matrix remains in progress; 0.2.1 does not claim proven multiplayer safety.
+- Exact rollback, vanilla double-charge suppression, original Viking-chest icon, JStack424 identity, MIT license, external BepInEx dependency, deterministic five-file package allowlist, and a concise early-public-testing note are preserved.
+- Joe confirmed solo use and client-only use on a vanilla server without requiring Stackmaster on the host, server, or other players. Broader co-op host, co-op guest, and unmodded dedicated-server coverage remains incomplete; 0.2.2 does not claim universal multiplayer safety.
 
-**Continuing 0.2.1 validation after publication:**
+**Further 0.2.2 validation:**
 
 1. Confirm ownership-independent build, crafting, and upgrade totals without opening contributing chests or changing their owner.
 2. Confirm the first remote-owned attempt consumes nothing, the retry consumes exact quantities once, and every used chest opens for vanilla peers immediately afterward and after the modded player logs out.
@@ -392,4 +392,4 @@ Publishing remains a separate explicit action so building cannot accidentally re
 7. Repeat building, crafting, upgrades, multi-craft, duplicate requirements, quality constraints, ordinary sorting, deposit, replenishment, protection, open-container actions, and settings-off behavior.
 8. Continue the solo, co-op host, co-op guest, and unmodded dedicated-server matrix. Treat any loss, duplication, crash, corruption, incorrect ownership transfer, partial charge, unrelated chest claim, or synchronization disagreement as release-blocking.
 
-**Next handoff:** Publish only the verified `JStack424-Stackmaster-0.2.1.zip` candidate through the separately authorized GitHub and Thunderstore release process. Package preparation itself has no upload capability.
+**Next handoff:** Deliver the verified `JStack424-Stackmaster-0.2.2.zip` candidate. Any GitHub or Thunderstore publication remains a separate explicit action; package preparation itself has no upload capability.

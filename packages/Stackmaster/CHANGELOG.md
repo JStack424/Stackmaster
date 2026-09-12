@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Updated the README for clarity and readability. No gameplay changes.
+
 ## 0.2.1
 
 Early public testing release.
