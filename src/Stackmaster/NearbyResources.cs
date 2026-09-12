@@ -171,9 +171,9 @@ namespace Stackmaster
         internal IReadOnlyDictionary<string, RuntimeResourceStack> RuntimeStacks { get; }
     }
 
-    internal sealed class PieceRequirementAvailability
+    internal sealed class RuntimeRequirementAvailability
     {
-        internal PieceRequirementAvailability(int required, int available, bool isSatisfied)
+        internal RuntimeRequirementAvailability(int required, int available, bool isSatisfied)
         {
             Required = required;
             Available = available;
@@ -207,37 +207,79 @@ namespace Stackmaster
             return requirements.Count == 0 || Plan(player, requirements, true, fresh).IsSatisfiable;
         }
 
-        internal static IReadOnlyList<PieceRequirementAvailability> GetPieceRequirementAvailability(
+        internal static IReadOnlyList<RuntimeRequirementAvailability> GetPieceRequirementAvailability(
             Player player,
             Piece piece,
             bool fresh)
         {
-            if (player == null || piece == null) return Array.Empty<PieceRequirementAvailability>();
+            if (player == null || piece == null) return Array.Empty<RuntimeRequirementAvailability>();
 
             var requirements = piece.m_resources ?? Array.Empty<Piece.Requirement>();
             var capture = Capture(player, true, fresh);
-            var requiredByItem = requirements
+            var validRequirements = requirements
                 .Where(requirement => requirement != null && requirement.m_resItem != null && requirement.m_amount > 0)
-                .GroupBy(requirement => requirement.m_resItem.m_itemData.m_shared.m_name, StringComparer.Ordinal)
-                .ToDictionary(
-                    group => group.Key,
-                    group => checked(group.Sum(requirement => requirement.m_amount)),
-                    StringComparer.Ordinal);
-            var result = new List<PieceRequirementAvailability>(requirements.Length);
+                .Select(requirement => new ResourceRequirement(
+                    requirement.m_resItem.m_itemData.m_shared.m_name,
+                    requirement.m_amount))
+                .ToList();
+            var evaluated = ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks);
+            var next = 0;
+            var result = new List<RuntimeRequirementAvailability>(requirements.Length);
             foreach (var requirement in requirements)
             {
                 if (requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0)
                 {
-                    result.Add(new PieceRequirementAvailability(0, 0, true));
+                    result.Add(new RuntimeRequirementAvailability(0, 0, true));
                     continue;
                 }
 
-                var itemName = requirement.m_resItem.m_itemData.m_shared.m_name;
-                var available = ResourceAvailability.CountAvailable(capture.Stacks, itemName);
-                result.Add(new PieceRequirementAvailability(
-                    requirement.m_amount,
-                    available,
-                    available >= requiredByItem[itemName]));
+                var entry = evaluated[next++];
+                result.Add(new RuntimeRequirementAvailability(entry.Required, entry.Available, entry.IsSatisfied));
+            }
+            return result;
+        }
+
+        internal static IReadOnlyList<RuntimeRequirementAvailability> GetRecipeRequirementAvailability(
+            Player player,
+            Recipe recipe,
+            IEnumerable<Piece.Requirement> visibleRequirements,
+            int qualityLevel,
+            int craftMultiplier,
+            bool fresh)
+        {
+            if (player == null || recipe == null || visibleRequirements == null || craftMultiplier <= 0)
+            {
+                return Array.Empty<RuntimeRequirementAvailability>();
+            }
+
+            var requirements = visibleRequirements.ToList();
+            var capture = Capture(player, true, fresh);
+            var validRequirements = requirements
+                .Where(requirement => requirement != null && requirement.m_resItem != null && requirement.GetAmount(qualityLevel) > 0)
+                .Select(requirement => new ResourceRequirement(
+                    requirement.m_resItem.m_itemData.m_shared.m_name,
+                    checked(requirement.GetAmount(qualityLevel) * craftMultiplier)))
+                .ToList();
+            var evaluated = ResourceDisplayAvailability.Evaluate(
+                validRequirements,
+                capture.Stacks,
+                alternatives: recipe.m_requireOnlyOneIngredient,
+                requireSingleQuality: recipe.m_requireOnlyOneIngredient);
+            var next = 0;
+            var result = new List<RuntimeRequirementAvailability>(requirements.Count);
+            foreach (var requirement in requirements)
+            {
+                var required = requirement == null || requirement.m_resItem == null
+                    ? 0
+                    : checked(requirement.GetAmount(qualityLevel) * craftMultiplier);
+                if (required <= 0)
+                {
+                    result.Add(new RuntimeRequirementAvailability(0, 0, true));
+                    continue;
+                }
+
+                var entry = evaluated[next++];
+                result.Add(new RuntimeRequirementAvailability(entry.Required, entry.Available, entry.IsSatisfied));
             }
             return result;
         }
@@ -680,7 +722,7 @@ namespace Stackmaster
         private static Piece _cachedPiece;
         private static float _cachedRadius;
         private static float _nextRefreshTime;
-        private static IReadOnlyList<PieceRequirementAvailability> _cachedAvailability = Array.Empty<PieceRequirementAvailability>();
+        private static IReadOnlyList<RuntimeRequirementAvailability> _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
 
         internal static void Postfix(Hud __instance, [HarmonyArgument(0)] Piece piece)
         {
@@ -723,6 +765,121 @@ namespace Stackmaster
                 amountLabel.color = noBuildCost || entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f
                     ? Color.white
                     : Color.red;
+            }
+        }
+    }
+
+    internal static class NearbyCraftingHudPatch
+    {
+        private const float RefreshIntervalSeconds = 0.25f;
+        private static readonly FieldInfo SelectedRecipeField = AccessTools.Field(typeof(InventoryGui), "m_selectedRecipe");
+        private static readonly MethodInfo SelectedRecipeGetter = SelectedRecipeField == null
+            ? null
+            : AccessTools.PropertyGetter(SelectedRecipeField.FieldType, "Recipe");
+        private static Player _cachedPlayer;
+        private static Recipe _cachedRecipe;
+        private static int _cachedQuality;
+        private static int _cachedCraftMultiplier;
+        private static int _cachedRequirementSignature;
+        private static float _cachedRadius;
+        private static float _nextRefreshTime;
+        private static IReadOnlyList<RuntimeRequirementAvailability> _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
+
+        internal static void Postfix(
+            InventoryGui __instance,
+            [HarmonyArgument(0)] Transform elementRoot,
+            [HarmonyArgument(1)] Piece.Requirement requirement,
+            [HarmonyArgument(2)] Player player,
+            [HarmonyArgument(3)] bool craft,
+            [HarmonyArgument(4)] int quality,
+            [HarmonyArgument(5)] int craftMultiplier,
+            List<Piece.Requirement> ___m_reqList,
+            ref bool __result)
+        {
+            if (!__result || !craft || !RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
+                !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value || __instance == null ||
+                player == null || !ReferenceEquals(player, Player.m_localPlayer) || elementRoot == null ||
+                requirement == null || requirement.m_resItem == null || craftMultiplier <= 0 || ___m_reqList == null)
+            {
+                return;
+            }
+
+            var recipe = GetSelectedRecipe(__instance);
+            if (recipe == null) return;
+            var requirementIndex = ___m_reqList.FindIndex(item => ReferenceEquals(item, requirement));
+            if (requirementIndex < 0) return;
+
+            var radius = RuntimeContext.Plugin.NearbyStorageRadius.Value;
+            var signature = RequirementSignature(___m_reqList, quality, craftMultiplier);
+            if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedRecipe, recipe) ||
+                _cachedQuality != quality || _cachedCraftMultiplier != craftMultiplier ||
+                _cachedRequirementSignature != signature || Math.Abs(_cachedRadius - radius) >= 0.001f ||
+                Time.time >= _nextRefreshTime)
+            {
+                _cachedAvailability = NearbyResourceService.GetRecipeRequirementAvailability(
+                    player,
+                    recipe,
+                    ___m_reqList,
+                    quality,
+                    craftMultiplier,
+                    false);
+                _cachedPlayer = player;
+                _cachedRecipe = recipe;
+                _cachedQuality = quality;
+                _cachedCraftMultiplier = craftMultiplier;
+                _cachedRequirementSignature = signature;
+                _cachedRadius = radius;
+                _nextRefreshTime = Time.time + RefreshIntervalSeconds;
+            }
+
+            if (requirementIndex >= _cachedAvailability.Count) return;
+            var entry = _cachedAvailability[requirementIndex];
+            if (entry.Required <= 0) return;
+            var amountTransform = elementRoot.Find("res_amount");
+            var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
+            if (amountLabel == null) return;
+
+            amountLabel.text = entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +
+                               entry.Available.ToString(CultureInfo.InvariantCulture);
+            var noCraftCost = player.NoCostCheat() ||
+                              (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoCraftCost));
+            amountLabel.color = noCraftCost || entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f
+                ? Color.white
+                : Color.red;
+        }
+
+        private static Recipe GetSelectedRecipe(InventoryGui inventoryGui)
+        {
+            if (SelectedRecipeField == null || SelectedRecipeGetter == null) return null;
+            try
+            {
+                var selected = SelectedRecipeField.GetValue(inventoryGui);
+                return selected == null ? null : SelectedRecipeGetter.Invoke(selected, null) as Recipe;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static int RequirementSignature(IEnumerable<Piece.Requirement> requirements, int quality, int craftMultiplier)
+        {
+            unchecked
+            {
+                var hash = (quality * 397) ^ craftMultiplier;
+                foreach (var requirement in requirements)
+                {
+                    if (requirement == null || requirement.m_resItem == null)
+                    {
+                        hash = hash * 31;
+                        continue;
+                    }
+                    var itemName = requirement.m_resItem.m_itemData.m_shared.m_name;
+                    hash = hash * 31 + StringComparer.Ordinal.GetHashCode(itemName);
+                    hash = hash * 31 + requirement.GetAmount(quality);
+                    hash = hash * 31 + (requirement.m_upgraderResource ? 1 : 0);
+                }
+                return hash;
             }
         }
     }

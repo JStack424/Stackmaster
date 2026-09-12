@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 Test Build 4
+
+Unpublished local test build.
+
+- Crafting and upgrade requirement rows at workbenches, forges, cauldrons, and equivalent stations now show `required / total available` across the player inventory and eligible nearby chests.
+- Crafting requirement quantities no longer blink red when aggregate nearby stock satisfies the complete cost.
+- Display accounting covers duplicate materials, selected upgrade quality, multi-craft quantities, and one-ingredient quality constraints.
+- The crafting HUD remains strictly vanilla when nearby-chest crafting or Stackmaster is disabled.
+- Consumption logic is unchanged and still performs fresh action-time validation.
+
 ## 0.2.0 Test Build 3
 
 Unpublished local test build.

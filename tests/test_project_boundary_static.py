@@ -334,7 +334,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         # metadata names such as Valheim's Recipe `piece` cannot break startup.
         bindings = [int(index) for index in re.findall(r"\[HarmonyArgument\((\d+)\)\]", nearby)]
         self.assertEqual(
-            [0, 1, 2, 3, 0, 1, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
+            [0, 1, 2, 3, 0, 1, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
             bindings,
         )
         self.assertNotIn("RecipePostfix(Player __instance, Recipe recipe", nearby)
@@ -373,8 +373,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('RequireField(failures, typeof(Hud), "m_requirementItems")', gate)
         self.assertIn("internal static class NearbyBuildHudPatch", nearby)
         self.assertIn("!RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value", nearby)
-        self.assertIn("ResourceAvailability.CountAvailable(capture.Stacks, itemName)", nearby)
-        self.assertIn("available >= requiredByItem[itemName]", nearby)
+        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks)", nearby)
+        self.assertIn("new RuntimeRequirementAvailability(entry.Required, entry.Available, entry.IsSatisfied)", nearby)
         self.assertIn('requirementRoot.transform.Find("res_amount")', nearby)
         self.assertIn('entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +', nearby)
         self.assertIn("entry.Available.ToString(CultureInfo.InvariantCulture)", nearby)
@@ -384,6 +384,31 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RefreshIntervalSeconds = 0.25f", nearby)
         self.assertIn("public static class ResourceAvailability", core)
         self.assertIn("string.Equals(stack.ItemName, itemName, StringComparison.Ordinal)", core)
+
+    def test_crafting_hud_uses_aggregate_nearby_totals_for_every_station_path(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn('Postfix(typeof(InventoryGui), "SetupRequirement", new[]', installer)
+        self.assertIn('typeof(UnityEngine.Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int)', installer)
+        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int))', gate)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_selectedRecipe")', gate)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_reqList")', gate)
+        self.assertIn("internal static class NearbyCraftingHudPatch", nearby)
+        self.assertIn("!RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value", nearby)
+        self.assertIn("GetRecipeRequirementAvailability", nearby)
+        self.assertIn("checked(requirement.GetAmount(qualityLevel) * craftMultiplier)", nearby)
+        self.assertIn("alternatives: recipe.m_requireOnlyOneIngredient", nearby)
+        self.assertIn("requireSingleQuality: recipe.m_requireOnlyOneIngredient", nearby)
+        self.assertIn('var amountTransform = elementRoot.Find("res_amount")', nearby)
+        self.assertIn('entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +', nearby)
+        self.assertIn("entry.Available.ToString(CultureInfo.InvariantCulture)", nearby)
+        self.assertIn("entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f", nearby)
+        self.assertIn("RefreshIntervalSeconds = 0.25f", nearby)
+        self.assertIn("public static class ResourceDisplayAvailability", core)
+        self.assertIn("GroupBy(requirement => new RequirementKey", core)
+        self.assertIn("GroupBy(stack => stack.Quality)", core)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

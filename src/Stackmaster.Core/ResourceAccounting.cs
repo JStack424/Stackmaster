@@ -70,6 +70,93 @@ namespace Stackmaster.Core
         }
     }
 
+    /// <summary>One rendered requirement line with stock from the complete eligible capture.</summary>
+    public sealed class ResourceDisplayRequirement
+    {
+        internal ResourceDisplayRequirement(string itemName, int required, int totalRequired, int available, bool isSatisfied)
+        {
+            ItemName = itemName;
+            Required = required;
+            TotalRequired = totalRequired;
+            Available = available;
+            IsSatisfied = isSatisfied;
+        }
+
+        public string ItemName { get; }
+        public int Required { get; }
+        public int TotalRequired { get; }
+        public int Available { get; }
+        public bool IsSatisfied { get; }
+    }
+
+    /// <summary>
+    /// Pure availability accounting for requirement UIs. Normal recipes combine duplicate
+    /// costs before deciding whether any line is affordable. One-ingredient recipes treat
+    /// their rows as alternatives and require one quality tier to satisfy the selected row.
+    /// </summary>
+    public static class ResourceDisplayAvailability
+    {
+        public static IReadOnlyList<ResourceDisplayRequirement> Evaluate(
+            IEnumerable<ResourceRequirement> requirements,
+            IEnumerable<ResourceStack> stacks,
+            bool alternatives = false,
+            bool requireSingleQuality = false)
+        {
+            if (requirements == null) throw new ArgumentNullException(nameof(requirements));
+            if (stacks == null) throw new ArgumentNullException(nameof(stacks));
+
+            var requirementList = requirements.Where(requirement => requirement != null).ToList();
+            var stackList = stacks.Where(stack => stack != null).ToList();
+            var totalRequired = alternatives
+                ? null
+                : requirementList
+                    .GroupBy(requirement => new RequirementKey(requirement.ItemName, requirement.Quality))
+                    .ToDictionary(
+                        group => group.Key,
+                        group => checked(group.Sum(requirement => requirement.Quantity)));
+
+            return requirementList
+                .Select(requirement =>
+                {
+                    var key = new RequirementKey(requirement.ItemName, requirement.Quality);
+                    var required = alternatives ? requirement.Quantity : totalRequired![key];
+                    var available = ResourceAvailability.CountAvailable(stackList, requirement.ItemName, requirement.Quality);
+                    var satisfied = requireSingleQuality && requirement.Quality < 0
+                        ? stackList
+                            .Where(stack => string.Equals(stack.ItemName, requirement.ItemName, StringComparison.Ordinal))
+                            .GroupBy(stack => stack.Quality)
+                            .Any(group => group.Sum(stack => checked(stack.Quantity)) >= required)
+                        : available >= required;
+                    return new ResourceDisplayRequirement(
+                        requirement.ItemName,
+                        requirement.Quantity,
+                        required,
+                        available,
+                        satisfied);
+                })
+                .ToList()
+                .AsReadOnly();
+        }
+
+        private sealed class RequirementKey : IEquatable<RequirementKey>
+        {
+            internal RequirementKey(string itemName, int quality)
+            {
+                ItemName = itemName;
+                Quality = quality;
+            }
+
+            internal string ItemName { get; }
+            internal int Quality { get; }
+
+            public bool Equals(RequirementKey? other)
+                => other != null && Quality == other.Quality && string.Equals(ItemName, other.ItemName, StringComparison.Ordinal);
+
+            public override bool Equals(object obj) => Equals(obj as RequirementKey);
+            public override int GetHashCode() => unchecked((StringComparer.Ordinal.GetHashCode(ItemName) * 397) ^ Quality);
+        }
+    }
+
     public sealed class ResourceWithdrawalStep
     {
         public ResourceWithdrawalStep(string inventoryId, string stackId, string itemName, int quality, int quantity)

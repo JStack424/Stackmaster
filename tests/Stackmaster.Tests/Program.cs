@@ -38,6 +38,9 @@ internal static class Program
             MergeSurvivorKeepsOneRecord,
             NoMatchingItemProtectsNothingUnrelated,
             ResourceAvailabilityCountsPlayerNearbyAndQuality,
+            ResourceDisplayAggregatesDuplicateRequirements,
+            ResourceDisplayUsesUpgradeAndMultiCraftTotals,
+            ResourceDisplayAlternativesRequireOneQualityTier,
             ResourcePlanAggregatesPlayerAndNearbyStacks,
             ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
@@ -526,6 +529,73 @@ internal static class Program
         Equal(12, ResourceAvailability.CountAvailable(stacks, "wood", 1), "quality filter includes only exact-quality stacks");
         Equal(5, ResourceAvailability.CountAvailable(stacks, "wood", 2), "second quality total");
         Equal(0, ResourceAvailability.CountAvailable(stacks, "resin"), "missing material total");
+    }
+
+    private static void ResourceDisplayAggregatesDuplicateRequirements()
+    {
+        var display = ResourceDisplayAvailability.Evaluate(
+            new[]
+            {
+                new ResourceRequirement("Wood", 2),
+                new ResourceRequirement("Wood", 3)
+            },
+            new[]
+            {
+                Resource("player", "p", "Wood", 1, 1, 0, 0),
+                Resource("near", "n", "Wood", 1, 3, 1, 0)
+            });
+
+        Equal(2, display.Count, "duplicate crafting rows are preserved for rendering");
+        Equal(2, display[0].Required, "first row keeps its own displayed cost");
+        Equal(3, display[1].Required, "second row keeps its own displayed cost");
+        True(display.All(entry => entry.TotalRequired == 5), "duplicate requirements share the complete combined cost");
+        True(display.All(entry => entry.Available == 4), "each duplicate row shows the same aggregate stock");
+        True(display.All(entry => !entry.IsSatisfied), "stock cannot be reused to satisfy duplicate costs");
+    }
+
+    private static void ResourceDisplayUsesUpgradeAndMultiCraftTotals()
+    {
+        var display = ResourceDisplayAvailability.Evaluate(
+            new[] { new ResourceRequirement("Iron", 12) },
+            new[]
+            {
+                Resource("player", "p", "Iron", 1, 2, 0, 0),
+                Resource("near", "n", "Iron", 1, 13, 1, 0)
+            });
+
+        Equal(12, display.Single().Required, "quality and multi-craft multiplication is reflected in the displayed requirement");
+        Equal(15, display.Single().Available, "craft display total includes player and eligible nearby stock");
+        True(display.Single().IsSatisfied, "combined 12 / 15 stock is rendered as available");
+    }
+
+    private static void ResourceDisplayAlternativesRequireOneQualityTier()
+    {
+        var requirement = new[] { new ResourceRequirement("Fish", 3) };
+        var splitQuality = ResourceDisplayAvailability.Evaluate(
+            requirement,
+            new[]
+            {
+                Resource("player", "q1", "Fish", 1, 2, 0, 0),
+                Resource("near", "q2", "Fish", 2, 2, 1, 0)
+            },
+            alternatives: true,
+            requireSingleQuality: true).Single();
+
+        Equal(4, splitQuality.Available, "one-ingredient display still reports the complete visible stock");
+        True(!splitQuality.IsSatisfied, "mixed quality tiers cannot satisfy one quality-specific ingredient choice");
+
+        var matchingQuality = ResourceDisplayAvailability.Evaluate(
+            requirement,
+            new[]
+            {
+                Resource("player", "q1", "Fish", 1, 2, 0, 0),
+                Resource("near", "q2a", "Fish", 2, 2, 1, 0),
+                Resource("far", "q2b", "Fish", 2, 1, 2, 0)
+            },
+            alternatives: true,
+            requireSingleQuality: true).Single();
+        Equal(5, matchingQuality.Available, "all quality tiers remain visible in the total");
+        True(matchingQuality.IsSatisfied, "one complete quality tier satisfies the alternative requirement");
     }
 
     private static void ResourcePlanAggregatesPlayerAndNearbyStacks()

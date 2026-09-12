@@ -2,6 +2,21 @@
 
 All notable changes to Stackmaster are documented here.
 
+## [0.2.0 Test Build 4] - 2026-09-12
+
+Unpublished local test build.
+
+### Added
+
+- Workbench, forge, cauldron, and equivalent crafting/upgrade requirement rows now show `required / total available` across the player inventory and eligible nearby chests.
+
+### Fixed
+
+- Crafting requirement quantities no longer blink red when aggregate nearby stock satisfies the complete cost.
+- Crafting HUD accounting now applies the selected upgrade quality and multi-craft multiplier, normalizes duplicate requirements, and preserves one-ingredient quality constraints.
+- The crafting HUD override is gated by the crafting-from-nearby-chests setting and Stackmaster compatibility state, preserving vanilla UI when disabled.
+- HUD stock discovery is refreshed at a bounded interval; final crafting validation and consumption remain unchanged and freshly revalidated at action time.
+
 ## [0.2.0 Test Build 3] - 2026-09-12
 
 Unpublished local test build.

@@ -76,6 +76,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
+            RequireMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
             RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece));
             RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
@@ -118,6 +119,8 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_currentContainer");
             RequireField(failures, typeof(InventoryGui), "m_craftTimer");
             RequireField(failures, typeof(InventoryGui), "m_craftRecipe");
+            RequireField(failures, typeof(InventoryGui), "m_selectedRecipe");
+            RequireField(failures, typeof(InventoryGui), "m_reqList");
             RequireField(failures, typeof(InventoryGui), "m_craftUpgradeItem");
             RequireField(failures, typeof(InventoryGui), "m_multiCrafting");
             RequireField(failures, typeof(InventoryGui), "m_multiCraftAmount");

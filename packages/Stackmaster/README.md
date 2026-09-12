@@ -6,7 +6,7 @@ Stackmaster combines automatic inventory sorting, deliberate nearby-storage depo
 
 ## Early public test release
 
-Version 0.2.0 Test Build 3 carries forward the successful Test Build 2 startup and initial nearby-chest building check, and fixes the selected-piece requirements HUD so nearby stock is counted visibly and colored correctly. Its broader nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
+Version 0.2.0 Test Build 4 carries forward the successful Test Build 2 startup and initial nearby-chest building check. It shows nearby stock and correct availability coloring in both the selected-piece HUD and every standard crafting/upgrade requirement menu. Its broader nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
 
 Stackmaster is designed as an optional client-side install: each player who wants its features installs it, while the host, other players, and dedicated server should not need Stackmaster. That installation model still needs confirmation across the remaining multiplayer matrix.
 
@@ -20,6 +20,7 @@ Stackmaster is designed as an optional client-side install: each player who want
 - Replenishes protected stacks to optional target quantities during the same storage action.
 - Counts and consumes exact building and crafting costs from the player plus eligible nearby chests.
 - Shows selected build-piece costs as `required / total available` and uses aggregate nearby stock for the shortage blink.
+- Shows workbench, forge, cauldron, and equivalent crafting/upgrade costs in the same format, including selected upgrade quality and multi-craft totals.
 - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
 - Rechecks access, ownership, chest use, stack identity, and quantity before removal; failed multi-stack removal rolls back completed steps.
 - Leaves unmatched items and overflow safely in the player inventory.
