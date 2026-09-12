@@ -6,7 +6,7 @@ Stackmaster by **JStack424** combines automatic inventory sorting, deliberate ne
 
 ## Early public testing release
 
-Version 0.2.0 adds building and crafting from accessible nearby vanilla chests, including chests currently owned by another peer. Build-piece and crafting requirement rows show `required / total available` across the player inventory and eligible nearby storage, staying white when the combined stock is sufficient and flashing red only for a true shortage.
+Version 0.2.1 adds building and crafting from accessible nearby vanilla chests, including chests currently owned by another peer. Build-piece and crafting requirement rows show `required / total available` across the player inventory and eligible nearby storage, staying white when the combined stock is sufficient and flashing red only for a true shortage.
 
 Stackmaster reads these totals without claiming ownership. When an action needs a remotely owned chest, the first attempt safely prepares ownership without consuming anything and asks you to retry. The retry opportunity lasts for a bounded 10-second window. Cleanup then returns ownership to Valheim's native unowned state after success, cancellation, validation failure, rollback, timeout, disable, or disconnect; if immediate release cannot be proven safe, cleanup keeps retrying rather than touching uncertain ownership. Only the minimum required chest set is requested, and the complete action is revalidated before exact withdrawal.
 
@@ -43,7 +43,7 @@ Stackmaster is designed as an optional client-side install: each player who want
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 
-Version 0.2.0 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 0.2.1 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
@@ -65,9 +65,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 0.2.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 0.2.1 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
 
-Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. The retry window lasts 10 seconds. Cleanup then returns only ownership demonstrably acquired by Stackmaster to Valheim's unowned state, retrying later if an immediate release cannot be proven safe. Compatibility with other inventory or storage mods is not claimed in 0.2.0.
+Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. The retry window lasts 10 seconds. Cleanup then returns only ownership demonstrably acquired by Stackmaster to Valheim's unowned state, retrying later if an immediate release cannot be proven safe. Compatibility with other inventory or storage mods is not claimed in 0.2.1.
 
 Plugin GUID: `com.jstack424.stackmaster`
 

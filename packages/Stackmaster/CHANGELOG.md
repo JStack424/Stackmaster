@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.2.0
+## 0.2.1
 
 Early public testing release.
+
+Version 0.2.1 reissues the approved nearby-resource release under a fresh Thunderstore version number so package managers can distinguish it from an earlier 0.2.0 upload. There are no gameplay changes from the approved candidate.
 
 ### Added
 
