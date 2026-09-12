@@ -2,6 +2,16 @@
 
 All notable changes to Stackmaster are documented here.
 
+## [0.2.0 Test Build 2] - 2026-09-12
+
+Unpublished local test build.
+
+### Fixed
+
+- Fixed the live-game HarmonyX startup failure caused by binding the recipe requirement hook to the patch's local parameter name instead of Valheim's original parameter position.
+- Bound every new nearby-resource hook argument by its method position, preventing harmless game metadata parameter-name differences from disabling Stackmaster at startup.
+- Added a regression check covering the positional bindings used by all nearby-resource hooks.
+
 ## [0.2.0 Test Build 1] - 2026-09-11
 
 Unpublished local test build.

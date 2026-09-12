@@ -572,9 +572,18 @@ namespace Stackmaster
         }
     }
 
+    // HarmonyX otherwise binds ordinary patch parameters by the game's source-level
+    // argument names. Use explicit indexes for every original-method argument so a
+    // harmless metadata rename cannot prevent Stackmaster from loading.
     internal static class NearbyRequirementPatches
     {
-        internal static void RecipePostfix(Player __instance, Recipe recipe, bool discover, int qualityLevel, int amount, ref bool __result)
+        internal static void RecipePostfix(
+            Player __instance,
+            [HarmonyArgument(0)] Recipe recipe,
+            [HarmonyArgument(1)] bool discover,
+            [HarmonyArgument(2)] int qualityLevel,
+            [HarmonyArgument(3)] int amount,
+            ref bool __result)
         {
             if (!RuntimeContext.Compatibility.IsCompatible || discover ||
                 RuntimeContext.Plugin == null || !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value)
@@ -589,7 +598,11 @@ namespace Stackmaster
             __result = NearbyResourceService.HasRecipeRequirements(__instance, recipe, qualityLevel, amount, false);
         }
 
-        internal static void PiecePostfix(Player __instance, Piece piece, Player.RequirementMode mode, ref bool __result)
+        internal static void PiecePostfix(
+            Player __instance,
+            [HarmonyArgument(0)] Piece piece,
+            [HarmonyArgument(1)] Player.RequirementMode mode,
+            ref bool __result)
         {
             if (!RuntimeContext.Compatibility.IsCompatible || mode != Player.RequirementMode.CanBuild ||
                 RuntimeContext.Plugin == null || !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value)
@@ -614,12 +627,12 @@ namespace Stackmaster
     {
         internal static void Postfix(
             Player __instance,
-            Inventory inventory,
-            Recipe recipe,
-            int qualityLevel,
-            ref int amount,
-            ref int extraAmount,
-            int craftMultiplier,
+            [HarmonyArgument(0)] Inventory inventory,
+            [HarmonyArgument(1)] Recipe recipe,
+            [HarmonyArgument(2)] int qualityLevel,
+            [HarmonyArgument(3)] ref int amount,
+            [HarmonyArgument(4)] ref int extraAmount,
+            [HarmonyArgument(5)] int craftMultiplier,
             ref ItemDrop.ItemData __result)
         {
             if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
@@ -649,7 +662,7 @@ namespace Stackmaster
     internal static class NearbyCraftingActionPatch
     {
         internal static bool Prefix(
-            Player player,
+            [HarmonyArgument(0)] Player player,
             Recipe ___m_craftRecipe,
             ItemDrop.ItemData ___m_craftUpgradeItem,
             bool ___m_multiCrafting,
@@ -720,7 +733,11 @@ namespace Stackmaster
 
     internal static class NearbyTryPlacePiecePatch
     {
-        internal static bool Prefix(Player __instance, Piece piece, bool ___m_noPlacementCost, ref bool __result)
+        internal static bool Prefix(
+            Player __instance,
+            [HarmonyArgument(0)] Piece piece,
+            bool ___m_noPlacementCost,
+            ref bool __result)
         {
             if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
                 !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
@@ -745,7 +762,12 @@ namespace Stackmaster
 
     internal static class NearbyResourceRemovalPatch
     {
-        internal static bool Prefix(Inventory __instance, string name, int amount, int itemQuality, bool worldLevelBased)
+        internal static bool Prefix(
+            Inventory __instance,
+            [HarmonyArgument(0)] string name,
+            [HarmonyArgument(1)] int amount,
+            [HarmonyArgument(2)] int itemQuality,
+            [HarmonyArgument(3)] bool worldLevelBased)
         {
             var action = ResourceActionContext.Current;
             var plugin = RuntimeContext.Plugin;

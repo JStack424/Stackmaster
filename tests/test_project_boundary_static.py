@@ -1,6 +1,7 @@
 """Repository safety checks for the private-reference and one-DLL gameplay boundary."""
 
 from pathlib import Path
+import re
 import subprocess
 import unittest
 
@@ -328,6 +329,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
         self.assertIn("GroupBy", core)
         self.assertIn("shortages.Count == 0 ? tentative", core)
+        # HarmonyX binds unannotated patch arguments by the original parameter name.
+        # Keep every game-method argument in the new resource hooks position-bound so
+        # metadata names such as Valheim's Recipe `piece` cannot break startup.
+        bindings = [int(index) for index in re.findall(r"\[HarmonyArgument\((\d+)\)\]", nearby)]
+        self.assertEqual(
+            [0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
+            bindings,
+        )
+        self.assertNotIn("RecipePostfix(Player __instance, Recipe recipe", nearby)
         self.assertIn("public int PlannedUnits", core)
         self.assertIn("TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure)", nearby)
         self.assertIn("TryBeginPieceTransaction(__instance, piece, out failure)", nearby)

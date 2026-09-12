@@ -4,7 +4,7 @@ This plan follows the behavior contract approved on September 11, 2026. [DESIGN-
 
 Environment validation, the complete local v0.1 gameplay implementation, and the solo clean-profile smoke gate are complete. On September 11, 2026, Joe explicitly approved the consolidated contract, authorized uninterrupted implementation, accepted the corrected Build 4 candidate after solo testing, and authorized the first public GitHub/Thunderstore release for co-op testing.
 
-The current unpublished **0.2.0 Test Build 1** adds independently switchable building and crafting from eligible nearby chests; both default to enabled and share the existing configurable radius. Its complete-action planner normalizes duplicate costs, checks exact quality and multi-craft quantities, validates fresh chest/stack state, withdraws exact units before output/placement, suppresses vanilla double charging, and rolls back when vanilla does not complete the action.
+The current unpublished **0.2.0 Test Build 2** fixes the first live-load failure and carries forward independently switchable building and crafting from eligible nearby chests; both default to enabled and share the existing configurable radius. Its complete-action planner normalizes duplicate costs, checks exact quality and multi-craft quantities, validates fresh chest/stack state, withdraws exact units before output/placement, suppresses vanilla double charging, and rolls back when vanilla does not complete the action.
 
 Current local verification: zero compiler warnings/errors, 36/36 pure-domain tests, 38/38 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. The v0.1 solo smoke gate passed, but the new v0.2 paths still require the live-game checks below. These results do **not** establish multiplayer or network safety: co-op host, co-op guest, and unmodded dedicated-server validation remain mandatory before any proven multiplayer claim.
 
@@ -373,20 +373,22 @@ Publishing remains a separate explicit action so building cannot accidentally re
 - Stackmaster 0.1.0 is live on GitHub and Thunderstore.
 - Windows environment inspection and private compile-reference setup: complete; proprietary/runtime assemblies remain ignored and excluded.
 - v0.1 clean-profile solo smoke gate and corrected Test Build 4: passed.
-- Local 0.2.0 Test Build 1 implementation: complete and not published.
-- Automated verification: 36/36 pure-domain tests and 38/38 static/repository checks, with zero compiler warnings/errors at the latest verified checkpoint.
+- Local 0.2.0 Test Build 1 failed during live HarmonyX patch installation because one hook relied on a local argument name that did not match Valheim's metadata; Stackmaster correctly disabled itself before installing item-changing behavior.
+- Local 0.2.0 Test Build 2 binds all new nearby-resource hook arguments by method position and is the current unpublished candidate.
+- Automated verification for Test Build 2 passes: 36/36 pure-domain tests and 38/38 static/repository checks, with zero compiler warnings/errors; live launch remains the first required check.
 - Original Viking-chest icon, JStack424 identity, MIT license, BepInEx dependency, deterministic package allowlist, and early-testing language are preserved.
 - Multiplayer position: co-op host, co-op guest, and unmodded dedicated-server gates remain incomplete.
 
-**Required 0.2.0 Test Build 1 live checks:**
+**Required 0.2.0 Test Build 2 live checks:**
 
-1. With each new toggle off independently, confirm its feature is strictly vanilla while the other feature still uses nearby chests.
-2. Confirm a 50-unit craft and build both fail when player plus eligible chests contain only 25, with no item change and no output/piece.
-3. Confirm an exact 50-unit cost split among player and multiple partial chest stacks consumes exactly 50, never a whole extra stack.
-4. Confirm duplicate-material requirements, quality-specific `require only one ingredient` recipes, upgrades, and multi-craft quantities charge exact totals once.
-5. Move stock, walk across the radius boundary, open/use a contributing chest, and change access immediately before action; each stale case must cancel without loss.
-6. Confirm private/ward-blocked, in-use, modded, invalid, and non-locally-owned chests are excluded.
-7. Repeat ordinary sort, deposit, replenish, protection, and open-container flows to catch regressions.
-8. Repeat the matrix as solo, co-op host, co-op guest, and against an unmodded dedicated server; treat loss, duplication, crash, corruption, or synchronization disagreement as release-blocking.
+1. Confirm Stackmaster loads without the red HarmonyX `Parameter "recipe" not found` error, and that the log reports normal patch installation rather than disabling the mod.
+2. With each new toggle off independently, confirm its feature is strictly vanilla while the other feature still uses nearby chests.
+3. Confirm a 50-unit craft and build both fail when player plus eligible chests contain only 25, with no item change and no output/piece.
+4. Confirm an exact 50-unit cost split among player and multiple partial chest stacks consumes exactly 50, never a whole extra stack.
+5. Confirm duplicate-material requirements, quality-specific `require only one ingredient` recipes, upgrades, and multi-craft quantities charge exact totals once.
+6. Move stock, walk across the radius boundary, open/use a contributing chest, and change access immediately before action; each stale case must cancel without loss.
+7. Confirm private/ward-blocked, in-use, modded, invalid, and non-locally-owned chests are excluded.
+8. Repeat ordinary sort, deposit, replenish, protection, and open-container flows to catch regressions.
+9. Repeat the matrix as solo, co-op host, co-op guest, and against an unmodded dedicated server; treat loss, duplication, crash, corruption, or synchronization disagreement as release-blocking.
 
-**Next handoff:** Install and run the live checklist with the local 0.2.0 Test Build 1 candidate. Do not change the live Thunderstore or GitHub release until Joe explicitly approves a later publication step.
+**Next handoff:** Install and run the live checklist with the local 0.2.0 Test Build 2 candidate. Do not change the live Thunderstore or GitHub release until Joe explicitly approves a later publication step.

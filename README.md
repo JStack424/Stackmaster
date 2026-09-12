@@ -6,7 +6,7 @@ Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines auto
 
 ## Early public test release
 
-Version 0.2.0 Test Build 1 has passed automated domain and repository checks, but its new nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
+Version 0.2.0 Test Build 2 fixes the Test Build 1 startup failure and has passed automated domain and repository checks, but its new nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
 
 Stackmaster is designed as an optional client-side install: each player who wants its features installs it, while the host, other players, and dedicated server should not need Stackmaster. That installation model still needs confirmation across the remaining multiplayer matrix.
 
