@@ -36,9 +36,9 @@ namespace Stackmaster
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
                 "While targeting or viewing an eligible container: deposit matching items and replenish protected stack targets.");
             BuildingFromNearbyChestsEnabled = Config.Bind("General", "Enable building from nearby chests", true,
-                "Count and consume exact building costs from eligible owned vanilla chests within the nearby-storage radius.");
+                "Count and consume exact building costs from eligible nearby vanilla chests within the nearby-storage radius.");
             CraftingFromNearbyChestsEnabled = Config.Bind("General", "Enable crafting from nearby chests", true,
-                "Count and consume exact crafting costs from eligible owned vanilla chests within the nearby-storage radius.");
+                "Count and consume exact crafting costs from eligible nearby vanilla chests within the nearby-storage radius.");
 
             var compatibility = CompatibilityGate.Evaluate();
             RuntimeContext.Initialize(this, compatibility);
