@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 Test Build 1
+
+Unpublished local test build.
+
+- Added independently switchable nearby-chest building and crafting; both default to on.
+- Reused the existing nearby-storage radius, still 20 metres by default.
+- Added exact all-or-nothing cost planning across player inventory and eligible nearby vanilla chests.
+- Added duplicate-requirement normalization, quality-aware ingredients, and exact multi-craft totals.
+- Added fresh access, in-use, ownership, stack-identity, and quantity validation before withdrawal.
+- Added rollback of prior withdrawal steps if a later removal fails.
+- Excludes containers with unresolved local ownership rather than overcounting them.
+- Automated checks pass; live solo and multiplayer validation of these new paths is still required before publication.
+
 ## 0.1.0
 
 Initial public testing release.

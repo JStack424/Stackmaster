@@ -4,7 +4,9 @@ This plan follows the behavior contract approved on September 11, 2026. [DESIGN-
 
 Environment validation, the complete local v0.1 gameplay implementation, and the solo clean-profile smoke gate are complete. On September 11, 2026, Joe explicitly approved the consolidated contract, authorized uninterrupted implementation, accepted the corrected Build 4 candidate after solo testing, and authorized the first public GitHub/Thunderstore release for co-op testing.
 
-Current local verification: zero compiler warnings/errors, 28/28 pure-domain tests, 37/37 static/repository checks, only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output, and a passed solo smoke checklist. These results do **not** establish multiplayer or network safety: co-op host, co-op guest, and unmodded dedicated-server validation remain mandatory before any proven multiplayer claim.
+The current unpublished **0.2.0 Test Build 1** adds independently switchable building and crafting from eligible nearby chests; both default to enabled and share the existing configurable radius. Its complete-action planner normalizes duplicate costs, checks exact quality and multi-craft quantities, validates fresh chest/stack state, withdraws exact units before output/placement, suppresses vanilla double charging, and rolls back when vanilla does not complete the action.
+
+Current local verification: zero compiler warnings/errors, 36/36 pure-domain tests, 38/38 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. The v0.1 solo smoke gate passed, but the new v0.2 paths still require the live-game checks below. These results do **not** establish multiplayer or network safety: co-op host, co-op guest, and unmodded dedicated-server validation remain mandatory before any proven multiplayer claim.
 
 ## 1. Approved release boundary
 
@@ -368,14 +370,23 @@ Publishing remains a separate explicit action so building cannot accidentally re
 
 ## 8. Current state and next handoff
 
-- Approved contract and complete Stackmaster 0.1.0 implementation: complete.
+- Stackmaster 0.1.0 is live on GitHub and Thunderstore.
 - Windows environment inspection and private compile-reference setup: complete; proprietary/runtime assemblies remain ignored and excluded.
-- Clean-profile solo smoke gate and corrected Test Build 4: passed.
-- Automated verification: 28/28 pure-domain tests and 37/37 static/repository checks, with zero compiler warnings/errors at the latest verified checkpoint.
-- Public source/docs/package metadata: committed on `main` for a dedicated public Stackmaster repository.
-- Exact public ZIP: built reproducibly from the committed allowlist and independently validated; fresh import of this exact public archive remains pending.
-- Original release icon: prepared as a 256×256 RGBA PNG.
-- Public release position: early testing only; co-op host, co-op guest, and unmodded dedicated-server gates remain incomplete.
-- Public GitHub repository and live Thunderstore listing: pending separate publication/verification steps.
+- v0.1 clean-profile solo smoke gate and corrected Test Build 4: passed.
+- Local 0.2.0 Test Build 1 implementation: complete and not published.
+- Automated verification: 36/36 pure-domain tests and 38/38 static/repository checks, with zero compiler warnings/errors at the latest verified checkpoint.
+- Original Viking-chest icon, JStack424 identity, MIT license, BepInEx dependency, deterministic package allowlist, and early-testing language are preserved.
+- Multiplayer position: co-op host, co-op guest, and unmodded dedicated-server gates remain incomplete.
 
-**Next handoff:** Commit and independently validate the exact public ZIP, publish the committed source to the approved GitHub repository, upload the exact ZIP to the JStack424 Thunderstore team with the AI Generated category, and verify both live surfaces. Continue to treat any item loss, duplication, crash, corruption, or synchronization disagreement as release-blocking.
+**Required 0.2.0 Test Build 1 live checks:**
+
+1. With each new toggle off independently, confirm its feature is strictly vanilla while the other feature still uses nearby chests.
+2. Confirm a 50-unit craft and build both fail when player plus eligible chests contain only 25, with no item change and no output/piece.
+3. Confirm an exact 50-unit cost split among player and multiple partial chest stacks consumes exactly 50, never a whole extra stack.
+4. Confirm duplicate-material requirements, quality-specific `require only one ingredient` recipes, upgrades, and multi-craft quantities charge exact totals once.
+5. Move stock, walk across the radius boundary, open/use a contributing chest, and change access immediately before action; each stale case must cancel without loss.
+6. Confirm private/ward-blocked, in-use, modded, invalid, and non-locally-owned chests are excluded.
+7. Repeat ordinary sort, deposit, replenish, protection, and open-container flows to catch regressions.
+8. Repeat the matrix as solo, co-op host, co-op guest, and against an unmodded dedicated server; treat loss, duplication, crash, corruption, or synchronization disagreement as release-blocking.
+
+**Next handoff:** Install and run the live checklist with the local 0.2.0 Test Build 1 candidate. Do not change the live Thunderstore or GitHub release until Joe explicitly approves a later publication step.

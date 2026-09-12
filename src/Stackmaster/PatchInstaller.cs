@@ -27,20 +27,50 @@ namespace Stackmaster
                 }, typeof(InventoryProtectionClickPatch)),
                 Prefix(typeof(Container), "Interact", new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, typeof(ContainerInteractPatch)),
                 Postfix(typeof(Container), "GetHoverText", Type.EmptyTypes, typeof(ContainerHoverTextPatch)),
-                Prefix(typeof(Container), "RPC_StackResponse", new[] { typeof(long), typeof(bool) }, typeof(ContainerStackResponsePatch))
+                Prefix(typeof(Container), "RPC_StackResponse", new[] { typeof(long), typeof(bool) }, typeof(ContainerStackResponsePatch)),
+                Postfix(typeof(Player), "HaveRequirementItems", new[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) }, typeof(NearbyRequirementPatches), "RecipePostfix"),
+                Postfix(typeof(Player), "HaveRequirements", new[] { typeof(Piece), typeof(Player.RequirementMode) }, typeof(NearbyRequirementPatches), "PiecePostfix"),
+                Postfix(typeof(Player), "GetFirstRequiredItem", new[]
+                {
+                    typeof(Inventory), typeof(Recipe), typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int)
+                }, typeof(NearbyFirstRequiredItemPatch)),
+                Transactional(typeof(InventoryGui), "DoCrafting", new[] { typeof(Player) }, typeof(NearbyCraftingActionPatch)),
+                Transactional(typeof(Player), "UpdatePlacement", new[] { typeof(bool), typeof(float) }, typeof(NearbyBuildingActionPatch)),
+                Both(typeof(Player), "TryPlacePiece", new[] { typeof(Piece) }, typeof(NearbyTryPlacePiecePatch)),
+                Prefix(typeof(Inventory), "RemoveItem", new[] { typeof(string), typeof(int), typeof(int), typeof(bool) }, typeof(NearbyResourceRemovalPatch))
             };
 
             foreach (var patch in patches)
             {
-                harmony.Patch(patch.Original, patch.Prefix, patch.Postfix);
+                harmony.Patch(
+                    patch.Original,
+                    prefix: patch.Prefix,
+                    postfix: patch.Postfix,
+                    transpiler: null,
+                    finalizer: patch.Finalizer,
+                    ilmanipulator: null);
             }
         }
 
         private static PatchSpec Prefix(Type targetType, string targetName, Type[] parameters, Type patchType)
-            => new PatchSpec(ResolveTarget(targetType, targetName, parameters), ResolvePatch(patchType, "Prefix"), null);
+            => new PatchSpec(ResolveTarget(targetType, targetName, parameters), ResolvePatch(patchType, "Prefix"), null, null);
 
-        private static PatchSpec Postfix(Type targetType, string targetName, Type[] parameters, Type patchType)
-            => new PatchSpec(ResolveTarget(targetType, targetName, parameters), null, ResolvePatch(patchType, "Postfix"));
+        private static PatchSpec Postfix(Type targetType, string targetName, Type[] parameters, Type patchType, string patchName = "Postfix")
+            => new PatchSpec(ResolveTarget(targetType, targetName, parameters), null, ResolvePatch(patchType, patchName), null);
+
+        private static PatchSpec Both(Type targetType, string targetName, Type[] parameters, Type patchType)
+            => new PatchSpec(
+                ResolveTarget(targetType, targetName, parameters),
+                ResolvePatch(patchType, "Prefix"),
+                ResolvePatch(patchType, "Postfix"),
+                null);
+
+        private static PatchSpec Transactional(Type targetType, string targetName, Type[] parameters, Type patchType)
+            => new PatchSpec(
+                ResolveTarget(targetType, targetName, parameters),
+                ResolvePatch(patchType, "Prefix"),
+                ResolvePatch(patchType, "Postfix"),
+                ResolvePatch(patchType, "Finalizer"));
 
         private static MethodInfo ResolveTarget(Type type, string name, Type[] parameters)
         {
@@ -64,16 +94,18 @@ namespace Stackmaster
 
         private sealed class PatchSpec
         {
-            internal PatchSpec(MethodInfo original, HarmonyMethod prefix, HarmonyMethod postfix)
+            internal PatchSpec(MethodInfo original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod finalizer)
             {
                 Original = original;
                 Prefix = prefix;
                 Postfix = postfix;
+                Finalizer = finalizer;
             }
 
             internal MethodInfo Original { get; }
             internal HarmonyMethod Prefix { get; }
             internal HarmonyMethod Postfix { get; }
+            internal HarmonyMethod Finalizer { get; }
         }
     }
 }

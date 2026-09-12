@@ -75,6 +75,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "Update");
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
+            RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
             RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
             RequireMethod(failures, typeof(Container), "CheckForChanges");
@@ -94,7 +95,19 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Inventory), "MoveItemToThis", typeof(Inventory), typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int));
             RequireMethod(failures, typeof(Inventory), "GetAllItems");
             RequireMethod(failures, typeof(Inventory), "GetItemAt", typeof(int), typeof(int));
+            RequireMethod(failures, typeof(Inventory), "CountItems", typeof(string), typeof(int), typeof(bool));
+            RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(ItemDrop.ItemData), typeof(int));
+            RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(string), typeof(int), typeof(int), typeof(bool));
+            RequireMethod(failures, typeof(Inventory), "AddItem", typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool));
+            RequireMethod(failures, typeof(ItemDrop.ItemData), "Clone");
+            RequireMethod(failures, typeof(Piece.Requirement), "GetAmount", typeof(int));
+            RequireMethod(failures, typeof(Recipe), "GetAmount", typeof(int), typeof(int).MakeByRefType(), typeof(ItemDrop.ItemData).MakeByRefType(), typeof(int));
             RequireMethod(failures, typeof(Player), "GetHoverObject");
+            RequireMethod(failures, typeof(Player), "HaveRequirementItems", typeof(Recipe), typeof(bool), typeof(int), typeof(int));
+            RequireMethod(failures, typeof(Player), "HaveRequirements", typeof(Piece), typeof(Player.RequirementMode));
+            RequireMethod(failures, typeof(Player), "GetFirstRequiredItem", typeof(Inventory), typeof(Recipe), typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int));
+            RequireMethod(failures, typeof(Player), "UpdatePlacement", typeof(bool), typeof(float));
+            RequireMethod(failures, typeof(Player), "TryPlacePiece", typeof(Piece));
             RequireMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
             RequireMethod(failures, typeof(SplitDialog), "get_IsActive");
             RequireMethod(failures, typeof(ZNetView), "IsOwner");
@@ -103,6 +116,10 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_pvp");
             RequireField(failures, typeof(InventoryGui), "m_currentContainer");
             RequireField(failures, typeof(InventoryGui), "m_craftTimer");
+            RequireField(failures, typeof(InventoryGui), "m_craftRecipe");
+            RequireField(failures, typeof(InventoryGui), "m_craftUpgradeItem");
+            RequireField(failures, typeof(InventoryGui), "m_multiCrafting");
+            RequireField(failures, typeof(InventoryGui), "m_multiCraftAmount");
             RequireField(failures, typeof(InventoryGui), "m_dragItem");
             RequireField(failures, typeof(InventoryGui), "m_trophiesPanel");
             RequireField(failures, typeof(InventoryGui), "m_achievementsPanel");
@@ -114,10 +131,17 @@ namespace Stackmaster
             RequireField(failures, typeof(Inventory), "m_onChanged");
             RequireField(failures, typeof(Inventory), "m_inventory");
             RequireField(failures, typeof(Player), "m_customData");
+            RequireField(failures, typeof(Player), "m_noPlacementCost");
             RequireField(failures, typeof(TextInput), "m_inputField");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_gridPos");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_stack");
+            RequireField(failures, typeof(ItemDrop.ItemData), "m_quality");
+            RequireField(failures, typeof(ItemDrop.ItemData), "m_worldLevel");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_equipped");
+            RequireField(failures, typeof(Piece), "m_resources");
+            RequireField(failures, typeof(Piece), "m_craftingStation");
+            RequireField(failures, typeof(Recipe), "m_resources");
+            RequireField(failures, typeof(Recipe), "m_requireOnlyOneIngredient");
 
             return failures.Count == 0
                 ? new CompatibilityResult(true, "verified runtime surface")

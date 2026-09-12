@@ -36,7 +36,15 @@ internal static class Program
             MovedMatchingStackInheritsProtection,
             DuplicateChoiceIsDeterministic,
             MergeSurvivorKeepsOneRecord,
-            NoMatchingItemProtectsNothingUnrelated
+            NoMatchingItemProtectsNothingUnrelated,
+            ResourcePlanAggregatesPlayerAndNearbyStacks,
+            ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
+            ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
+            ResourcePlanNormalizesDuplicateRequirements,
+            ResourcePlanDoesNotDoubleConsume,
+            ResourcePlanHonorsExactQualityAndMultiplierTotals,
+            ResourcePlanIsAllOrNothingAcrossDifferentMaterials,
+            ResourcePlanUsesPlayerThenDeterministicContainerOrder
         };
 
         var failures = 0;
@@ -502,6 +510,114 @@ internal static class Program
         Equal(1, state.Records.Count, "identified record stays dormant for its item");
         True(!resolution.Changed, "dormant record does not churn persistence");
     }
+
+    private static void ResourcePlanAggregatesPlayerAndNearbyStacks()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Stone", 50) },
+            Resource("player", "p", "Stone", 1, 20, 0, 0),
+            Resource("near", "n", "Stone", 1, 30, 1, 0));
+        True(plan.IsSatisfiable, "player and nearby stock satisfies the cost together");
+        Equal(50, plan.PlannedUnits, "exact aggregate quantity planned");
+        SequenceEqual(new[] { 20, 30 }, plan.Steps.Select(step => step.Quantity), "player is consumed before nearby storage");
+    }
+
+    private static void ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Stone", 50) },
+            Resource("player", "p", "Stone", 1, 10, 0, 0),
+            Resource("near", "n", "Stone", 1, 15, 1, 0));
+        True(!plan.IsSatisfiable, "50 required with 25 available is rejected");
+        Equal(0, plan.Steps.Count, "shortage exposes no partial withdrawal steps");
+        Equal(25, plan.Shortages.Single().Available, "shortage reports exact available stock");
+        Equal(25, plan.Shortages.Single().Missing, "shortage reports exact missing stock");
+    }
+
+    private static void ResourcePlanConsumesExactlyFiftyAcrossPartialStacks()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Stone", 50) },
+            Resource("player", "p1", "Stone", 1, 7, 0, 0),
+            Resource("player", "p2", "Stone", 1, 11, 0, 1),
+            Resource("near", "n1", "Stone", 1, 13, 1, 0),
+            Resource("far", "f1", "Stone", 1, 40, 2, 0));
+        True(plan.IsSatisfiable, "partial stacks satisfy exact cost");
+        Equal(50, plan.Steps.Sum(step => step.Quantity), "exactly the 50-unit cost is planned");
+        Equal(19, plan.Steps.Last().Quantity, "last stack is only partially consumed");
+    }
+
+    private static void ResourcePlanNormalizesDuplicateRequirements()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Stone", 30), new ResourceRequirement("Stone", 20) },
+            Resource("near", "n", "Stone", 1, 49, 1, 0));
+        True(!plan.IsSatisfiable, "duplicate requirements cannot each reuse the same stock");
+        Equal(1, plan.NormalizedRequirements.Count, "duplicate requirements are combined");
+        Equal(50, plan.NormalizedRequirements.Single().Quantity, "combined requirement quantity");
+        Equal(0, plan.Steps.Count, "combined shortage performs no partial withdrawal");
+    }
+
+    private static void ResourcePlanDoesNotDoubleConsume()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 25), new ResourceRequirement("Wood", 25) },
+            Resource("player", "p", "Wood", 1, 25, 0, 0),
+            Resource("near", "n", "Wood", 1, 100, 1, 0));
+        True(plan.IsSatisfiable, "combined duplicate cost is satisfiable");
+        Equal(50, plan.RequiredUnits, "required units are the exact combined cost");
+        Equal(50, plan.PlannedUnits, "plan never consumes the cost twice");
+        SequenceEqual(new[] { 25, 25 }, plan.Steps.Select(step => step.Quantity), "only the needed chest remainder is used");
+    }
+
+    private static void ResourcePlanHonorsExactQualityAndMultiplierTotals()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Resin", 12, 2) },
+            Resource("player", "q1", "Resin", 1, 50, 0, 0),
+            Resource("near", "q2a", "Resin", 2, 5, 1, 0),
+            Resource("far", "q2b", "Resin", 2, 7, 2, 0));
+        True(plan.IsSatisfiable, "quality-two stock satisfies multiplied total");
+        Equal(12, plan.PlannedUnits, "quality/multiplier result is consumed exactly");
+        True(plan.Steps.All(step => step.Quality == 2), "wrong-quality stock is untouched");
+    }
+
+    private static void ResourcePlanIsAllOrNothingAcrossDifferentMaterials()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 10), new ResourceRequirement("Stone", 10) },
+            Resource("player", "wood", "Wood", 1, 10, 0, 0),
+            Resource("near", "stone", "Stone", 1, 9, 1, 0));
+        True(!plan.IsSatisfiable, "one missing material rejects the complete action");
+        Equal(0, plan.Steps.Count, "available materials are not partially charged");
+        Equal("Stone", plan.Shortages.Single().ItemName, "exact missing material is reported");
+    }
+
+    private static void ResourcePlanUsesPlayerThenDeterministicContainerOrder()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 35) },
+            Resource("far", "f", "Wood", 1, 20, 3, 0),
+            Resource("near-b", "b", "Wood", 1, 10, 2, 0),
+            Resource("player", "p", "Wood", 1, 5, 0, 0),
+            Resource("near-a", "a", "Wood", 1, 20, 1, 0));
+        SequenceEqual(new[] { "player", "near-a", "near-b" }, plan.Steps.Select(step => step.InventoryId),
+            "withdrawals use player, then nearest deterministic container order");
+        Equal(35, plan.PlannedUnits, "ordered plan remains exact");
+    }
+
+    private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
+        => new ResourceWithdrawalPlanner().Plan(requirements, stacks);
+
+    private static ResourceStack Resource(
+        string inventoryId,
+        string stackId,
+        string itemName,
+        int quality,
+        int quantity,
+        int inventoryOrder,
+        int slot)
+        => new ResourceStack(inventoryId, stackId, itemName, quality, quantity, inventoryOrder, slot);
 
     private static InventorySnapshot Player(int capacity, params ItemStackSnapshot[] items)
         => new InventorySnapshot("player", capacity, items);

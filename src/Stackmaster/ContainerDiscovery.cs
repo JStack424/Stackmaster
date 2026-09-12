@@ -152,7 +152,7 @@ namespace Stackmaster
         private static readonly MethodInfo CheckAccessMethod = AccessTools.Method(typeof(Container), "CheckAccess", new[] { typeof(long) });
         private static readonly MethodInfo CheckForChangesMethod = AccessTools.Method(typeof(Container), "CheckForChanges");
 
-        internal static DiscoveryResult Discover(Player player, Container target, CompatibilityCatalog catalog, float radius)
+        internal static DiscoveryResult Discover(Player player, Container target, CompatibilityCatalog catalog, float radius, bool requireComplete = false)
         {
             var handles = new List<ContainerHandle>();
             var targetDistance = target != null
@@ -192,7 +192,7 @@ namespace Stackmaster
             foreach (var candidate in nearby)
             {
                 var elapsedInspectionMilliseconds = inspectionStopwatch.Elapsed.TotalMilliseconds;
-                if (!NearbyPolicy.CanInspectNext(inspectedNearby, elapsedInspectionMilliseconds))
+                if (!requireComplete && !NearbyPolicy.CanInspectNext(inspectedNearby, elapsedInspectionMilliseconds))
                 {
                     truncationReason = NearbyPolicy.StopReason(inspectedNearby, elapsedInspectionMilliseconds);
                     break;

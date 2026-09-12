@@ -2,11 +2,11 @@
 
 > Turn a messy Viking inventory into a tidy, adventure-ready loadout.
 
-Stackmaster combines automatic inventory sorting, deliberate nearby-storage depositing, and protected-stack replenishment in one Valheim workflow.
+Stackmaster combines automatic inventory sorting, deliberate nearby-storage depositing, protected-stack replenishment, and exact nearby-chest material use for building and crafting in one Valheim workflow.
 
 ## Early public test release
 
-Version 0.1.0 has passed automated tests and solo smoke testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this release does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
+Version 0.2.0 Test Build 1 has passed automated domain and repository checks, but its new nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
 
 Stackmaster is designed as an optional client-side install: each player who wants its features installs it, while the host, other players, and dedicated server should not need Stackmaster. That installation model still needs confirmation across the remaining multiplayer matrix.
 
@@ -18,6 +18,9 @@ Stackmaster is designed as an optional client-side install: each player who want
 - Deposits only into nearby eligible vanilla containers that already hold a compatible item.
 - Fills partial stacks first, prioritizing the targeted chest and then searching nearest to farthest.
 - Replenishes protected stacks to optional target quantities during the same storage action.
+- Counts and consumes exact building and crafting costs from the player plus eligible nearby chests.
+- Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
+- Rechecks access, ownership, chest use, stack identity, and quantity before removal; failed multi-stack removal rolls back completed steps.
 - Leaves unmatched items and overflow safely in the player inventory.
 - Skips inaccessible, unknown, modded, or actively used containers.
 - Shows compact totals, shortages, meaningful skips, and incomplete-search notices.
@@ -32,17 +35,19 @@ Stackmaster is designed as an optional client-side install: each player who want
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 
-Version 0.1.0 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 0.2.0 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
-Stackmaster has exactly three settings:
+Stackmaster has exactly five settings:
 
 1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory.
-2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres.
+2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and shared by all nearby-storage features.
 3. **Storage-action keybind** — Left Alt + E by default.
+4. **Enable building from nearby chests** — on by default and independently switchable.
+5. **Enable crafting from nearby chests** — on by default and independently switchable.
 
-Radius and keybind are available through the normal r2modman/BepInEx configuration editor after the first launch.
+All settings are available through the normal r2modman/BepInEx configuration editor after the first launch.
 
 ## Installation
 
@@ -52,6 +57,6 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 0.1.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 0.2.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items. Nearby build/craft stock is limited to accessible, idle containers already owned by the local game peer; unresolved ownership is excluded rather than overcounted.
 
 Source, issue tracker, and MIT license: <https://github.com/JStack424/Stackmaster>

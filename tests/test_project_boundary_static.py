@@ -50,11 +50,13 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("VerifyReferencesWereNotCopied", self.project)
         self.assertNotIn("Stackmaster.Core.csproj", self.project)
 
-    def test_exactly_three_user_settings_are_bound(self):
-        self.assertEqual(3, self.gameplay.count("Config.Bind("))
+    def test_exactly_five_user_settings_are_bound(self):
+        self.assertEqual(5, self.gameplay.count("Config.Bind("))
         self.assertIn('"Auto-sort enabled"', self.gameplay)
         self.assertIn('"Nearby-storage radius"', self.gameplay)
         self.assertIn('"Storage-action keybind"', self.gameplay)
+        self.assertIn('"Enable building from nearby chests", true', self.gameplay)
+        self.assertIn('"Enable crafting from nearby chests", true', self.gameplay)
 
     def test_mutation_uses_verified_game_primitive_and_never_claims_blindly(self):
         self.assertIn("MoveItemToThis", self.gameplay)
@@ -318,6 +320,38 @@ class ProjectBoundaryTests(unittest.TestCase):
             self.assertIn(signal, discovery)
         self.assertIn("RefreshFailure", discovery)
         self.assertIn("AccessFailure", discovery)
+
+    def test_nearby_resource_paths_are_exact_fresh_and_fail_closed(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn("GroupBy", core)
+        self.assertIn("shortages.Count == 0 ? tentative", core)
+        self.assertIn("public int PlannedUnits", core)
+        self.assertIn("TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure)", nearby)
+        self.assertIn("TryBeginPieceTransaction(__instance, piece, out failure)", nearby)
+        self.assertIn("ContainerDiscovery.Discover(player, null, catalog, radius, true)", nearby)
+        self.assertIn("handle.Snapshot.IsEligible", nearby)
+        self.assertIn("handle.NetworkView.IsOwner()", nearby)
+        self.assertIn("handle.Container.IsOwner()", nearby)
+        self.assertIn("handle.Container.IsInUse()", nearby)
+        self.assertIn("ContainerDiscovery.CheckAccess", nearby)
+        self.assertIn("ContainerDiscovery.RefreshFromNetwork", nearby)
+        self.assertIn("ExecuteWithRollback", nearby)
+        self.assertIn("Rollback(removed)", nearby)
+        self.assertIn("after != before - step.Quantity", nearby)
+        self.assertIn("after == before + entry.Quantity", nearby)
+        self.assertIn("AddItemAtMethod.Invoke", nearby)
+        self.assertIn("ResourceTransactionContext.AcknowledgeVanillaRemoval(amount)", nearby)
+        self.assertGreaterEqual(nearby.count("ResourceTransactionContext.Complete()"), 2)
+        self.assertIn("RuntimeContext.Disable", nearby)
+        self.assertIn('Transactional(typeof(InventoryGui), "DoCrafting"', installer)
+        self.assertIn('Transactional(typeof(Player), "UpdatePlacement"', installer)
+        self.assertIn('Both(typeof(Player), "TryPlacePiece"', installer)
+        self.assertIn('Prefix(typeof(Inventory), "RemoveItem"', installer)
+        for method in ("HaveRequirementItems", "HaveRequirements", "GetFirstRequiredItem", "DoCrafting", "UpdatePlacement", "TryPlacePiece"):
+            self.assertIn(f'"{method}"', gate)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

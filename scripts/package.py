@@ -21,7 +21,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
 EXPECTED = (
     "manifest.json",
@@ -77,7 +77,7 @@ def validate_manifest(data: bytes) -> None:
 def validate_dll(data: bytes) -> None:
     if len(data) < 0x40 or data[:2] != b"MZ" or b"PE\x00\x00" not in data[:1024]:
         raise ValueError("Stackmaster.dll is not a Windows PE assembly")
-    for marker in (b"Stackmaster", b"com.jstack424.stackmaster", b"0.1.0"):
+    for marker in (b"Stackmaster", b"com.jstack424.stackmaster", VERSION.encode("ascii")):
         if marker not in data and marker.decode().encode("utf-16le") not in data:
             raise ValueError(f"Stackmaster.dll is missing identity marker {marker!r}")
     for leaked in (b"/home/hatch", b"C:\\Users\\", b"StackmasterReferences"):
