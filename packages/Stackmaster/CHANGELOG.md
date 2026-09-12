@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 Test Build 8
+
+Unpublished local test build.
+
+- Fixed the crafting-row overlay being skipped because Valheim's current `InventoryGui.SetupRequirement` method is static and therefore cannot supply the instance/instance-field arguments requested by the previous postfix.
+- Crafting and upgrade rows now show `required / total available` across player and nearby eligible chest stock, remain white when the aggregate satisfies the cost, and flash red only for true shortages.
+- Covers workbenches, forges, cauldrons, equivalent stations, upgrades, multi-craft totals, duplicate requirements, and one-ingredient quality constraints.
+- Automated verification passes: zero build warnings/errors, 55/55 domain tests, and 45/45 static/repository checks.
+
 ## 0.2.0 Test Build 7
 
 Unpublished local test build.

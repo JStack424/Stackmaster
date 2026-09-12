@@ -76,7 +76,8 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
-            RequireMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
+            RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
+            RequireMethod(failures, typeof(InventoryGui), "get_instance");
             RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece));
             RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
@@ -193,6 +194,20 @@ namespace Stackmaster
             if (AccessTools.DeclaredMethod(type, name, parameters) == null && AccessTools.Method(type, name, parameters) == null)
             {
                 failures.Add(type.Name + "." + name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") missing");
+            }
+        }
+
+        private static void RequireStaticMethod(ICollection<string> failures, Type type, string name, params Type[] parameters)
+        {
+            var method = AccessTools.DeclaredMethod(type, name, parameters) ?? AccessTools.Method(type, name, parameters);
+            if (method == null)
+            {
+                failures.Add(type.Name + "." + name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") missing");
+                return;
+            }
+            if (!method.IsStatic)
+            {
+                failures.Add(type.Name + "." + name + " is no longer static");
             }
         }
 

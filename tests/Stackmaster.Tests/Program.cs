@@ -41,6 +41,8 @@ internal static class Program
             ResourceDisplayAggregatesDuplicateRequirements,
             ResourceDisplayUsesUpgradeAndMultiCraftTotals,
             ResourceDisplayAlternativesRequireOneQualityTier,
+            RequirementPresentationFormatsAggregateTotals,
+            RequirementPresentationUsesRedOnlyForTrueShortages,
             ResourcePlanAggregatesPlayerAndNearbyStacks,
             ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
@@ -609,6 +611,26 @@ internal static class Program
             requireSingleQuality: true).Single();
         Equal(5, matchingQuality.Available, "all quality tiers remain visible in the total");
         True(matchingQuality.IsSatisfied, "one complete quality tier satisfies the alternative requirement");
+    }
+
+    private static void RequirementPresentationFormatsAggregateTotals()
+    {
+        Equal("2 / 17", ResourceRequirementPresentation.Format(2, 17),
+            "building and crafting rows share required / total available text");
+        Equal("50 / 25", ResourceRequirementPresentation.Format(50, 25),
+            "a true shortage still displays the exact aggregate total");
+    }
+
+    private static void RequirementPresentationUsesRedOnlyForTrueShortages()
+    {
+        True(!ResourceRequirementPresentation.ShouldUseShortageColor(false, true, 1f),
+            "aggregate-satisfied crafting rows never flash red");
+        True(ResourceRequirementPresentation.ShouldUseShortageColor(false, false, 1f),
+            "a true shortage uses red during the positive flash phase");
+        True(!ResourceRequirementPresentation.ShouldUseShortageColor(false, false, -1f),
+            "a true shortage keeps vanilla white during the opposite flash phase");
+        True(!ResourceRequirementPresentation.ShouldUseShortageColor(true, false, 1f),
+            "no-cost mode suppresses shortage flashing");
     }
 
     private static void ResourcePlanAggregatesPlayerAndNearbyStacks()

@@ -2,6 +2,22 @@
 
 All notable changes to Stackmaster are documented here.
 
+## [0.2.0 Test Build 8] - 2026-09-12
+
+Unpublished local test build.
+
+### Fixed
+
+- Fixed crafting requirement rows remaining on vanilla player-only counts and red flashing even when nearby eligible chest stock made the recipe craftable.
+- The supported Valheim `InventoryGui.SetupRequirement` hook is static; the previous postfix incorrectly requested an instance and instance-field injection, so its fail-open guard skipped every live crafting row. The corrected postfix resolves the active `InventoryGui` explicitly and applies aggregate totals after vanilla renders each row.
+- Crafting rows now use the same shared `required / total available` text and shortage-color policy as building rows. Aggregate-satisfied rows stay white; true shortages retain vanilla red/white flashing.
+- Runtime compatibility now verifies that the supported crafting-row method remains static before installing any gameplay hooks.
+
+### Automated verification
+
+- Release build succeeds with zero warnings and zero errors.
+- 55/55 pure-domain tests and 45/45 static/repository checks pass.
+
 ## [0.2.0 Test Build 7] - 2026-09-12
 
 Unpublished local test build.

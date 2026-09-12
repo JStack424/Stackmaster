@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Linq;
 
@@ -68,6 +69,21 @@ namespace Stackmaster.Core
                                 (quality < 0 || stack.Quality == quality))
                 .Sum(stack => checked(stack.Quantity));
         }
+    }
+
+    /// <summary>Shared text and flash policy for building and crafting requirement rows.</summary>
+    public static class ResourceRequirementPresentation
+    {
+        public static string Format(int required, int available)
+        {
+            if (required < 0) throw new ArgumentOutOfRangeException(nameof(required));
+            if (available < 0) throw new ArgumentOutOfRangeException(nameof(available));
+            return required.ToString(CultureInfo.InvariantCulture) + " / " +
+                   available.ToString(CultureInfo.InvariantCulture);
+        }
+
+        public static bool ShouldUseShortageColor(bool noCost, bool isSatisfied, float flashSignal)
+            => !noCost && !isSatisfied && flashSignal > 0f;
     }
 
     /// <summary>One rendered requirement line with stock from the complete eligible capture.</summary>

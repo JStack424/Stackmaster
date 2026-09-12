@@ -1492,11 +1492,13 @@ namespace Stackmaster
                 var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
                 if (amountLabel == null) continue;
 
-                amountLabel.text = entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +
-                                   entry.Available.ToString(CultureInfo.InvariantCulture);
-                amountLabel.color = noBuildCost || entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f
-                    ? Color.white
-                    : Color.red;
+                amountLabel.text = ResourceRequirementPresentation.Format(entry.Required, entry.Available);
+                amountLabel.color = ResourceRequirementPresentation.ShouldUseShortageColor(
+                    noBuildCost,
+                    entry.IsSatisfied,
+                    Mathf.Sin(Time.time * 10f))
+                    ? Color.red
+                    : Color.white;
             }
         }
     }
@@ -1508,6 +1510,7 @@ namespace Stackmaster
         private static readonly MethodInfo SelectedRecipeGetter = SelectedRecipeField == null
             ? null
             : AccessTools.PropertyGetter(SelectedRecipeField.FieldType, "Recipe");
+        private static readonly FieldInfo RequirementsField = AccessTools.Field(typeof(InventoryGui), "m_reqList");
         private static Player _cachedPlayer;
         private static Recipe _cachedRecipe;
         private static int _cachedQuality;
@@ -1517,20 +1520,24 @@ namespace Stackmaster
         private static float _nextRefreshTime;
         private static IReadOnlyList<RuntimeRequirementAvailability> _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
 
+        // InventoryGui.SetupRequirement is static in the supported Valheim build. A Harmony
+        // __instance argument is therefore always null, and instance-field injection cannot
+        // supply m_reqList. Resolve the live InventoryGui explicitly after vanilla renders the
+        // row, then replace only its amount text and shortage color.
         internal static void Postfix(
-            InventoryGui __instance,
             [HarmonyArgument(0)] Transform elementRoot,
             [HarmonyArgument(1)] Piece.Requirement requirement,
             [HarmonyArgument(2)] Player player,
             [HarmonyArgument(3)] bool craft,
             [HarmonyArgument(4)] int quality,
             [HarmonyArgument(5)] int craftMultiplier,
-            List<Piece.Requirement> ___m_reqList,
             ref bool __result)
         {
             try
             {
-                Apply(__instance, elementRoot, requirement, player, craft, quality, craftMultiplier, ___m_reqList, __result);
+                var inventoryGui = InventoryGui.instance;
+                var requirements = GetRequirements(inventoryGui);
+                Apply(inventoryGui, elementRoot, requirement, player, craft, quality, craftMultiplier, requirements, __result);
             }
             catch (Exception exception)
             {
@@ -1539,7 +1546,7 @@ namespace Stackmaster
         }
 
         private static void Apply(
-            InventoryGui __instance,
+            InventoryGui inventoryGui,
             Transform elementRoot,
             Piece.Requirement requirement,
             Player player,
@@ -1550,14 +1557,14 @@ namespace Stackmaster
             bool vanillaResult)
         {
             if (!vanillaResult || !craft || !RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
-                !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value || __instance == null ||
+                !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value || inventoryGui == null ||
                 player == null || !ReferenceEquals(player, Player.m_localPlayer) || elementRoot == null ||
                 requirement == null || requirement.m_resItem == null || craftMultiplier <= 0 || requirements == null)
             {
                 return;
             }
 
-            var recipe = GetSelectedRecipe(__instance);
+            var recipe = GetSelectedRecipe(inventoryGui);
             if (recipe == null) return;
             var requirementIndex = requirements.FindIndex(item => ReferenceEquals(item, requirement));
             if (requirementIndex < 0) return;
@@ -1592,13 +1599,28 @@ namespace Stackmaster
             var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
             if (amountLabel == null) return;
 
-            amountLabel.text = entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +
-                               entry.Available.ToString(CultureInfo.InvariantCulture);
+            amountLabel.text = ResourceRequirementPresentation.Format(entry.Required, entry.Available);
             var noCraftCost = player.NoCostCheat() ||
                               (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoCraftCost));
-            amountLabel.color = noCraftCost || entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f
-                ? Color.white
-                : Color.red;
+            amountLabel.color = ResourceRequirementPresentation.ShouldUseShortageColor(
+                noCraftCost,
+                entry.IsSatisfied,
+                Mathf.Sin(Time.time * 10f))
+                ? Color.red
+                : Color.white;
+        }
+
+        private static List<Piece.Requirement> GetRequirements(InventoryGui inventoryGui)
+        {
+            if (inventoryGui == null || RequirementsField == null) return null;
+            try
+            {
+                return RequirementsField.GetValue(inventoryGui) as List<Piece.Requirement>;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static Recipe GetSelectedRecipe(InventoryGui inventoryGui)
