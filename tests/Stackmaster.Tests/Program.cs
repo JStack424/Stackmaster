@@ -48,7 +48,15 @@ internal static class Program
             ResourcePlanDoesNotDoubleConsume,
             ResourcePlanHonorsExactQualityAndMultiplierTotals,
             ResourcePlanIsAllOrNothingAcrossDifferentMaterials,
-            ResourcePlanUsesPlayerThenDeterministicContainerOrder
+            ResourcePlanUsesPlayerThenDeterministicContainerOrder,
+            ResourcePlanMinimizesDistinctContainers,
+            ResourcePlanMinimizesAcrossDifferentMaterials,
+            ResourceOwnershipSelectionUsesPlayerFirstRemainder,
+            ResourceOwnershipSelectionUsesOnlyNeededChests,
+            ResourceOwnershipSelectionDeduplicatesChestStacks,
+            ResourceOwnershipSelectionHasBuildCraftParity,
+            ResourceOwnershipRevisionRejectsStaleRequiredChest,
+            ResourceOwnershipRevisionIgnoresUnrelatedChest
         };
 
         var failures = 0;
@@ -691,6 +699,112 @@ internal static class Program
         SequenceEqual(new[] { "player", "near-a", "near-b" }, plan.Steps.Select(step => step.InventoryId),
             "withdrawals use player, then nearest deterministic container order");
         Equal(35, plan.PlannedUnits, "ordered plan remains exact");
+    }
+
+    private static void ResourcePlanMinimizesDistinctContainers()
+    {
+        var planner = new ResourceWithdrawalPlanner();
+        ResourceWithdrawalPlan plan;
+        True(planner.TryPlanWithMinimumContainers(
+                new[] { new ResourceRequirement("Wood", 10) },
+                new[]
+                {
+                    Resource("player", "p", "Wood", 1, 5, 0, 0),
+                    Resource("near", "n", "Wood", 1, 1, 1, 0),
+                    Resource("far", "f", "Wood", 1, 5, 2, 0)
+                },
+                "player",
+                out plan),
+            "bounded exact minimum search completes");
+        SequenceEqual(new[] { "far" }, ResourceOwnershipSelection.RequiredContainerIds(plan),
+            "one sufficient farther chest beats two greedy chest claims");
+        Equal(10, plan.PlannedUnits, "minimum-container plan remains exact");
+    }
+
+    private static void ResourcePlanMinimizesAcrossDifferentMaterials()
+    {
+        var planner = new ResourceWithdrawalPlanner();
+        ResourceWithdrawalPlan plan;
+        True(planner.TryPlanWithMinimumContainers(
+                new[] { new ResourceRequirement("Wood", 5), new ResourceRequirement("Stone", 5) },
+                new[]
+                {
+                    Resource("wood-only", "w", "Wood", 1, 5, 1, 0),
+                    Resource("stone-only", "s", "Stone", 1, 5, 2, 0),
+                    Resource("combined", "cw", "Wood", 1, 5, 3, 0),
+                    Resource("combined", "cs", "Stone", 1, 5, 3, 1)
+                },
+                "player",
+                out plan),
+            "cross-material minimum search completes");
+        SequenceEqual(new[] { "combined" }, ResourceOwnershipSelection.RequiredContainerIds(plan),
+            "one chest covering all requirements beats separate per-material chests");
+    }
+
+    private static void ResourceOwnershipSelectionUsesPlayerFirstRemainder()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 30) },
+            Resource("player", "p", "Wood", 1, 25, 0, 0),
+            Resource("near", "n", "Wood", 1, 50, 1, 0));
+        SequenceEqual(new[] { "near" }, ResourceOwnershipSelection.RequiredContainerIds(plan),
+            "ownership excludes player stock and selects only the chest covering the remainder");
+        Equal(5, plan.Steps.Last().Quantity, "only the exact post-player remainder is planned from storage");
+    }
+
+    private static void ResourceOwnershipSelectionUsesOnlyNeededChests()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Stone", 20) },
+            Resource("player", "p", "Stone", 1, 5, 0, 0),
+            Resource("near", "n", "Stone", 1, 15, 1, 0),
+            Resource("unrelated", "u", "Stone", 1, 50, 2, 0));
+        SequenceEqual(new[] { "near" }, ResourceOwnershipSelection.RequiredContainerIds(plan),
+            "a satisfiable earlier chest prevents any unrelated ownership request");
+    }
+
+    private static void ResourceOwnershipSelectionDeduplicatesChestStacks()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 30) },
+            Resource("chest", "a", "Wood", 1, 10, 1, 0),
+            Resource("chest", "b", "Wood", 1, 20, 1, 1));
+        SequenceEqual(new[] { "chest" }, ResourceOwnershipSelection.RequiredContainerIds(plan),
+            "multiple exact stack withdrawals require only one chest ownership handshake");
+    }
+
+    private static void ResourceOwnershipSelectionHasBuildCraftParity()
+    {
+        var requirements = new[] { new ResourceRequirement("Iron", 12) };
+        var stacks = new[]
+        {
+            Resource("player", "p", "Iron", 1, 2, 0, 0),
+            Resource("forge-chest", "c", "Iron", 1, 10, 1, 0)
+        };
+        var buildPlan = ResourcePlan(requirements, stacks);
+        var craftPlan = ResourcePlan(requirements, stacks);
+        SequenceEqual(
+            ResourceOwnershipSelection.RequiredContainerIds(buildPlan),
+            ResourceOwnershipSelection.RequiredContainerIds(craftPlan),
+            "building and crafting derive the same exact ownership set from the shared planner");
+    }
+
+    private static void ResourceOwnershipRevisionRejectsStaleRequiredChest()
+    {
+        var required = new[] { "needed" };
+        var expected = new Dictionary<string, uint> { ["needed"] = 7 };
+        var current = new Dictionary<string, uint> { ["needed"] = 8 };
+        True(!ResourceOwnershipSelection.RequiredRevisionsMatch(required, expected, current),
+            "a changed required chest revision cancels before mutation");
+    }
+
+    private static void ResourceOwnershipRevisionIgnoresUnrelatedChest()
+    {
+        var required = new[] { "needed" };
+        var expected = new Dictionary<string, uint> { ["needed"] = 7, ["unrelated"] = 1 };
+        var current = new Dictionary<string, uint> { ["needed"] = 7, ["unrelated"] = 99 };
+        True(ResourceOwnershipSelection.RequiredRevisionsMatch(required, expected, current),
+            "an unrelated chest revision does not broaden or invalidate the selected ownership set");
     }
 
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)

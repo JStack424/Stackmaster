@@ -2,6 +2,28 @@
 
 All notable changes to Stackmaster are documented here.
 
+## [0.2.0 Test Build 5] - 2026-09-12
+
+Unpublished local test build.
+
+### Fixed
+
+- Building and crafting totals now include stable serialized stock from accessible vanilla chests regardless of current network owner; displaying totals never requests or claims ownership.
+- Complete actions remain player-first and select only the minimum distinct chests used by the exact all-or-nothing withdrawal plan; unrelated chests are never requested.
+- Remote ownership uses Valheim's owner-authorized asynchronous request rather than blind `ClaimOwnership`. The original action is canceled without mutation while ownership is prepared, then the player is asked to retry through the complete vanilla action path.
+- Required chest identity, access, radius, in-use state, owner revision, serialized data revision, stack identity, quality, world level, and quantity are revalidated before mutation. Required chests are briefly reserved during the exact synchronous transaction; truly unowned ZDOs, plan changes, denial, timeout, stale data, or any failed check cancel without partial consumption.
+- Owner rejection for a required busy/unavailable chest displays exactly `The required materials are currently in use`.
+- Exact rollback and vanilla double-charge suppression remain in place.
+
+### Verified limitation
+
+- Valheim's safe owner-authorized ownership RPC completes asynchronously. A Harmony action prefix cannot synchronously wait for it, and replaying placement later would bypass vanilla stamina, durability, statistics, and other logic. Test Build 5 therefore deliberately requires a second normal build/craft attempt after ownership is prepared instead of forcing or replaying the action.
+
+### Automated verification
+
+- Release build succeeds with zero warnings and zero errors.
+- 48/48 pure-domain tests and 42/42 static/repository checks pass.
+
 ## [0.2.0 Test Build 4] - 2026-09-12
 
 Unpublished local test build.

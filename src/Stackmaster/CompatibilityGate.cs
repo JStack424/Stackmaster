@@ -82,7 +82,16 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
             RequireMethod(failures, typeof(Container), "CheckForChanges");
             RequireMethod(failures, typeof(Container), "GetInventory");
+            RequireMethod(failures, typeof(ZDO), "GetByteArray", typeof(int), typeof(byte[]));
+            RequireMethod(failures, typeof(ZDO), "get_DataRevision");
+            RequireMethod(failures, typeof(ZDO), "get_OwnerRevision");
+            RequireMethod(failures, typeof(Inventory), "Load", typeof(ZPackage));
+            RequireConstructor(failures, typeof(Inventory), typeof(bool));
+            RequireConstructor(failures, typeof(ZPackage), typeof(byte[]));
+            RequireMethod(failures, typeof(ZNetView), "HasOwner");
+            RequireMethod(failures, typeof(Container), "IsOwner");
             RequireMethod(failures, typeof(Container), "IsInUse");
+            RequireMethod(failures, typeof(Container), "SetInUse", typeof(bool));
             RequireMethod(failures, typeof(Container), "Interact", typeof(Humanoid), typeof(bool), typeof(bool));
             RequireMethod(failures, typeof(Container), "GetHoverText");
             RequireMethod(failures, typeof(Container), "StackAll");
@@ -113,6 +122,8 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
             RequireMethod(failures, typeof(SplitDialog), "get_IsActive");
             RequireMethod(failures, typeof(ZNetView), "IsOwner");
+            RequireMethod(failures, typeof(ZNetView), "IsValid");
+            RequireMethod(failures, typeof(ZNetView), "GetZDO");
             RequireMethod(failures, typeof(ZNetView), "InvokeRPC", typeof(string), typeof(object[]));
             RequireMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool));
             RequireField(failures, typeof(InventoryGui), "m_pvp");
@@ -133,6 +144,9 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_variantDialog");
             RequireField(failures, typeof(Hud), "m_requirementItems");
             RequireField(failures, typeof(Container), "m_nview");
+            RequireField(failures, typeof(Container), "m_wagon");
+            RequireField(failures, typeof(ZDO), "m_uid");
+            RequireField(failures, typeof(ZDOVars), "s_items");
             RequireField(failures, typeof(Inventory), "m_onChanged");
             RequireField(failures, typeof(Inventory), "m_inventory");
             RequireField(failures, typeof(Player), "m_customData");
@@ -179,6 +193,14 @@ namespace Stackmaster
             if (AccessTools.DeclaredMethod(type, name, parameters) == null && AccessTools.Method(type, name, parameters) == null)
             {
                 failures.Add(type.Name + "." + name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") missing");
+            }
+        }
+
+        private static void RequireConstructor(ICollection<string> failures, Type type, params Type[] parameters)
+        {
+            if (AccessTools.Constructor(type, parameters) == null)
+            {
+                failures.Add(type.Name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") constructor missing");
             }
         }
 

@@ -154,7 +154,7 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_explicit_target_and_ordinary_base_are_inspected_before_budget_can_stop_search(self):
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
-        target_inspection = discovery.index("handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic))")
+        target_inspection = discovery.index("handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic, resourceReadOnly))")
         object_search = discovery.index("FindObjectsByType<Container>")
         inspection_timer = discovery.index("var inspectionStopwatch = Stopwatch.StartNew()")
         budget_check = discovery.index("NearbyPolicy.CanInspectNext")
@@ -341,8 +341,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("public int PlannedUnits", core)
         self.assertIn("TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure)", nearby)
         self.assertIn("TryBeginPieceTransaction(__instance, piece, out failure)", nearby)
-        self.assertIn("ContainerDiscovery.Discover(player, null, catalog, radius, true)", nearby)
-        self.assertIn("handle.Snapshot.IsEligible", nearby)
+        self.assertIn("ContainerDiscovery.Discover(player, null, catalog, radius, true, true)", nearby)
+        self.assertIn("handle.ResourceReadable", nearby)
+        self.assertIn("handle.ResourceInventory", nearby)
+        self.assertNotIn("handle.Snapshot.IsEligible &&\n                                 handle.NetworkView", nearby)
         self.assertIn("handle.NetworkView.IsOwner()", nearby)
         self.assertIn("handle.Container.IsOwner()", nearby)
         self.assertIn("handle.Container.IsInUse()", nearby)
@@ -350,7 +352,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ContainerDiscovery.RefreshFromNetwork", nearby)
         self.assertIn("ExecuteWithRollback", nearby)
         self.assertIn("Rollback(removed)", nearby)
-        self.assertIn("after != before - step.Quantity", nearby)
+        self.assertIn("actualRemoved != step.Quantity", nearby)
+        self.assertIn("clone.m_stack = actualRemoved", nearby)
         self.assertIn("after == before + entry.Quantity", nearby)
         self.assertIn("AddItemAtMethod.Invoke", nearby)
         self.assertIn("ResourceTransactionContext.AcknowledgeVanillaRemoval(amount)", nearby)
@@ -362,6 +365,98 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('Prefix(typeof(Inventory), "RemoveItem"', installer)
         for method in ("HaveRequirementItems", "HaveRequirements", "GetFirstRequiredItem", "DoCrafting", "UpdatePlacement", "TryPlacePiece"):
             self.assertIn(f'"{method}"', gate)
+
+    def test_remote_owned_resource_stock_is_read_only_and_claimed_only_for_exact_action_plan(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+
+        # Display/cost discovery decodes ZDO inventory bytes into a detached Inventory and
+        # contains no ownership request of any kind.
+        self.assertIn("TryReadSerializedInventory", discovery)
+        self.assertIn("zdo.GetByteArray(ZDOVars.s_items, null)", discovery)
+        self.assertIn("var snapshot = new Inventory(true)", discovery)
+        self.assertIn("snapshot.Load(new ZPackage(bytes))", discovery)
+        self.assertIn("bool resourceReadOnly = false", discovery)
+        self.assertIn("!resourceReadOnly && isVanilla", discovery)
+        self.assertIn("true, true", nearby)
+        self.assertIn("handle.ResourceReadable", nearby)
+        self.assertIn("handle.ResourceInventory", nearby)
+        capture = nearby[nearby.index("private static NearbyResourceCapture Capture"):nearby.index("private static void AddInventory")]
+        self.assertNotIn("IsOwner()", capture)
+        self.assertNotIn("StackAll()", capture)
+        self.assertNotIn("ClaimOwnership", capture)
+
+        # Action-time acquisition is derived from the complete player-first plan, requests only
+        # its distinct chest ids, then requires unchanged revision, identity, ownership, access,
+        # stack identity/quality/world level, and exact quantity before any removal.
+        self.assertIn("ResourceOwnershipSelection.RequiredContainerIds", nearby)
+        self.assertIn("TryPlanWithMinimumContainers", nearby)
+        self.assertIn("MinimumContainerSearchNodeLimit", core)
+        self.assertIn('item.m_gridPos.x.ToString(CultureInfo.InvariantCulture) + ","', nearby)
+        self.assertNotIn("var width = inventory.GetWidth()", nearby)
+        self.assertIn("var unowned = requiredHandles", nearby)
+        self.assertIn("OwnershipCoordinator.Begin(unownedHandles)", nearby)
+        self.assertIn("!handle.NetworkView.HasOwner()", nearby)
+        self.assertIn("OwnerRevision != handle.ResourceOwnerRevision", ownership)
+        self.assertIn("RequiredRevisionsMatch", nearby)
+        self.assertIn("the exact minimum container plan changed before consumption", nearby)
+        self.assertIn("RevalidateContainers", nearby)
+        self.assertIn("RevalidateStacks", nearby)
+        self.assertIn("TryReserveContainers", nearby)
+        self.assertIn("SetInUse(true)", nearby)
+        self.assertIn("SetInUse(false)", nearby)
+        self.assertIn("CaptureRevisionBaseline", nearby)
+        self.assertIn("zdo.DataRevision != reservation.DataRevision", nearby)
+        self.assertIn("zdo.OwnerRevision != reservation.OwnerRevision", nearby)
+        self.assertIn("ownerBaselines[handle.Id] != handle.ResourceOwnerRevision", nearby)
+        transaction_start = nearby.index("ResourceTransactionContext.Begin(removed")
+        removal_start = nearby.index("ExecuteWithRollback(player", transaction_start)
+        self.assertLess(transaction_start, removal_start)
+        rollback_context = nearby[nearby.index("internal static bool Rollback()") : nearby.index("private static void Clear()")]
+        self.assertLess(rollback_context.index("NearbyResourceService.Rollback"), rollback_context.index("ReleaseReservations"))
+        self.assertIn("var actualRemoved = before - after", nearby)
+        self.assertIn("clone.m_stack = actualRemoved", nearby)
+        self.assertLess(nearby.index("TryCaptureOwnedPlan"), nearby.index("ExecuteWithRollback", nearby.index("TryBeginTransaction")))
+        self.assertIn("CancelRemaining", ownership)
+        self.assertIn("OwnerRejectedContainerIds", ownership)
+        cleanup = nearby.index("Stopping/disposal of the coroutine must not strand the coordinator")
+        cleanup_timeout = nearby.index("if (!ownership.IsComplete) ownership.Timeout()", cleanup)
+        cleanup_end = nearby.index("OwnershipCoordinator.End(ownership)", cleanup)
+        self.assertLess(cleanup_timeout, cleanup_end)
+        self.assertIn("Nearby-resource ownership refresh failed safely", nearby)
+        self.assertIn("ContainerDiscovery.CheckAccess(player, handle.Container)", nearby)
+        self.assertIn('InUseMessage = "The required materials are currently in use"', nearby)
+        self.assertIn("public static class ResourceOwnershipSelection", core)
+        self.assertIn("RequiredContainerIds", core)
+        self.assertIn("RequiredRevisionsMatch", core)
+
+        # Compatibility gate covers every newly relied-upon serialization/revision surface.
+        for signature in (
+            'RequireMethod(failures, typeof(ZDO), "GetByteArray", typeof(int), typeof(byte[]))',
+            'RequireMethod(failures, typeof(ZDO), "get_DataRevision")',
+            'RequireMethod(failures, typeof(Inventory), "Load", typeof(ZPackage))',
+            'RequireConstructor(failures, typeof(Inventory), typeof(bool))',
+            'RequireMethod(failures, typeof(ZDO), "get_OwnerRevision")',
+            'RequireMethod(failures, typeof(ZNetView), "HasOwner")',
+            'RequireMethod(failures, typeof(Container), "IsOwner")',
+            'RequireMethod(failures, typeof(Container), "SetInUse", typeof(bool))',
+            'RequireConstructor(failures, typeof(ZPackage), typeof(byte[]))',
+            'RequireField(failures, typeof(Container), "m_wagon")',
+            'RequireField(failures, typeof(ZDO), "m_uid")',
+            'RequireField(failures, typeof(ZDOVars), "s_items")',
+        ):
+            self.assertIn(signature, gate)
+
+    def test_remote_ownership_is_staged_because_vanilla_rpc_cannot_complete_synchronously(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        self.assertIn("A Harmony prefix cannot synchronously wait for remote RPCs", nearby)
+        self.assertIn("required materials ready — try the action again", nearby)
+        self.assertIn("yield return null", nearby)
+        self.assertIn("nothing was consumed", nearby)
+        self.assertNotIn("ClaimOwnership()", nearby)
 
     def test_build_hud_uses_aggregate_nearby_totals_and_matching_availability_color(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")

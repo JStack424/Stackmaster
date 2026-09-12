@@ -13,18 +13,36 @@ namespace Stackmaster
 {
     internal sealed class ContainerHandle
     {
-        internal ContainerHandle(string id, Container container, ZNetView networkView, ContainerSnapshot snapshot)
+        internal ContainerHandle(
+            string id,
+            Container container,
+            ZNetView networkView,
+            ContainerSnapshot snapshot,
+            Inventory resourceInventory,
+            uint resourceDataRevision,
+            ushort resourceOwnerRevision,
+            bool resourceReadable)
         {
             Id = id;
             Container = container;
             NetworkView = networkView;
             Snapshot = snapshot;
+            ResourceInventory = resourceInventory;
+            ResourceDataRevision = resourceDataRevision;
+            ResourceOwnerRevision = resourceOwnerRevision;
+            ResourceReadable = resourceReadable;
         }
 
         internal string Id { get; }
         internal Container Container { get; }
         internal ZNetView NetworkView { get; }
         internal ContainerSnapshot Snapshot { get; }
+        // Detached inventory decoded from the ZDO. Availability reads this copy and therefore
+        // never claims ownership or mutates the live Container inventory.
+        internal Inventory ResourceInventory { get; }
+        internal uint ResourceDataRevision { get; }
+        internal ushort ResourceOwnerRevision { get; }
+        internal bool ResourceReadable { get; }
     }
 
     internal sealed class TargetDiscoveryDiagnostic
@@ -152,7 +170,13 @@ namespace Stackmaster
         private static readonly MethodInfo CheckAccessMethod = AccessTools.Method(typeof(Container), "CheckAccess", new[] { typeof(long) });
         private static readonly MethodInfo CheckForChangesMethod = AccessTools.Method(typeof(Container), "CheckForChanges");
 
-        internal static DiscoveryResult Discover(Player player, Container target, CompatibilityCatalog catalog, float radius, bool requireComplete = false)
+        internal static DiscoveryResult Discover(
+            Player player,
+            Container target,
+            CompatibilityCatalog catalog,
+            float radius,
+            bool requireComplete = false,
+            bool resourceReadOnly = false)
         {
             var handles = new List<ContainerHandle>();
             var targetDistance = target != null
@@ -165,7 +189,7 @@ namespace Stackmaster
             // cause a valid targeted container to be omitted.
             if (target != null && targetDistance <= radius)
             {
-                handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic));
+                handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic, resourceReadOnly));
             }
 
             var totalStopwatch = Stopwatch.StartNew();
@@ -198,7 +222,7 @@ namespace Stackmaster
                     break;
                 }
 
-                handles.Add(Inspect(player, candidate.Container, catalog, candidate.Distance, false, null));
+                handles.Add(Inspect(player, candidate.Container, catalog, candidate.Distance, false, null, resourceReadOnly));
                 inspectedNearby++;
             }
 
@@ -227,7 +251,8 @@ namespace Stackmaster
             CompatibilityCatalog catalog,
             double distance,
             bool isTarget,
-            TargetDiscoveryDiagnostic diagnostic)
+            TargetDiscoveryDiagnostic diagnostic,
+            bool resourceReadOnly)
         {
             var view = NetworkViewField.GetValue(container) as ZNetView;
             var viewValid = view != null && view.IsValid();
@@ -236,18 +261,37 @@ namespace Stackmaster
             var observedType = container.GetType();
             var isVanilla = observedType == typeof(Container) && observedType.Assembly == typeof(Container).Assembly;
             string refreshFailure = null;
-            var refreshed = isVanilla && viewValid && zdo != null && TryRefreshFromNetwork(container, out refreshFailure);
+            // Resource-only discovery must not call CheckForChanges or GetInventory: both touch
+            // the live Container state. It reads only a detached serialized ZDO snapshot below.
+            var refreshed = !resourceReadOnly && isVanilla && viewValid && zdo != null &&
+                TryRefreshFromNetwork(container, out refreshFailure);
             var inventory = refreshed ? container.GetInventory() : null;
             var isKnown = refreshed && inventory != null;
             var locallyOpenTarget = isTarget && StorageAction.IsLocalOpenTarget(container);
             var inUse = isKnown &&
                 ((!locallyOpenTarget && container.IsInUse()) || (container.m_wagon != null && container.m_wagon.InUse()));
             string accessFailure = null;
-            var accessible = isKnown && !inUse && TryCheckAccess(player, container, out accessFailure);
+            var accessCheckable = resourceReadOnly
+                ? isVanilla && viewValid && zdo != null
+                : isKnown;
+            var accessGranted = accessCheckable && TryCheckAccess(player, container, out accessFailure);
+            var accessible = accessGranted && !inUse;
             var capacity = inventory != null ? inventory.GetWidth() * inventory.GetHeight() : 0;
             var items = accessible
                 ? InventorySnapshots.CaptureInventory(id, inventory, catalog).Items
                 : Array.Empty<ItemStackSnapshot>();
+
+            // Container.Load reads this same serialized ZDO field without checking ownership.
+            // Decode into a detached Inventory so HUD/accounting reads never touch the live
+            // inventory and can include accessible remote-owned (including currently open)
+            // vanilla chests. Revision-before/after equality rejects a torn network snapshot.
+            Inventory resourceInventory = null;
+            uint resourceDataRevision = 0;
+            string resourceFailure = null;
+            var resourceDecoded = resourceReadOnly && isVanilla && viewValid && zdo != null &&
+                TryReadSerializedInventory(container, zdo, out resourceInventory, out resourceDataRevision, out resourceFailure);
+            var resourceReadable = resourceDecoded && accessGranted;
+            if (!resourceDecoded && string.IsNullOrEmpty(refreshFailure)) refreshFailure = resourceFailure;
 
             if (diagnostic != null)
             {
@@ -260,7 +304,7 @@ namespace Stackmaster
                 diagnostic.Refreshed = refreshed;
                 diagnostic.HasInventory = inventory != null;
                 diagnostic.InUse = isKnown ? (bool?)inUse : null;
-                diagnostic.AccessGranted = isKnown && !inUse ? (bool?)accessible : null;
+                diagnostic.AccessGranted = isKnown ? (bool?)accessGranted : null;
                 diagnostic.RefreshFailure = refreshFailure;
                 diagnostic.AccessFailure = accessFailure;
             }
@@ -275,7 +319,60 @@ namespace Stackmaster
                 inUse,
                 capacity,
                 items);
-            return new ContainerHandle(id, container, view, snapshot);
+            return new ContainerHandle(
+                id,
+                container,
+                view,
+                snapshot,
+                resourceReadable ? resourceInventory : null,
+                resourceDataRevision,
+                zdo != null ? zdo.OwnerRevision : (ushort)0,
+                resourceReadable);
+        }
+
+        private static bool TryReadSerializedInventory(
+            Container container,
+            ZDO zdo,
+            out Inventory inventory,
+            out uint dataRevision,
+            out string failure)
+        {
+            inventory = null;
+            dataRevision = 0;
+            failure = null;
+            try
+            {
+                var before = zdo.DataRevision;
+                var bytes = zdo.GetByteArray(ZDOVars.s_items, null);
+                var after = zdo.DataRevision;
+                if (before != after)
+                {
+                    failure = "container data revision changed while reading its serialized inventory";
+                    return false;
+                }
+
+                // Temporary inventories suppress Changed callbacks and weight bookkeeping while
+                // decoding. Serialized item rows still load completely.
+                var snapshot = new Inventory(true);
+                if (bytes != null)
+                {
+                    snapshot.Load(new ZPackage(bytes));
+                }
+                if (zdo.DataRevision != after)
+                {
+                    failure = "container data revision changed while decoding its serialized inventory";
+                    return false;
+                }
+
+                inventory = snapshot;
+                dataRevision = after;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failure = exception.Message;
+                return false;
+            }
         }
 
         internal static bool RefreshFromNetwork(Container container)

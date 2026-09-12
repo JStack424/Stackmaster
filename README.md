@@ -6,7 +6,7 @@ Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines auto
 
 ## Early public test release
 
-Version 0.2.0 Test Build 4 carries forward the successful Test Build 2 startup and initial nearby-chest building check. It shows nearby stock and correct availability coloring in both the selected-piece HUD and every standard crafting/upgrade requirement menu. Its broader nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
+Version 0.2.0 Test Build 5 fixes multiplayer stock discovery so accessible vanilla chests remain visible to building and crafting regardless of which peer currently owns them. Read-only HUD snapshots never request ownership. When an action needs a remotely owned chest, Stackmaster safely requests only the minimum chests selected by its player-first plan; because Valheim confirms that request asynchronously, the first attempt prepares ownership without consuming anything and asks you to try the normal action again. Its broader nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
 
 Stackmaster is designed as an optional client-side install: each player who wants its features installs it, while the host, other players, and dedicated server should not need Stackmaster. That installation model still needs confirmation across the remaining multiplayer matrix.
 
@@ -20,13 +20,13 @@ Stackmaster is designed as an optional client-side install: each player who want
 - Fills compatible partial stacks before creating new stacks.
 - Uses the targeted chest first, then searches other matching storage nearest to farthest.
 - Replenishes protected stacks to optional target quantities during the same storage action.
-- Counts and consumes exact building costs from the player plus eligible nearby chests.
+- Counts and consumes exact building costs from the player plus accessible nearby chests, regardless of current network ownership.
 - Shows each selected build-piece cost as `required / total available` across the player and eligible nearby chests, and blinks red only when that aggregate stock is short.
-- Counts and consumes exact crafting costs, including quality and multi-craft quantities, from the player plus eligible nearby chests.
+- Counts and consumes exact crafting costs, including quality and multi-craft quantities, from the player plus accessible nearby chests, regardless of current network ownership.
 - Shows workbench, forge, cauldron, and equivalent crafting/upgrade costs as `required / total available`, and blinks red only when the aggregate usable stock is short.
-- Rechecks access, ownership, chest use, stack identity, and quantity immediately before removal; a failed multi-stack removal rolls back completed steps.
+- Requests ownership only for chests required by the exact player-first action plan, then rechecks access, ownership, chest use, serialized revision, stack identity, and quantity before removal; a failed multi-stack removal rolls back completed steps.
 - Leaves unmatched items and overflow safely in the player inventory.
-- Skips inaccessible, unknown, modded, or actively used containers.
+- Never mutates inaccessible, unknown, modded, or actively used containers.
 - Shows compact unit totals, shortages, meaningful skips, and incomplete-search notices.
 - Disables all item-changing behavior if its runtime compatibility checks fail.
 
@@ -75,7 +75,7 @@ Stackmaster 0.2.0 is built and fail-closed for the reference environment used du
 - Harmony 2.9.0.0, supplied by BepInExPack Valheim
 - Vanilla containers only
 
-A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items. Nearby build/craft stock is deliberately limited to accessible, idle, vanilla containers already owned by the local game peer; a container whose ownership is unresolved is excluded rather than overcounted. Compatibility with other inventory or storage mods is not claimed in 0.2.0.
+A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first safely prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. Compatibility with other inventory or storage mods is not claimed in 0.2.0.
 
 ## Source, issues, and license
 

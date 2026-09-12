@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 Test Build 5
+
+Unpublished local test build.
+
+- Accessible vanilla chest stock now appears in build and craft totals regardless of current network owner; display reads stable serialized snapshots and never requests ownership.
+- Actions allocate from the player first, then request only the minimum distinct chests used by the complete exact plan; unrelated chests are never claimed.
+- Safe remote ownership is asynchronous: the first attempt consumes nothing while it prepares the required ownership and asks for a retry; only the second normal vanilla attempt may perform the action.
+- Required ownership, access, radius, use state, owner revision, data revision, stack identity, quality, world level, and quantity are revalidated before removal. Required chests are briefly reserved during the exact synchronous transaction; truly unowned ZDOs, denial, timeout, races, stale snapshots, or changed plans cancel without partial consumption.
+- A required chest rejected as busy/unavailable displays exactly `The required materials are currently in use`.
+- Exact rollback and vanilla double-charge suppression are retained.
+- Automated verification passes: zero build warnings/errors, 48/48 domain tests, and 42/42 static/repository checks.
+
 ## 0.2.0 Test Build 4
 
 Unpublished local test build.

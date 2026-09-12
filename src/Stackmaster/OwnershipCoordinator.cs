@@ -19,6 +19,7 @@ namespace Stackmaster
             _pending = ordered.ToDictionary(handle => handle.Container, handle => handle);
             _requestOrder = new Queue<Container>();
             SuccessfulContainerIds = new HashSet<string>(StringComparer.Ordinal);
+            OwnerRejectedContainerIds = new HashSet<string>(StringComparer.Ordinal);
             FailedContainerIds = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var handle in ordered)
@@ -43,6 +44,7 @@ namespace Stackmaster
         }
 
         internal HashSet<string> SuccessfulContainerIds { get; }
+        internal HashSet<string> OwnerRejectedContainerIds { get; }
         internal Dictionary<string, string> FailedContainerIds { get; }
         internal Container TimedOutRequestContainer { get; private set; }
         internal bool IsComplete => _pending.Count == 0;
@@ -57,11 +59,12 @@ namespace Stackmaster
             if (!granted)
             {
                 var handle = _pending[container];
+                OwnerRejectedContainerIds.Add(handle.Id);
                 FailedContainerIds[handle.Id] = "container owner reported busy or unavailable";
                 _pending.Remove(container);
                 _waitingFor = null;
                 _grantReceived = false;
-                RequestNext();
+                CancelRemaining("ownership batch cancelled after a required container was unavailable");
             }
             else
             {
@@ -87,6 +90,8 @@ namespace Stackmaster
             }
 
             if (_waitingFor != null && handle.NetworkView != null && handle.NetworkView.IsValid() &&
+                handle.NetworkView.GetZDO() != null &&
+                handle.NetworkView.GetZDO().OwnerRevision != handle.ResourceOwnerRevision &&
                 handle.NetworkView.IsOwner() && _waitingFor.IsOwner())
             {
                 SuccessfulContainerIds.Add(handle.Id);
@@ -110,6 +115,16 @@ namespace Stackmaster
             _grantReceived = false;
         }
 
+        private void CancelRemaining(string reason)
+        {
+            foreach (var handle in _pending.Values)
+            {
+                FailedContainerIds[handle.Id] = reason;
+            }
+            _pending.Clear();
+            _requestOrder.Clear();
+        }
+
         private void RequestNext()
         {
             while (_waitingFor == null && _requestOrder.Count > 0)
@@ -130,9 +145,13 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
+                    // The send could theoretically fail after queuing the RPC. Fail closed by
+                    // suppressing the next response rather than risking a delayed broad Stack All.
+                    OwnershipCoordinator.SuppressLateResponse(container);
                     FailedContainerIds[handle.Id] = "ownership request failed: " + exception.GetType().Name;
                     _pending.Remove(container);
                     _waitingFor = null;
+                    CancelRemaining("ownership batch cancelled after a required request failed");
                 }
             }
         }
@@ -163,6 +182,14 @@ namespace Stackmaster
                     LateResponseSuppressions.Add(batch.TimedOutRequestContainer);
                 }
                 _active = null;
+            }
+        }
+
+        internal static void SuppressLateResponse(Container container)
+        {
+            if (container != null)
+            {
+                LateResponseSuppressions.Add(container);
             }
         }
 

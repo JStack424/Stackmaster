@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -54,10 +55,44 @@ namespace Stackmaster
         internal int Quantity { get; }
     }
 
+    internal sealed class ContainerReservation
+    {
+        internal ContainerReservation(ContainerHandle handle)
+        {
+            Handle = handle;
+        }
+
+        internal ContainerHandle Handle { get; }
+        internal Container Container => Handle.Container;
+        internal uint DataRevision { get; private set; }
+        internal ushort OwnerRevision { get; private set; }
+
+        internal bool CaptureRevisionBaseline()
+        {
+            var view = Handle.NetworkView;
+            var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+            if (zdo == null) return false;
+            DataRevision = zdo.DataRevision;
+            OwnerRevision = zdo.OwnerRevision;
+            return true;
+        }
+
+        internal bool AdvanceDataRevisionAfterMutation()
+        {
+            var view = Handle.NetworkView;
+            var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+            if (zdo == null || zdo.OwnerRevision != OwnerRevision) return false;
+            DataRevision = zdo.DataRevision;
+            return true;
+        }
+    }
+
     internal static class ResourceTransactionContext
     {
         [ThreadStatic]
         private static IReadOnlyList<RemovedResource> _removed;
+        [ThreadStatic]
+        private static IReadOnlyList<ContainerReservation> _reservations;
         [ThreadStatic]
         private static ItemDrop.ItemData _selectedIngredient;
         [ThreadStatic]
@@ -74,10 +109,14 @@ namespace Stackmaster
         internal static int SelectedAmount => _selectedAmount;
         internal static int SelectedExtraAmount => _selectedExtraAmount;
 
-        internal static void Begin(IReadOnlyList<RemovedResource> removed, int expectedUnits)
+        internal static void Begin(
+            IReadOnlyList<RemovedResource> removed,
+            int expectedUnits,
+            IReadOnlyList<ContainerReservation> reservations)
         {
             if (_removed != null) throw new InvalidOperationException("A nearby-resource transaction is already active.");
             _removed = removed ?? Array.Empty<RemovedResource>();
+            _reservations = reservations ?? Array.Empty<ContainerReservation>();
             _expectedUnits = expectedUnits;
             _acknowledgedUnits = 0;
         }
@@ -121,20 +160,58 @@ namespace Stackmaster
         internal static bool Rollback()
         {
             var removed = _removed;
-            Clear();
-            var restored = removed == null || NearbyResourceService.Rollback(removed);
+            var reservations = _reservations;
+            ResetState();
+            var restored = true;
+            try
+            {
+                // Keep every required chest reserved until compensation has finished.
+                restored = removed == null || NearbyResourceService.Rollback(removed);
+            }
+            finally
+            {
+                ReleaseReservations(reservations);
+            }
             if (!restored) RuntimeContext.Disable("Nearby resource rollback could not restore every item.");
             return restored;
         }
 
         private static void Clear()
         {
+            var reservations = _reservations;
+            ResetState();
+            ReleaseReservations(reservations);
+        }
+
+        private static void ResetState()
+        {
             _removed = null;
+            _reservations = null;
             _selectedIngredient = null;
             _selectedAmount = 0;
             _selectedExtraAmount = 0;
             _expectedUnits = 0;
             _acknowledgedUnits = 0;
+        }
+
+        private static void ReleaseReservations(IEnumerable<ContainerReservation> reservations)
+        {
+            if (reservations == null) return;
+            foreach (var reservation in reservations.Reverse())
+            {
+                try
+                {
+                    var container = reservation.Container;
+                    if (container != null && container.IsOwner()) container.SetInUse(false);
+                }
+                catch (Exception exception)
+                {
+                    if (RuntimeContext.Plugin != null)
+                    {
+                        RuntimeContext.Plugin.Log.LogError("Failed to release a nearby-resource container reservation: " + exception);
+                    }
+                }
+            }
         }
     }
 
@@ -401,20 +478,101 @@ namespace Stackmaster
             }
 
             var normalizedRequirements = requirements == null ? new List<ResourceRequirement>() : requirements.ToList();
-            var capture = Capture(player, matchWorldLevel, true);
-            var plan = Planner.Plan(normalizedRequirements, capture.Stacks);
-            if (!plan.IsSatisfiable || plan.PlannedUnits != plan.RequiredUnits)
+            var readOnlyCapture = Capture(player, matchWorldLevel, true);
+            ResourceWithdrawalPlan readOnlyPlan;
+            if (!Planner.TryPlanWithMinimumContainers(
+                    normalizedRequirements,
+                    readOnlyCapture.Stacks,
+                    PlayerInventoryId,
+                    out readOnlyPlan))
+            {
+                failure = "the exact minimum-container search exceeded its safe bound";
+                return false;
+            }
+            if (!readOnlyPlan.IsSatisfiable || readOnlyPlan.PlannedUnits != readOnlyPlan.RequiredUnits)
             {
                 failure = "fresh nearby stock no longer satisfies the exact complete cost";
                 return false;
             }
-            if (!RevalidateContainers(player, plan, capture, out failure)) return false;
-            if (!RevalidateStacks(plan, capture, matchWorldLevel, out failure)) return false;
 
-            IReadOnlyList<RemovedResource> removed;
-            if (!ExecuteWithRollback(plan, capture, out removed, out failure)) return false;
-            ResourceTransactionContext.Begin(removed, plan.RequiredUnits);
-            return true;
+            ContainerHandle[] requiredHandles;
+            if (!TryResolveRequiredContainers(player, readOnlyPlan, readOnlyCapture, out requiredHandles, out failure))
+            {
+                return false;
+            }
+
+            var unowned = requiredHandles
+                .Where(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
+                .ToArray();
+            if (unowned.Length > 0)
+            {
+                // Valheim's owner-authorized RPC is asynchronous. Never block the main thread or
+                // bypass the current owner with ClaimOwnership. This attempt is cancelled with no
+                // mutation while only the minimum chests selected by the player-first plan are
+                // requested. A successful bounded handshake prepares a safe retry.
+                if (!NearbyResourceOwnership.TryBegin(
+                        player,
+                        normalizedRequirements,
+                        matchWorldLevel,
+                        readOnlyCapture,
+                        readOnlyPlan,
+                        requiredHandles,
+                        unowned,
+                        out failure))
+                {
+                    return false;
+                }
+                failure = null;
+                return false;
+            }
+
+            NearbyResourceCapture mutableCapture;
+            ResourceWithdrawalPlan mutablePlan;
+            if (!TryCaptureOwnedPlan(
+                    player,
+                    normalizedRequirements,
+                    matchWorldLevel,
+                    readOnlyCapture,
+                    readOnlyPlan,
+                    requiredHandles,
+                    false,
+                    out mutableCapture,
+                    out mutablePlan,
+                    out failure))
+            {
+                return false;
+            }
+            if (!RevalidateContainers(player, mutablePlan, mutableCapture, out failure)) return false;
+            if (!RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure)) return false;
+
+            IReadOnlyList<ContainerReservation> reservations;
+            if (!TryReserveContainers(player, requiredHandles, out reservations, out failure)) return false;
+            if (!RevalidateReservedContainers(player, reservations, out failure) ||
+                !RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure))
+            {
+                ReleaseReservations(reservations);
+                return false;
+            }
+
+            var removed = new List<RemovedResource>();
+            ResourceTransactionContext.Begin(removed, mutablePlan.RequiredUnits, reservations);
+            try
+            {
+                if (!ExecuteWithRollback(player, mutablePlan, mutableCapture, reservations, removed, out failure))
+                {
+                    ResourceTransactionContext.Rollback();
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                var restored = ResourceTransactionContext.Rollback();
+                failure = "resource removal threw " + exception.GetType().Name +
+                    (restored ? "; all mutations were rolled back" : "; rollback could not restore every item");
+                if (!restored) RuntimeContext.Disable(failure);
+                return false;
+            }
         }
 
         internal static ResourceWithdrawalPlan Plan(
@@ -486,11 +644,11 @@ namespace Stackmaster
             var catalog = new CompatibilityCatalog();
             // Resource accounting must inspect the complete radius: a responsiveness cutoff may
             // safely omit deposit destinations, but it must never make a build/craft total partial.
-            var discovery = ContainerDiscovery.Discover(player, null, catalog, radius, true);
+            var discovery = ContainerDiscovery.Discover(player, null, catalog, radius, true, true);
             var containers = discovery.Containers
-                .Where(handle => handle != null && handle.Snapshot.IsEligible &&
-                                 handle.NetworkView != null && handle.NetworkView.IsValid() &&
-                                 handle.NetworkView.IsOwner() && handle.Container.IsOwner())
+                .Where(handle => handle != null && handle.ResourceReadable &&
+                                 handle.ResourceInventory != null &&
+                                 handle.NetworkView != null && handle.NetworkView.IsValid())
                 .ToList();
             var resourceStacks = new List<ResourceStack>();
             var runtimeStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
@@ -498,7 +656,7 @@ namespace Stackmaster
             for (var index = 0; index < containers.Count; index++)
             {
                 var handle = containers[index];
-                AddInventory(resourceStacks, runtimeStacks, handle.Id, handle.Container.GetInventory(), handle, index + 1, matchWorldLevel);
+                AddInventory(resourceStacks, runtimeStacks, handle.Id, handle.ResourceInventory, handle, index + 1, matchWorldLevel);
             }
 
             var capture = new NearbyResourceCapture(containers, resourceStacks, runtimeStacks);
@@ -520,13 +678,14 @@ namespace Stackmaster
             bool matchWorldLevel)
         {
             if (inventory == null) return;
-            var width = inventory.GetWidth();
             foreach (var item in inventory.GetAllItems())
             {
                 if (item == null || item.m_stack <= 0 || item.m_shared == null) continue;
                 if (matchWorldLevel && item.m_worldLevel < Game.m_worldLevel) continue;
-                var slot = item.m_gridPos.y * width + item.m_gridPos.x;
-                var stackId = inventoryId + ":" + slot.ToString(CultureInfo.InvariantCulture);
+                var slot = checked((item.m_gridPos.y << 16) + item.m_gridPos.x);
+                var stackId = inventoryId + ":" +
+                    item.m_gridPos.x.ToString(CultureInfo.InvariantCulture) + "," +
+                    item.m_gridPos.y.ToString(CultureInfo.InvariantCulture);
                 snapshots.Add(new ResourceStack(
                     inventoryId,
                     stackId,
@@ -536,6 +695,289 @@ namespace Stackmaster
                     inventoryOrder,
                     slot));
                 runtime.Add(stackId, new RuntimeResourceStack(stackId, inventory, item, container));
+            }
+        }
+
+        private static bool TryResolveRequiredContainers(
+            Player player,
+            ResourceWithdrawalPlan plan,
+            NearbyResourceCapture capture,
+            out ContainerHandle[] requiredHandles,
+            out string failure)
+        {
+            failure = null;
+            var handles = capture.Containers.ToDictionary(handle => handle.Id, StringComparer.Ordinal);
+            var requiredIds = ResourceOwnershipSelection.RequiredContainerIds(plan, PlayerInventoryId).ToArray();
+            var result = new List<ContainerHandle>(requiredIds.Length);
+            foreach (var id in requiredIds)
+            {
+                ContainerHandle handle;
+                if (!handles.TryGetValue(id, out handle) || !ValidateReadOnlyHandle(player, handle, out failure))
+                {
+                    requiredHandles = Array.Empty<ContainerHandle>();
+                    return false;
+                }
+                result.Add(handle);
+            }
+            requiredHandles = result.ToArray();
+            return true;
+        }
+
+        private static bool ValidateReadOnlyHandle(Player player, ContainerHandle handle, out string failure)
+        {
+            failure = null;
+            if (handle == null || handle.Container == null || handle.Container.GetType() != typeof(Container) ||
+                Vector3.Distance(player.transform.position, handle.Container.transform.position) > RuntimeContext.Plugin.NearbyStorageRadius.Value ||
+                handle.NetworkView == null || !handle.NetworkView.IsValid() || handle.NetworkView.GetZDO() == null ||
+                !string.Equals(handle.NetworkView.GetZDO().m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
+                !handle.NetworkView.HasOwner() || !handle.ResourceReadable || handle.ResourceInventory == null)
+            {
+                failure = "nearby container identity or readable state changed before ownership";
+                return false;
+            }
+            if (!ContainerDiscovery.CheckAccess(player, handle.Container))
+            {
+                failure = "nearby container access changed before ownership";
+                return false;
+            }
+            if (handle.NetworkView.GetZDO().DataRevision != handle.ResourceDataRevision)
+            {
+                failure = "nearby container contents changed before ownership";
+                return false;
+            }
+            return true;
+        }
+
+        internal static bool ValidateClaimedPlan(
+            Player player,
+            IReadOnlyList<ResourceRequirement> requirements,
+            bool matchWorldLevel,
+            NearbyResourceCapture readOnlyCapture,
+            ResourceWithdrawalPlan readOnlyPlan,
+            ContainerHandle[] requiredHandles,
+            out string failure)
+        {
+            NearbyResourceCapture ignoredCapture;
+            ResourceWithdrawalPlan ignoredPlan;
+            return TryCaptureOwnedPlan(
+                player,
+                requirements,
+                matchWorldLevel,
+                readOnlyCapture,
+                readOnlyPlan,
+                requiredHandles,
+                true,
+                out ignoredCapture,
+                out ignoredPlan,
+                out failure);
+        }
+
+        private static bool TryCaptureOwnedPlan(
+            Player player,
+            IReadOnlyList<ResourceRequirement> requirements,
+            bool matchWorldLevel,
+            NearbyResourceCapture readOnlyCapture,
+            ResourceWithdrawalPlan readOnlyPlan,
+            ContainerHandle[] requiredHandles,
+            bool allowExpectedOwnershipChange,
+            out NearbyResourceCapture mutableCapture,
+            out ResourceWithdrawalPlan mutablePlan,
+            out string failure)
+        {
+            failure = null;
+            mutableCapture = null;
+            mutablePlan = null;
+            var requiredIds = new HashSet<string>(requiredHandles.Select(handle => handle.Id), StringComparer.Ordinal);
+            var expectedRevisions = requiredHandles.ToDictionary(
+                handle => handle.Id,
+                handle => handle.ResourceDataRevision,
+                StringComparer.Ordinal);
+            var currentRevisions = requiredHandles
+                .Where(handle => handle.NetworkView != null && handle.NetworkView.IsValid() && handle.NetworkView.GetZDO() != null)
+                .ToDictionary(handle => handle.Id, handle => handle.NetworkView.GetZDO().DataRevision, StringComparer.Ordinal);
+            if (!ResourceOwnershipSelection.RequiredRevisionsMatch(requiredIds, expectedRevisions, currentRevisions))
+            {
+                failure = "required container contents changed before ownership could be used";
+                return false;
+            }
+            var ownerBaselines = requiredHandles
+                .Where(handle => handle.NetworkView != null && handle.NetworkView.IsValid() && handle.NetworkView.GetZDO() != null)
+                .ToDictionary(handle => handle.Id, handle => handle.NetworkView.GetZDO().OwnerRevision, StringComparer.Ordinal);
+            if (ownerBaselines.Count != requiredIds.Count ||
+                (!allowExpectedOwnershipChange && requiredHandles.Any(
+                    handle => ownerBaselines[handle.Id] != handle.ResourceOwnerRevision)))
+            {
+                failure = "required container ownership revision changed before ownership could be used";
+                return false;
+            }
+            var resourceStacks = new List<ResourceStack>();
+            var runtimeStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
+            AddInventory(resourceStacks, runtimeStacks, PlayerInventoryId, player.GetInventory(), null, 0, matchWorldLevel);
+
+            var inventoryOrder = 1;
+            foreach (var handle in readOnlyCapture.Containers.Where(handle => requiredIds.Contains(handle.Id)))
+            {
+                if (!ValidateReadOnlyHandle(player, handle, out failure) ||
+                    !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
+                {
+                    if (failure == null) failure = "required container ownership changed before consumption";
+                    return false;
+                }
+                if (handle.Container.IsInUse() || (handle.Container.m_wagon != null && handle.Container.m_wagon.InUse()))
+                {
+                    failure = NearbyResourceOwnership.InUseMessage;
+                    return false;
+                }
+                if (!ContainerDiscovery.RefreshFromNetwork(handle.Container) ||
+                    !handle.NetworkView.IsValid() || !handle.NetworkView.IsOwner() || !handle.Container.IsOwner() ||
+                    handle.NetworkView.GetZDO() == null ||
+                    handle.NetworkView.GetZDO().DataRevision != handle.ResourceDataRevision ||
+                    handle.NetworkView.GetZDO().OwnerRevision != ownerBaselines[handle.Id])
+                {
+                    failure = "required container state changed during ownership transfer";
+                    return false;
+                }
+                AddInventory(
+                    resourceStacks,
+                    runtimeStacks,
+                    handle.Id,
+                    handle.Container.GetInventory(),
+                    handle,
+                    inventoryOrder++,
+                    matchWorldLevel);
+            }
+
+            mutableCapture = new NearbyResourceCapture(requiredHandles, resourceStacks, runtimeStacks);
+            if (!Planner.TryPlanWithMinimumContainers(
+                    requirements,
+                    mutableCapture.Stacks,
+                    PlayerInventoryId,
+                    out mutablePlan))
+            {
+                failure = "the refreshed minimum-container search exceeded its safe bound";
+                return false;
+            }
+            if (!mutablePlan.IsSatisfiable || mutablePlan.PlannedUnits != mutablePlan.RequiredUnits)
+            {
+                failure = "required container contents changed before consumption";
+                return false;
+            }
+
+            var refreshedIds = new HashSet<string>(mutablePlan.Steps
+                .Where(step => !string.Equals(step.InventoryId, PlayerInventoryId, StringComparison.Ordinal))
+                .Select(step => step.InventoryId), StringComparer.Ordinal);
+            if (!refreshedIds.SetEquals(requiredIds))
+            {
+                failure = "the exact minimum container plan changed before consumption";
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryReserveContainers(
+            Player player,
+            IEnumerable<ContainerHandle> requiredHandles,
+            out IReadOnlyList<ContainerReservation> reservations,
+            out string failure)
+        {
+            var held = new List<ContainerReservation>();
+            failure = null;
+            foreach (var handle in requiredHandles)
+            {
+                if (!ValidateReadOnlyHandle(player, handle, out failure))
+                {
+                    ReleaseReservations(held);
+                    reservations = Array.Empty<ContainerReservation>();
+                    return false;
+                }
+                if (!handle.NetworkView.IsOwner() || !handle.Container.IsOwner() ||
+                    handle.NetworkView.GetZDO() == null ||
+                    handle.NetworkView.GetZDO().OwnerRevision != handle.ResourceOwnerRevision)
+                {
+                    failure = "required container ownership changed before reservation";
+                    ReleaseReservations(held);
+                    reservations = Array.Empty<ContainerReservation>();
+                    return false;
+                }
+                if (handle.Container.IsInUse() || (handle.Container.m_wagon != null && handle.Container.m_wagon.InUse()))
+                {
+                    failure = NearbyResourceOwnership.InUseMessage;
+                    ReleaseReservations(held);
+                    reservations = Array.Empty<ContainerReservation>();
+                    return false;
+                }
+                var reservation = new ContainerReservation(handle);
+                // Add it before SetInUse so cleanup still releases a reservation if a patched
+                // effects path throws after setting the ZDO flag.
+                held.Add(reservation);
+                try
+                {
+                    handle.Container.SetInUse(true);
+                    if (!handle.Container.IsInUse() || !reservation.CaptureRevisionBaseline())
+                    {
+                        failure = "required container could not be reserved";
+                        ReleaseReservations(held);
+                        reservations = Array.Empty<ContainerReservation>();
+                        return false;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    failure = "required container reservation failed: " + exception.GetType().Name;
+                    ReleaseReservations(held);
+                    reservations = Array.Empty<ContainerReservation>();
+                    return false;
+                }
+            }
+            reservations = held;
+            return true;
+        }
+
+        private static bool RevalidateReservedContainers(
+            Player player,
+            IEnumerable<ContainerReservation> reservations,
+            out string failure)
+        {
+            failure = null;
+            foreach (var reservation in reservations)
+            {
+                var handle = reservation.Handle;
+                var view = handle != null ? handle.NetworkView : null;
+                var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+                if (handle == null || handle.Container == null || zdo == null ||
+                    !view.IsOwner() || !handle.Container.IsOwner() || !handle.Container.IsInUse() ||
+                    !string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
+                    zdo.DataRevision != reservation.DataRevision ||
+                    zdo.OwnerRevision != reservation.OwnerRevision ||
+                    Vector3.Distance(player.transform.position, handle.Container.transform.position) > RuntimeContext.Plugin.NearbyStorageRadius.Value ||
+                    !ContainerDiscovery.CheckAccess(player, handle.Container))
+                {
+                    failure = "required container reservation or state changed before consumption";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static void ReleaseReservations(IEnumerable<ContainerReservation> reservations)
+        {
+            if (reservations == null) return;
+            foreach (var reservation in reservations.Reverse())
+            {
+                try
+                {
+                    if (reservation.Container != null && reservation.Container.IsOwner())
+                    {
+                        reservation.Container.SetInUse(false);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    if (RuntimeContext.Plugin != null)
+                    {
+                        RuntimeContext.Plugin.Log.LogError("Failed to release a pre-transaction container reservation: " + exception);
+                    }
+                }
             }
         }
 
@@ -563,7 +1005,7 @@ namespace Stackmaster
                 }
                 if (handle.Container.IsInUse() || (handle.Container.m_wagon != null && handle.Container.m_wagon.InUse()))
                 {
-                    failure = "nearby container became in use before consumption";
+                    failure = NearbyResourceOwnership.InUseMessage;
                     return false;
                 }
                 if (!ContainerDiscovery.CheckAccess(player, handle.Container) || !ContainerDiscovery.RefreshFromNetwork(handle.Container) ||
@@ -605,40 +1047,86 @@ namespace Stackmaster
         }
 
         private static bool ExecuteWithRollback(
+            Player player,
             ResourceWithdrawalPlan plan,
             NearbyResourceCapture capture,
-            out IReadOnlyList<RemovedResource> completed,
+            IReadOnlyList<ContainerReservation> reservations,
+            IList<RemovedResource> removed,
             out string failure)
         {
             failure = null;
-            completed = Array.Empty<RemovedResource>();
-            var removed = new List<RemovedResource>();
+            var reservationByContainer = reservations.ToDictionary(item => item.Container);
             foreach (var step in plan.Steps)
             {
                 var runtime = capture.RuntimeStacks[step.StackId];
+                ContainerReservation reservation = null;
+                if (runtime.Container != null)
+                {
+                    if (!reservationByContainer.TryGetValue(runtime.Container.Container, out reservation) ||
+                        !ReservationMatches(player, reservation))
+                    {
+                        failure = "required container reservation changed before resource removal";
+                        return false;
+                    }
+                }
+
                 var clone = runtime.Item.Clone();
                 clone.m_stack = step.Quantity;
                 var position = runtime.Item.m_gridPos;
                 var before = TotalUnits(runtime.Inventory);
-                var success = runtime.Inventory.RemoveItem(runtime.Item, step.Quantity);
-                var after = TotalUnits(runtime.Inventory);
-                if (!success || after != before - step.Quantity)
+                bool success;
+                Exception removalException = null;
+                try
                 {
-                    if (!Rollback(removed))
-                    {
-                        failure = "resource removal failed and rollback could not restore every item";
-                        RuntimeContext.Disable(failure);
-                    }
-                    else
-                    {
-                        failure = "resource removal failed; all prior removals were rolled back";
-                    }
+                    success = runtime.Inventory.RemoveItem(runtime.Item, step.Quantity);
+                }
+                catch (Exception exception)
+                {
+                    success = false;
+                    removalException = exception;
+                }
+                var after = TotalUnits(runtime.Inventory);
+                var actualRemoved = before - after;
+                if (actualRemoved > 0 && actualRemoved <= before)
+                {
+                    clone.m_stack = actualRemoved;
+                    removed.Add(new RemovedResource(runtime.Inventory, clone, position, actualRemoved));
+                }
+                if (removalException != null)
+                {
+                    throw new InvalidOperationException("inventory removal threw after possible mutation", removalException);
+                }
+                if (!success || actualRemoved != step.Quantity)
+                {
+                    failure = actualRemoved < 0
+                        ? "resource removal produced an invalid inventory delta"
+                        : "resource removal failed; rollback is required";
                     return false;
                 }
-                removed.Add(new RemovedResource(runtime.Inventory, clone, position, step.Quantity));
+                if (reservation != null)
+                {
+                    if (!reservation.AdvanceDataRevisionAfterMutation() || !ReservationMatches(player, reservation))
+                    {
+                        failure = "required container reservation changed after resource removal";
+                        return false;
+                    }
+                }
             }
-            completed = removed;
             return true;
+        }
+
+        private static bool ReservationMatches(Player player, ContainerReservation reservation)
+        {
+            if (reservation == null || reservation.Handle == null || reservation.Container == null) return false;
+            var handle = reservation.Handle;
+            var view = handle.NetworkView;
+            var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+            return zdo != null && view.IsOwner() && handle.Container.IsOwner() && handle.Container.IsInUse() &&
+                   string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) &&
+                   zdo.DataRevision == reservation.DataRevision &&
+                   zdo.OwnerRevision == reservation.OwnerRevision &&
+                   Vector3.Distance(player.transform.position, handle.Container.transform.position) <= RuntimeContext.Plugin.NearbyStorageRadius.Value &&
+                   ContainerDiscovery.CheckAccess(player, handle.Container);
         }
 
         internal static bool Rollback(IEnumerable<RemovedResource> removed)
@@ -646,14 +1134,25 @@ namespace Stackmaster
             var restoredAll = true;
             foreach (var entry in removed.Reverse())
             {
-                var before = TotalUnits(entry.Inventory);
-                entry.Item.m_stack = entry.Quantity;
-                entry.Item.m_gridPos = entry.Position;
-                var restored = AddItemAtMethod != null && (bool)AddItemAtMethod.Invoke(
-                    entry.Inventory,
-                    new object[] { entry.Item, entry.Quantity, entry.Position.x, entry.Position.y, true });
-                var after = TotalUnits(entry.Inventory);
-                restoredAll &= restored && after == before + entry.Quantity;
+                try
+                {
+                    var before = TotalUnits(entry.Inventory);
+                    entry.Item.m_stack = entry.Quantity;
+                    entry.Item.m_gridPos = entry.Position;
+                    var restored = AddItemAtMethod != null && (bool)AddItemAtMethod.Invoke(
+                        entry.Inventory,
+                        new object[] { entry.Item, entry.Quantity, entry.Position.x, entry.Position.y, true });
+                    var after = TotalUnits(entry.Inventory);
+                    restoredAll &= restored && after == before + entry.Quantity;
+                }
+                catch (Exception exception)
+                {
+                    restoredAll = false;
+                    if (RuntimeContext.Plugin != null)
+                    {
+                        RuntimeContext.Plugin.Log.LogError("Failed to restore a removed nearby resource: " + exception);
+                    }
+                }
             }
             return restoredAll;
         }
@@ -661,6 +1160,181 @@ namespace Stackmaster
         private static int TotalUnits(Inventory inventory)
         {
             return inventory.GetAllItems().Sum(item => item.m_stack);
+        }
+    }
+
+    internal static class NearbyResourceOwnership
+    {
+        internal const string InUseMessage = "The required materials are currently in use";
+        private const float OwnershipTimeoutSeconds = 2f;
+        private static bool _running;
+
+        internal static bool TryBegin(
+            Player player,
+            IReadOnlyList<ResourceRequirement> requirements,
+            bool matchWorldLevel,
+            NearbyResourceCapture readOnlyCapture,
+            ResourceWithdrawalPlan readOnlyPlan,
+            ContainerHandle[] requiredHandles,
+            ContainerHandle[] unownedHandles,
+            out string failure)
+        {
+            failure = null;
+            if (_running)
+            {
+                RuntimeContext.ShowTopLeft("Stackmaster: checking required storage…");
+                return true;
+            }
+            if (RuntimeContext.Plugin == null)
+            {
+                failure = "ownership coordinator is unavailable";
+                return false;
+            }
+
+            _running = true;
+            try
+            {
+                RuntimeContext.ShowTopLeft("Stackmaster: checking required storage…");
+                RuntimeContext.Plugin.StartCoroutine(Run(
+                    player,
+                    requirements,
+                    matchWorldLevel,
+                    readOnlyCapture,
+                    readOnlyPlan,
+                    requiredHandles,
+                    unownedHandles));
+                return true;
+            }
+            catch (Exception exception)
+            {
+                _running = false;
+                failure = "ownership request could not start: " + exception.GetType().Name;
+                return false;
+            }
+        }
+
+        private static IEnumerator Run(
+            Player player,
+            IReadOnlyList<ResourceRequirement> requirements,
+            bool matchWorldLevel,
+            NearbyResourceCapture readOnlyCapture,
+            ResourceWithdrawalPlan readOnlyPlan,
+            ContainerHandle[] requiredHandles,
+            ContainerHandle[] unownedHandles)
+        {
+            OwnershipBatch ownership;
+            try
+            {
+                ownership = OwnershipCoordinator.Begin(unownedHandles);
+            }
+            catch (Exception exception)
+            {
+                _running = false;
+                RuntimeContext.Plugin.Log.LogError("Nearby-resource ownership setup failed safely: " + exception);
+                RuntimeContext.ShowCenter("Stackmaster could not safely acquire the required materials; nothing was consumed.");
+                yield break;
+            }
+
+            try
+            {
+                var refreshFailed = false;
+                var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
+                while (!ownership.IsComplete && Time.realtimeSinceStartup < deadline)
+                {
+                    try
+                    {
+                        ownership.Refresh();
+                    }
+                    catch (Exception exception)
+                    {
+                        refreshFailed = true;
+                        RuntimeContext.Plugin.Log.LogError("Nearby-resource ownership refresh failed safely: " + exception);
+                        RuntimeContext.ShowCenter("Stackmaster could not safely acquire the required materials; nothing was consumed.");
+                    }
+                    if (refreshFailed) yield break;
+                    yield return null;
+                }
+
+                try
+                {
+                    ownership.Refresh();
+                    if (!ownership.IsComplete) ownership.Timeout();
+
+                    if (ownership.FailedContainerIds.Count > 0)
+                    {
+                        // RPC_StackResponse only exposes granted/not-granted. If access and identity
+                        // still validate locally, an authoritative rejection is the only safe signal
+                        // available for a remotely busy chest. A concurrent access/owner change uses
+                        // the generic failure instead of misreporting it as in-use.
+                        var ownerRejectedAsBusy = ownership.OwnerRejectedContainerIds.Count > 0 &&
+                            unownedHandles
+                                .Where(handle => ownership.OwnerRejectedContainerIds.Contains(handle.Id))
+                                .All(handle =>
+                                    handle.NetworkView != null && handle.NetworkView.IsValid() &&
+                                    handle.NetworkView.HasOwner() &&
+                                    ContainerDiscovery.CheckAccess(player, handle.Container));
+                        RuntimeContext.ShowCenter(ownerRejectedAsBusy
+                            ? InUseMessage
+                            : "Stackmaster could not safely acquire the required materials; nothing was consumed.");
+                    }
+                    else
+                    {
+                        string failure;
+                        if (!NearbyResourceService.ValidateClaimedPlan(
+                                player,
+                                requirements,
+                                matchWorldLevel,
+                                readOnlyCapture,
+                                readOnlyPlan,
+                                requiredHandles,
+                                out failure))
+                        {
+                            RuntimeContext.Plugin.Log.LogWarning("Nearby-resource ownership revalidation failed safely: " + failure);
+                            RuntimeContext.ShowCenter(string.Equals(failure, InUseMessage, StringComparison.Ordinal)
+                                ? InUseMessage
+                                : "Stackmaster: nearby materials changed; nothing was consumed. Try again.");
+                        }
+                        else
+                        {
+                            // A Harmony prefix cannot synchronously wait for remote RPCs. Replaying a build
+                            // later would skip UpdatePlacement's vanilla stamina/stat/durability path, so the
+                            // safe cross-action contract is explicit: ownership is prepared, then the user
+                            // retries and the normal vanilla action runs atomically from a fresh plan.
+                            RuntimeContext.ShowTopLeft("Stackmaster: required materials ready — try the action again.");
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin.Log.LogError("Nearby-resource ownership failed safely: " + exception);
+                    RuntimeContext.ShowCenter("Stackmaster could not safely acquire the required materials; nothing was consumed.");
+                }
+            }
+            finally
+            {
+                // Stopping/disposal of the coroutine must not strand the coordinator. If a vanilla
+                // response can still arrive, Timeout records that container for permanent one-shot
+                // suppression before End clears the active batch.
+                try
+                {
+                    if (!ownership.IsComplete) ownership.Timeout();
+                }
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin.Log.LogError("Nearby-resource ownership cleanup failed safely: " + exception);
+                }
+                finally
+                {
+                    try
+                    {
+                        OwnershipCoordinator.End(ownership);
+                    }
+                    finally
+                    {
+                        _running = false;
+                    }
+                }
+            }
         }
     }
 
@@ -947,7 +1621,12 @@ namespace Stackmaster
             }
 
             ResourceActionContext.Restore(__state);
-            RuntimeContext.ShowCenter("Stackmaster: " + failure + "; crafting was cancelled without consuming anything.");
+            if (!string.IsNullOrEmpty(failure))
+            {
+                RuntimeContext.ShowCenter(string.Equals(failure, NearbyResourceOwnership.InUseMessage, StringComparison.Ordinal)
+                    ? NearbyResourceOwnership.InUseMessage
+                    : "Stackmaster: " + failure + "; crafting was cancelled without consuming anything.");
+            }
             return false;
         }
 
@@ -1011,7 +1690,12 @@ namespace Stackmaster
             string failure;
             if (NearbyResourceService.TryBeginPieceTransaction(__instance, piece, out failure)) return true;
             __result = false;
-            RuntimeContext.ShowCenter("Stackmaster: " + failure + "; building was cancelled without consuming anything.");
+            if (!string.IsNullOrEmpty(failure))
+            {
+                RuntimeContext.ShowCenter(string.Equals(failure, NearbyResourceOwnership.InUseMessage, StringComparison.Ordinal)
+                    ? NearbyResourceOwnership.InUseMessage
+                    : "Stackmaster: " + failure + "; building was cancelled without consuming anything.");
+            }
             return false;
         }
 

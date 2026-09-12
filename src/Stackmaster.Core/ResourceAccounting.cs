@@ -219,6 +219,8 @@ namespace Stackmaster.Core
     /// </summary>
     public sealed class ResourceWithdrawalPlanner
     {
+        private const int MinimumContainerSearchNodeLimit = 250000;
+
         public ResourceWithdrawalPlan Plan(IEnumerable<ResourceRequirement> requirements, IEnumerable<ResourceStack> stacks)
         {
             if (requirements == null) throw new ArgumentNullException(nameof(requirements));
@@ -274,6 +276,110 @@ namespace Stackmaster.Core
             return new ResourceWithdrawalPlan(normalized, steps, shortages);
         }
 
+        /// <summary>
+        /// Finds an exact all-or-nothing plan that uses player stock first and the smallest
+        /// possible number of distinct non-player inventories. Equal-size solutions retain the
+        /// caller's deterministic inventory order. The bounded exhaustive search fails closed
+        /// rather than silently falling back to a non-minimal ownership set.
+        /// </summary>
+        public bool TryPlanWithMinimumContainers(
+            IEnumerable<ResourceRequirement> requirements,
+            IEnumerable<ResourceStack> stacks,
+            string playerInventoryId,
+            out ResourceWithdrawalPlan plan)
+        {
+            if (requirements == null) throw new ArgumentNullException(nameof(requirements));
+            if (stacks == null) throw new ArgumentNullException(nameof(stacks));
+            if (playerInventoryId == null) throw new ArgumentNullException(nameof(playerInventoryId));
+
+            var requirementList = requirements.Where(requirement => requirement != null).ToList();
+            var stackList = stacks.Where(stack => stack != null).ToList();
+            var completePlan = Plan(requirementList, stackList);
+            plan = completePlan;
+            if (!completePlan.IsSatisfiable) return true;
+
+            var candidateIds = stackList
+                .Where(stack => !string.Equals(stack.InventoryId, playerInventoryId, StringComparison.Ordinal) &&
+                                requirementList.Any(requirement => Matches(requirement, stack)))
+                .GroupBy(stack => stack.InventoryId, StringComparer.Ordinal)
+                .OrderBy(group => group.Min(stack => stack.InventoryOrder))
+                .ThenBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => group.Key)
+                .ToList();
+            var playerStacks = stackList
+                .Where(stack => string.Equals(stack.InventoryId, playerInventoryId, StringComparison.Ordinal))
+                .ToList();
+            var selected = new List<string>();
+            var visited = 0;
+
+            for (var count = 0; count <= candidateIds.Count; count++)
+            {
+                ResourceWithdrawalPlan candidatePlan;
+                if (TryFindMinimumSubset(
+                        requirementList,
+                        stackList,
+                        playerStacks,
+                        candidateIds,
+                        0,
+                        count,
+                        selected,
+                        ref visited,
+                        out candidatePlan))
+                {
+                    plan = candidatePlan;
+                    return true;
+                }
+                if (visited >= MinimumContainerSearchNodeLimit) return false;
+            }
+            return false;
+        }
+
+        private bool TryFindMinimumSubset(
+            IReadOnlyList<ResourceRequirement> requirements,
+            IReadOnlyList<ResourceStack> allStacks,
+            IReadOnlyList<ResourceStack> playerStacks,
+            IReadOnlyList<string> candidateIds,
+            int start,
+            int remainingSlots,
+            IList<string> selected,
+            ref int visited,
+            out ResourceWithdrawalPlan plan)
+        {
+            plan = null!;
+            if (++visited > MinimumContainerSearchNodeLimit) return false;
+            if (remainingSlots == 0)
+            {
+                var selectedIds = new HashSet<string>(selected, StringComparer.Ordinal);
+                var eligible = playerStacks.Concat(allStacks.Where(stack => selectedIds.Contains(stack.InventoryId)));
+                var candidate = Plan(requirements, eligible);
+                if (!candidate.IsSatisfiable) return false;
+                plan = candidate;
+                return true;
+            }
+            if (candidateIds.Count - start < remainingSlots) return false;
+
+            for (var index = start; index <= candidateIds.Count - remainingSlots; index++)
+            {
+                selected.Add(candidateIds[index]);
+                if (TryFindMinimumSubset(
+                        requirements,
+                        allStacks,
+                        playerStacks,
+                        candidateIds,
+                        index + 1,
+                        remainingSlots - 1,
+                        selected,
+                        ref visited,
+                        out plan))
+                {
+                    return true;
+                }
+                selected.RemoveAt(selected.Count - 1);
+                if (visited >= MinimumContainerSearchNodeLimit) return false;
+            }
+            return false;
+        }
+
         private static bool Matches(ResourceRequirement requirement, ResourceStack stack)
         {
             return string.Equals(requirement.ItemName, stack.ItemName, StringComparison.Ordinal) &&
@@ -300,4 +406,54 @@ namespace Stackmaster.Core
             public override int GetHashCode() => unchecked((StringComparer.Ordinal.GetHashCode(ItemName) * 397) ^ Quality);
         }
     }
+
+    /// <summary>
+    /// Derives the exact chest set from an all-or-nothing withdrawal plan and validates only
+    /// those chests' immutable read revisions. Display-only inventories never enter this API.
+    /// </summary>
+    public static class ResourceOwnershipSelection
+    {
+        public static IReadOnlyList<string> RequiredContainerIds(
+            ResourceWithdrawalPlan plan,
+            string playerInventoryId = "player")
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+            if (playerInventoryId == null) throw new ArgumentNullException(nameof(playerInventoryId));
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var result = new List<string>();
+            foreach (var step in plan.Steps)
+            {
+                if (string.Equals(step.InventoryId, playerInventoryId, StringComparison.Ordinal) ||
+                    !seen.Add(step.InventoryId))
+                {
+                    continue;
+                }
+                result.Add(step.InventoryId);
+            }
+            return new ReadOnlyCollection<string>(result);
+        }
+
+        public static bool RequiredRevisionsMatch(
+            IEnumerable<string> requiredContainerIds,
+            IReadOnlyDictionary<string, uint> expected,
+            IReadOnlyDictionary<string, uint> current)
+        {
+            if (requiredContainerIds == null) throw new ArgumentNullException(nameof(requiredContainerIds));
+            if (expected == null) throw new ArgumentNullException(nameof(expected));
+            if (current == null) throw new ArgumentNullException(nameof(current));
+            foreach (var id in requiredContainerIds.Distinct(StringComparer.Ordinal))
+            {
+                uint expectedRevision;
+                uint currentRevision;
+                if (!expected.TryGetValue(id, out expectedRevision) ||
+                    !current.TryGetValue(id, out currentRevision) ||
+                    expectedRevision != currentRevision)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
 }
