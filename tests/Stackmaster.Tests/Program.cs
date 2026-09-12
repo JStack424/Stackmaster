@@ -56,7 +56,10 @@ internal static class Program
             ResourceOwnershipSelectionDeduplicatesChestStacks,
             ResourceOwnershipSelectionHasBuildCraftParity,
             ResourceOwnershipRevisionRejectsStaleRequiredChest,
-            ResourceOwnershipRevisionIgnoresUnrelatedChest
+            ResourceOwnershipRevisionIgnoresUnrelatedChest,
+            ResourceReadOnlyRemoteUnopenedUsesDetachedInventory,
+            ResourceReadOnlyDecodeFailureFailsClosed,
+            ResourceLiveSnapshotRequiresKnownInventory
         };
 
         var failures = 0;
@@ -805,6 +808,46 @@ internal static class Program
         var current = new Dictionary<string, uint> { ["needed"] = 7, ["unrelated"] = 99 };
         True(ResourceOwnershipSelection.RequiredRevisionsMatch(required, expected, current),
             "an unrelated chest revision does not broaden or invalidate the selected ownership set");
+    }
+
+    private static void ResourceReadOnlyRemoteUnopenedUsesDetachedInventory()
+    {
+        var plan = ResourceSnapshotPolicy.Evaluate(
+            resourceReadOnly: true,
+            liveInventoryKnown: false,
+            accessGranted: true,
+            inUse: false,
+            detachedInventoryDecoded: true);
+        True(!plan.CaptureLiveInventory,
+            "an unopened or remote-owned read-only chest never snapshots a null live inventory");
+        True(plan.UseDetachedInventory,
+            "an accessible remote-owned chest uses only its successfully decoded detached inventory");
+    }
+
+    private static void ResourceReadOnlyDecodeFailureFailsClosed()
+    {
+        var plan = ResourceSnapshotPolicy.Evaluate(
+            resourceReadOnly: true,
+            liveInventoryKnown: false,
+            accessGranted: true,
+            inUse: false,
+            detachedInventoryDecoded: false);
+        True(!plan.CaptureLiveInventory,
+            "a failed read-only decode never falls back to the unknown live inventory");
+        True(!plan.UseDetachedInventory,
+            "a failed read-only decode omits only that container from nearby-resource totals");
+    }
+
+    private static void ResourceLiveSnapshotRequiresKnownInventory()
+    {
+        var unknown = ResourceSnapshotPolicy.Evaluate(false, false, true, false, false);
+        var known = ResourceSnapshotPolicy.Evaluate(false, true, true, false, false);
+        var busy = ResourceSnapshotPolicy.Evaluate(false, true, true, true, false);
+        True(!unknown.CaptureLiveInventory, "unknown live inventory is never exposed as accessible");
+        True(known.CaptureLiveInventory, "known accessible idle live inventory remains eligible");
+        True(!busy.CaptureLiveInventory, "known live inventory remains ineligible while in use");
+        True(!unknown.UseDetachedInventory && !known.UseDetachedInventory && !busy.UseDetachedInventory,
+            "ordinary storage discovery never substitutes a detached resource snapshot");
     }
 
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)

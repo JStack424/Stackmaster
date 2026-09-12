@@ -275,11 +275,6 @@ namespace Stackmaster
                 ? isVanilla && viewValid && zdo != null
                 : isKnown;
             var accessGranted = accessCheckable && TryCheckAccess(player, container, out accessFailure);
-            var accessible = accessGranted && !inUse;
-            var capacity = inventory != null ? inventory.GetWidth() * inventory.GetHeight() : 0;
-            var items = accessible
-                ? InventorySnapshots.CaptureInventory(id, inventory, catalog).Items
-                : Array.Empty<ItemStackSnapshot>();
 
             // Container.Load reads this same serialized ZDO field without checking ownership.
             // Decode into a detached Inventory so HUD/accounting reads never touch the live
@@ -290,7 +285,21 @@ namespace Stackmaster
             string resourceFailure = null;
             var resourceDecoded = resourceReadOnly && isVanilla && viewValid && zdo != null &&
                 TryReadSerializedInventory(container, zdo, out resourceInventory, out resourceDataRevision, out resourceFailure);
-            var resourceReadable = resourceDecoded && accessGranted;
+            var readPlan = ResourceSnapshotPolicy.Evaluate(
+                resourceReadOnly,
+                isKnown,
+                accessGranted,
+                inUse,
+                resourceDecoded);
+            var accessible = readPlan.CaptureLiveInventory;
+            var capacity = inventory != null ? inventory.GetWidth() * inventory.GetHeight() : 0;
+            // A read-only remote/unopened container deliberately has no live Inventory. Never
+            // pass that null reference into ordinary inventory capture; its detached inventory
+            // is carried separately by ContainerHandle.ResourceInventory.
+            var items = accessible && inventory != null
+                ? InventorySnapshots.CaptureInventory(id, inventory, catalog).Items
+                : Array.Empty<ItemStackSnapshot>();
+            var resourceReadable = readPlan.UseDetachedInventory;
             if (!resourceDecoded && string.IsNullOrEmpty(refreshFailure)) refreshFailure = resourceFailure;
 
             if (diagnostic != null)

@@ -450,6 +450,41 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(signature, gate)
 
+    def test_read_only_snapshot_null_regression_and_hud_paths_fail_open(self):
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "ResourceSnapshotPolicy.cs").read_text(encoding="utf-8")
+
+        # Read-only discovery deliberately has no live Inventory. It must keep ordinary
+        # ContainerSnapshot eligibility false and carry only a successful detached decode.
+        self.assertIn("public static class ResourceSnapshotPolicy", policy)
+        self.assertIn("!resourceReadOnly && liveInventoryKnown && accessGranted && !inUse", policy)
+        self.assertIn("resourceReadOnly && detachedInventoryDecoded && accessGranted", policy)
+        self.assertIn("var readPlan = ResourceSnapshotPolicy.Evaluate(", discovery)
+        self.assertIn("var accessible = readPlan.CaptureLiveInventory", discovery)
+        self.assertIn("var items = accessible && inventory != null", discovery)
+        self.assertIn("var resourceReadable = readPlan.UseDetachedInventory", discovery)
+        self.assertNotIn("var accessible = accessGranted && !inUse", discovery)
+        self.assertLess(discovery.index("TryReadSerializedInventory(container"), discovery.index("var readPlan = ResourceSnapshotPolicy.Evaluate("))
+
+        # Availability-only Harmony postfixes contain their own local safety net. A failed
+        # detached decode or unexpected capture exception restores vanilla return/ref values
+        # and never escapes into Hud.Update or InventoryGui.Show.
+        self.assertIn("internal static class NearbyHudFailOpen", nearby)
+        for surface in (
+            'ReportOnce("crafting requirements", exception)',
+            'ReportOnce("building requirements", exception)',
+            'ReportOnce("building HUD", exception)',
+            'ReportOnce("crafting HUD", exception)',
+            'ReportOnce("first required crafting item", exception)',
+        ):
+            self.assertIn(surface, nearby)
+        self.assertGreaterEqual(nearby.count("catch (Exception exception)"), 8)
+        self.assertGreaterEqual(nearby.count("__result = vanillaResult"), 3)
+        self.assertIn("amount = vanillaAmount", nearby)
+        self.assertIn("extraAmount = vanillaExtraAmount", nearby)
+        self.assertIn("var nearbyResult = NearbyResourceService.FindFirstRequiredItem", nearby)
+
     def test_remote_ownership_is_staged_because_vanilla_rpc_cannot_complete_synchronously(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         self.assertIn("A Harmony prefix cannot synchronously wait for remote RPCs", nearby)

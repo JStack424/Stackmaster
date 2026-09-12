@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 Test Build 6
+
+Unpublished local test build.
+
+- Fixed the Test Build 5 null-inventory exception that could interrupt chest opening and the build/craft UI before detached serialized chest data was decoded.
+- Read-only discovery now keeps unknown live container inventories ineligible while independently accepting only successfully decoded, accessible detached snapshots.
+- Nearby-resource requirement and HUD postfixes now fail open to untouched vanilla results if a snapshot or overlay operation fails; one-ingredient crafting also restores the original result and amount refs.
+- Automated verification passes: zero build warnings/errors, 51/51 domain tests, and 43/43 static/repository checks.
+
 ## 0.2.0 Test Build 5
 
 Unpublished local test build.

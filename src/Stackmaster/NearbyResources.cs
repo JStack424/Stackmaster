@@ -1338,6 +1338,34 @@ namespace Stackmaster
         }
     }
 
+    internal static class NearbyHudFailOpen
+    {
+        private static readonly HashSet<string> ReportedSurfaces = new HashSet<string>(StringComparer.Ordinal);
+
+        internal static void ReportOnce(string surface, Exception exception)
+        {
+            // UI postfixes must never interfere with vanilla chest or build/craft UI. Even
+            // diagnostics are best-effort so a logger failure cannot escape the safety net.
+            try
+            {
+                lock (ReportedSurfaces)
+                {
+                    if (!ReportedSurfaces.Add(surface)) return;
+                }
+                var plugin = RuntimeContext.Plugin;
+                if (plugin != null)
+                {
+                    plugin.Log.LogWarning("Nearby-resource " + surface +
+                        " overlay failed open to vanilla UI: " + exception);
+                }
+            }
+            catch
+            {
+                // Deliberately preserve vanilla UI under every reporting failure.
+            }
+        }
+    }
+
     // HarmonyX otherwise binds ordinary patch parameters by the game's source-level
     // argument names. Use explicit indexes for every original-method argument so a
     // harmless metadata rename cannot prevent Stackmaster from loading.
@@ -1351,17 +1379,26 @@ namespace Stackmaster
             [HarmonyArgument(3)] int amount,
             ref bool __result)
         {
-            if (!RuntimeContext.Compatibility.IsCompatible || discover ||
-                RuntimeContext.Plugin == null || !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value)
+            var vanillaResult = __result;
+            try
             {
-                return;
+                if (!RuntimeContext.Compatibility.IsCompatible || discover ||
+                    RuntimeContext.Plugin == null || !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value)
+                {
+                    return;
+                }
+                if (ResourceActionContext.Current == ResourceActionKind.Crafting && ResourceTransactionContext.Active)
+                {
+                    __result = true;
+                    return;
+                }
+                __result = NearbyResourceService.HasRecipeRequirements(__instance, recipe, qualityLevel, amount, false);
             }
-            if (ResourceActionContext.Current == ResourceActionKind.Crafting && ResourceTransactionContext.Active)
+            catch (Exception exception)
             {
-                __result = true;
-                return;
+                __result = vanillaResult;
+                NearbyHudFailOpen.ReportOnce("crafting requirements", exception);
             }
-            __result = NearbyResourceService.HasRecipeRequirements(__instance, recipe, qualityLevel, amount, false);
         }
 
         internal static void PiecePostfix(
@@ -1370,22 +1407,31 @@ namespace Stackmaster
             [HarmonyArgument(1)] Player.RequirementMode mode,
             ref bool __result)
         {
-            if (!RuntimeContext.Compatibility.IsCompatible || mode != Player.RequirementMode.CanBuild ||
-                RuntimeContext.Plugin == null || !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value)
+            var vanillaResult = __result;
+            try
             {
-                return;
+                if (!RuntimeContext.Compatibility.IsCompatible || mode != Player.RequirementMode.CanBuild ||
+                    RuntimeContext.Plugin == null || !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value)
+                {
+                    return;
+                }
+                if (!NearbyResourceService.PieceNonMaterialRequirementsPass(__instance, piece))
+                {
+                    __result = false;
+                    return;
+                }
+                if (ResourceActionContext.Current == ResourceActionKind.Building && ResourceTransactionContext.Active)
+                {
+                    __result = true;
+                    return;
+                }
+                __result = NearbyResourceService.HasPieceRequirements(__instance, piece, false);
             }
-            if (!NearbyResourceService.PieceNonMaterialRequirementsPass(__instance, piece))
+            catch (Exception exception)
             {
-                __result = false;
-                return;
+                __result = vanillaResult;
+                NearbyHudFailOpen.ReportOnce("building requirements", exception);
             }
-            if (ResourceActionContext.Current == ResourceActionKind.Building && ResourceTransactionContext.Active)
-            {
-                __result = true;
-                return;
-            }
-            __result = NearbyResourceService.HasPieceRequirements(__instance, piece, false);
         }
     }
 
@@ -1399,6 +1445,18 @@ namespace Stackmaster
         private static IReadOnlyList<RuntimeRequirementAvailability> _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
 
         internal static void Postfix(Hud __instance, [HarmonyArgument(0)] Piece piece)
+        {
+            try
+            {
+                Apply(__instance, piece);
+            }
+            catch (Exception exception)
+            {
+                NearbyHudFailOpen.ReportOnce("building HUD", exception);
+            }
+        }
+
+        private static void Apply(Hud __instance, Piece piece)
         {
             if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
                 !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
@@ -1470,21 +1528,42 @@ namespace Stackmaster
             List<Piece.Requirement> ___m_reqList,
             ref bool __result)
         {
-            if (!__result || !craft || !RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
+            try
+            {
+                Apply(__instance, elementRoot, requirement, player, craft, quality, craftMultiplier, ___m_reqList, __result);
+            }
+            catch (Exception exception)
+            {
+                NearbyHudFailOpen.ReportOnce("crafting HUD", exception);
+            }
+        }
+
+        private static void Apply(
+            InventoryGui __instance,
+            Transform elementRoot,
+            Piece.Requirement requirement,
+            Player player,
+            bool craft,
+            int quality,
+            int craftMultiplier,
+            List<Piece.Requirement> requirements,
+            bool vanillaResult)
+        {
+            if (!vanillaResult || !craft || !RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
                 !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value || __instance == null ||
                 player == null || !ReferenceEquals(player, Player.m_localPlayer) || elementRoot == null ||
-                requirement == null || requirement.m_resItem == null || craftMultiplier <= 0 || ___m_reqList == null)
+                requirement == null || requirement.m_resItem == null || craftMultiplier <= 0 || requirements == null)
             {
                 return;
             }
 
             var recipe = GetSelectedRecipe(__instance);
             if (recipe == null) return;
-            var requirementIndex = ___m_reqList.FindIndex(item => ReferenceEquals(item, requirement));
+            var requirementIndex = requirements.FindIndex(item => ReferenceEquals(item, requirement));
             if (requirementIndex < 0) return;
 
             var radius = RuntimeContext.Plugin.NearbyStorageRadius.Value;
-            var signature = RequirementSignature(___m_reqList, quality, craftMultiplier);
+            var signature = RequirementSignature(requirements, quality, craftMultiplier);
             if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedRecipe, recipe) ||
                 _cachedQuality != quality || _cachedCraftMultiplier != craftMultiplier ||
                 _cachedRequirementSignature != signature || Math.Abs(_cachedRadius - radius) >= 0.001f ||
@@ -1493,7 +1572,7 @@ namespace Stackmaster
                 _cachedAvailability = NearbyResourceService.GetRecipeRequirementAvailability(
                     player,
                     recipe,
-                    ___m_reqList,
+                    requirements,
                     quality,
                     craftMultiplier,
                     false);
@@ -1570,27 +1649,46 @@ namespace Stackmaster
             [HarmonyArgument(5)] int craftMultiplier,
             ref ItemDrop.ItemData __result)
         {
-            if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
-                !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value ||
-                !ReferenceEquals(inventory, __instance.GetInventory()) || recipe == null || !recipe.m_requireOnlyOneIngredient)
+            var vanillaResult = __result;
+            var vanillaAmount = amount;
+            var vanillaExtraAmount = extraAmount;
+            try
             {
-                return;
+                if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
+                    !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value ||
+                    !ReferenceEquals(inventory, __instance.GetInventory()) || recipe == null || !recipe.m_requireOnlyOneIngredient)
+                {
+                    return;
+                }
+                if (ResourceActionContext.Current == ResourceActionKind.Crafting && ResourceTransactionContext.Active)
+                {
+                    __result = ResourceTransactionContext.SelectedIngredient;
+                    amount = ResourceTransactionContext.SelectedAmount;
+                    extraAmount = ResourceTransactionContext.SelectedExtraAmount;
+                    return;
+                }
+
+                int nearbyAmount;
+                int nearbyExtraAmount;
+                var nearbyResult = NearbyResourceService.FindFirstRequiredItem(
+                    __instance,
+                    recipe,
+                    qualityLevel,
+                    craftMultiplier,
+                    false,
+                    out nearbyAmount,
+                    out nearbyExtraAmount);
+                __result = nearbyResult;
+                amount = nearbyAmount;
+                extraAmount = nearbyExtraAmount;
             }
-            if (ResourceActionContext.Current == ResourceActionKind.Crafting && ResourceTransactionContext.Active)
+            catch (Exception exception)
             {
-                __result = ResourceTransactionContext.SelectedIngredient;
-                amount = ResourceTransactionContext.SelectedAmount;
-                extraAmount = ResourceTransactionContext.SelectedExtraAmount;
-                return;
+                __result = vanillaResult;
+                amount = vanillaAmount;
+                extraAmount = vanillaExtraAmount;
+                NearbyHudFailOpen.ReportOnce("first required crafting item", exception);
             }
-            __result = NearbyResourceService.FindFirstRequiredItem(
-                __instance,
-                recipe,
-                qualityLevel,
-                craftMultiplier,
-                false,
-                out amount,
-                out extraAmount);
         }
     }
 
