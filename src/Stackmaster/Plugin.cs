@@ -91,11 +91,37 @@ namespace Stackmaster
             }
         }
 
+        private void OnDisable()
+        {
+            // Unity can disable a plugin component without destroying it. Return every exact
+            // Stackmaster lease before normal gameplay can continue without our Update loop.
+            RuntimeContext.Disable("plugin disabled");
+        }
+
         private void OnDestroy()
         {
             RuntimeContext.Disable("plugin unloading");
             try
             {
+                if (OwnershipCoordinator.HasUnresolvedCleanup)
+                {
+                    // Preserve both halves of late cleanup under a session-lifetime Harmony id:
+                    // suppress the generated response and observe its delayed ZDO owner update.
+                    // Ordinary gameplay patches are still removed below.
+                    var safetyHarmony = new Harmony(PluginGuid + ".ownership-cleanup-safety");
+                    var responseTarget = AccessTools.DeclaredMethod(typeof(Container), "RPC_StackResponse",
+                        new[] { typeof(long), typeof(bool) });
+                    var responsePrefix = AccessTools.DeclaredMethod(typeof(ContainerStackResponsePatch), "Prefix");
+                    var updateTarget = AccessTools.DeclaredMethod(typeof(ZNet), "Update", System.Type.EmptyTypes);
+                    var updatePostfix = AccessTools.DeclaredMethod(typeof(OwnershipSafetyUpdatePatch), "Postfix");
+                    if (responseTarget == null || responsePrefix == null || updateTarget == null || updatePostfix == null)
+                    {
+                        throw new System.MissingMethodException("Could not preserve delayed ownership cleanup.");
+                    }
+                    safetyHarmony.Patch(responseTarget, prefix: new HarmonyMethod(responsePrefix));
+                    safetyHarmony.Patch(updateTarget, postfix: new HarmonyMethod(updatePostfix));
+                    Logger.LogWarning("Preserved delayed ownership cleanup until session end.");
+                }
                 _harmony?.UnpatchSelf();
             }
             catch (System.Exception exception)

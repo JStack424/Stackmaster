@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 Test Build 9
+
+Unpublished local test build.
+
+- Fixed remote build/craft and Alt+E ownership outliving the action and blocking vanilla peers after the modded player disconnected.
+- Tracks only exact container ownership newly acquired by Stackmaster, never unrelated or already-local chests.
+- Uses a bounded 10-second first-attempt retry lease; successful actions, validation failures, cancellation, exceptions, partial acquisition failures, timeout, plugin disable, and disconnect all relinquish tracked ownership.
+- Clears reservations and completes rollback before returning the exact ZDO to Valheim's native unowned state; stale identity, session, or owner-revision evidence is never overwritten.
+- Added session-lifetime cleanup for delayed ownership responses and owner updates, including one-shot response suppression and an exact ZDO observer across hot unload.
+- Display-only remote snapshots remain ownership-free; Test Build 7 detached-item hydration and Test Build 8 aggregate crafting rows are unchanged.
+- Automated verification passes: zero build warnings/errors, 61/61 domain tests, and 48/48 static/repository checks.
+
 ## 0.2.0 Test Build 8
 
 Unpublished local test build.

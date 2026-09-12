@@ -20,7 +20,9 @@ namespace Stackmaster
             ContainerSnapshot snapshot,
             Inventory resourceInventory,
             uint resourceDataRevision,
+            ZDOID resourceZdoId,
             ushort resourceOwnerRevision,
+            long resourceOwner,
             bool resourceReadable)
         {
             Id = id;
@@ -29,7 +31,9 @@ namespace Stackmaster
             Snapshot = snapshot;
             ResourceInventory = resourceInventory;
             ResourceDataRevision = resourceDataRevision;
+            ResourceZdoId = resourceZdoId;
             ResourceOwnerRevision = resourceOwnerRevision;
+            ResourceOwner = resourceOwner;
             ResourceReadable = resourceReadable;
         }
 
@@ -41,7 +45,9 @@ namespace Stackmaster
         // never claims ownership or mutates the live Container inventory.
         internal Inventory ResourceInventory { get; }
         internal uint ResourceDataRevision { get; }
+        internal ZDOID ResourceZdoId { get; }
         internal ushort ResourceOwnerRevision { get; }
+        internal long ResourceOwner { get; }
         internal bool ResourceReadable { get; }
     }
 
@@ -335,7 +341,9 @@ namespace Stackmaster
                 snapshot,
                 resourceReadable ? resourceInventory : null,
                 resourceDataRevision,
+                zdo != null ? zdo.m_uid : default(ZDOID),
                 zdo != null ? zdo.OwnerRevision : (ushort)0,
+                zdo != null ? zdo.GetOwner() : 0L,
                 resourceReadable);
         }
 

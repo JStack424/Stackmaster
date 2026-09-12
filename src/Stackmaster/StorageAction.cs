@@ -267,28 +267,41 @@ namespace Stackmaster
                 yield break;
             }
 
-            var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
-            while (!ownership.IsComplete && Time.realtimeSinceStartup < deadline)
-            {
-                ownership.Refresh();
-                yield return null;
-            }
-            ownership.Refresh();
-            if (!ownership.IsComplete)
-            {
-                ownership.Timeout();
-            }
-
-            ProtectionState freshProtection;
-            if (!RuntimeContext.TryLoadProtection(player, out freshProtection))
-            {
-                OwnershipCoordinator.End(ownership);
-                _actionRunning = false;
-                yield break;
-            }
-
             try
             {
+                var refreshFailed = false;
+                var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
+                while (!ownership.IsComplete && Time.realtimeSinceStartup < deadline)
+                {
+                    try
+                    {
+                        ownership.Refresh();
+                    }
+                    catch (Exception exception)
+                    {
+                        refreshFailed = true;
+                        RuntimeContext.Plugin.Log.LogError("Storage ownership refresh failed safely: " + exception);
+                        RuntimeContext.ShowCenter("Stackmaster stopped safely while requesting container ownership.");
+                    }
+                    if (refreshFailed) break;
+                    yield return null;
+                }
+                if (refreshFailed) yield break;
+
+                try
+                {
+                    ownership.Refresh();
+                if (!ownership.IsComplete)
+                {
+                    ownership.Timeout();
+                }
+
+                ProtectionState freshProtection;
+                if (!RuntimeContext.TryLoadProtection(player, out freshProtection))
+                {
+                    yield break;
+                }
+
                 // Ownership transfer can cause Container.Load to replace every ItemData instance.
                 // Re-capture and re-plan from the synchronized inventories so no pre-RPC object
                 // reference is ever used for mutation.
@@ -346,13 +359,17 @@ namespace Stackmaster
                     }
                 }
             }
-            catch (Exception exception)
-            {
-                RuntimeContext.Plugin.Log.LogError("Storage action stopped safely during execution: " + exception);
-                RuntimeContext.ShowCenter("Stackmaster stopped safely during transfer execution.");
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin.Log.LogError("Storage action stopped safely during execution: " + exception);
+                    RuntimeContext.ShowCenter("Stackmaster stopped safely during transfer execution.");
+                }
             }
             finally
             {
+                // Alt+E never needs a cross-attempt lease. Return only exact ownership newly
+                // acquired by this action after transfer rollback/validation has finished.
+                OwnershipLeaseManager.ReleaseBatch(ownership, "storage action ended");
                 OwnershipCoordinator.End(ownership);
                 _actionRunning = false;
             }

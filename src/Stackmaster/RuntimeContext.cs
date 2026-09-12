@@ -19,7 +19,30 @@ namespace Stackmaster
 
         internal static void Disable(string reason)
         {
-            Compatibility = new CompatibilityResult(false, reason);
+            // Roll back and clear reservations before handing any exact acquired ZDO back to
+            // vanilla. Neither cleanup failure may escape a shutdown Harmony prefix or prevent
+            // the other cleanup stage from running.
+            try
+            {
+                ResourceTransactionContext.Shutdown();
+            }
+            catch (Exception exception)
+            {
+                Plugin?.Log.LogError("Resource transaction shutdown failed safely: " + exception);
+            }
+
+            try
+            {
+                OwnershipCoordinator.Shutdown(reason);
+            }
+            catch (Exception exception)
+            {
+                Plugin?.Log.LogError("Ownership shutdown failed safely: " + exception);
+            }
+            finally
+            {
+                Compatibility = new CompatibilityResult(false, reason);
+            }
         }
 
         internal static void Shutdown()

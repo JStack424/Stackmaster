@@ -157,6 +157,14 @@ namespace Stackmaster
             return false;
         }
 
+        internal static void Shutdown()
+        {
+            if (_removed != null)
+            {
+                Rollback();
+            }
+        }
+
         internal static bool Rollback()
         {
             var removed = _removed;
@@ -197,7 +205,8 @@ namespace Stackmaster
         private static void ReleaseReservations(IEnumerable<ContainerReservation> reservations)
         {
             if (reservations == null) return;
-            foreach (var reservation in reservations.Reverse())
+            var held = reservations.ToArray();
+            foreach (var reservation in held.Reverse())
             {
                 try
                 {
@@ -212,6 +221,9 @@ namespace Stackmaster
                     }
                 }
             }
+            // Reservations and any rollback are finished before ownership is handed off.
+            OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                "nearby-resource transaction ended");
         }
     }
 
@@ -500,6 +512,11 @@ namespace Stackmaster
             {
                 return false;
             }
+            if (requiredHandles.Any(handle => OwnershipLeaseManager.HasPotentialAcquisition(handle.Id)))
+            {
+                failure = "a previous ownership transition is still pending";
+                return false;
+            }
 
             var unowned = requiredHandles
                 .Where(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
@@ -526,52 +543,67 @@ namespace Stackmaster
                 return false;
             }
 
-            NearbyResourceCapture mutableCapture;
-            ResourceWithdrawalPlan mutablePlan;
-            if (!TryCaptureOwnedPlan(
-                    player,
-                    normalizedRequirements,
-                    matchWorldLevel,
-                    readOnlyCapture,
-                    readOnlyPlan,
-                    requiredHandles,
-                    false,
-                    out mutableCapture,
-                    out mutablePlan,
-                    out failure))
-            {
-                return false;
-            }
-            if (!RevalidateContainers(player, mutablePlan, mutableCapture, out failure)) return false;
-            if (!RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure)) return false;
-
-            IReadOnlyList<ContainerReservation> reservations;
-            if (!TryReserveContainers(player, requiredHandles, out reservations, out failure)) return false;
-            if (!RevalidateReservedContainers(player, reservations, out failure) ||
-                !RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure))
-            {
-                ReleaseReservations(reservations);
-                return false;
-            }
-
-            var removed = new List<RemovedResource>();
-            ResourceTransactionContext.Begin(removed, mutablePlan.RequiredUnits, reservations);
+            var transactionBegan = false;
             try
             {
-                if (!ExecuteWithRollback(player, mutablePlan, mutableCapture, reservations, removed, out failure))
+                NearbyResourceCapture mutableCapture;
+                ResourceWithdrawalPlan mutablePlan;
+                if (!TryCaptureOwnedPlan(
+                        player,
+                        normalizedRequirements,
+                        matchWorldLevel,
+                        readOnlyCapture,
+                        readOnlyPlan,
+                        requiredHandles,
+                        false,
+                        out mutableCapture,
+                        out mutablePlan,
+                        out failure))
                 {
-                    ResourceTransactionContext.Rollback();
                     return false;
                 }
-                return true;
+                if (!RevalidateContainers(player, mutablePlan, mutableCapture, out failure)) return false;
+                if (!RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure)) return false;
+
+                IReadOnlyList<ContainerReservation> reservations;
+                if (!TryReserveContainers(player, requiredHandles, out reservations, out failure)) return false;
+                if (!RevalidateReservedContainers(player, reservations, out failure) ||
+                    !RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure))
+                {
+                    ReleaseReservations(reservations);
+                    return false;
+                }
+
+                var removed = new List<RemovedResource>();
+                ResourceTransactionContext.Begin(removed, mutablePlan.RequiredUnits, reservations);
+                transactionBegan = true;
+                try
+                {
+                    if (!ExecuteWithRollback(player, mutablePlan, mutableCapture, reservations, removed, out failure))
+                    {
+                        ResourceTransactionContext.Rollback();
+                        return false;
+                    }
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    var restored = ResourceTransactionContext.Rollback();
+                    failure = "resource removal threw " + exception.GetType().Name +
+                        (restored ? "; all mutations were rolled back" : "; rollback could not restore every item");
+                    if (!restored) RuntimeContext.Disable(failure);
+                    return false;
+                }
             }
-            catch (Exception exception)
+            finally
             {
-                var restored = ResourceTransactionContext.Rollback();
-                failure = "resource removal threw " + exception.GetType().Name +
-                    (restored ? "; all mutations were rolled back" : "; rollback could not restore every item");
-                if (!restored) RuntimeContext.Disable(failure);
-                return false;
+                // Before Begin, no rollback context owns cleanup. Release only exact leases
+                // matching this action's player-first minimum plan on every validation/cancel path.
+                if (!transactionBegan)
+                {
+                    OwnershipLeaseManager.ReleaseMatching(requiredHandles,
+                        "nearby-resource action ended before mutation");
+                }
             }
         }
 
@@ -962,7 +994,8 @@ namespace Stackmaster
         private static void ReleaseReservations(IEnumerable<ContainerReservation> reservations)
         {
             if (reservations == null) return;
-            foreach (var reservation in reservations.Reverse())
+            var held = reservations.ToArray();
+            foreach (var reservation in held.Reverse())
             {
                 try
                 {
@@ -979,6 +1012,8 @@ namespace Stackmaster
                     }
                 }
             }
+            OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                "pre-transaction reservation ended");
         }
 
         private static bool RevalidateContainers(
@@ -1235,6 +1270,7 @@ namespace Stackmaster
                 yield break;
             }
 
+            var keepRetryLease = false;
             try
             {
                 var refreshFailed = false;
@@ -1300,6 +1336,9 @@ namespace Stackmaster
                             // later would skip UpdatePlacement's vanilla stamina/stat/durability path, so the
                             // safe cross-action contract is explicit: ownership is prepared, then the user
                             // retries and the normal vanilla action runs atomically from a fresh plan.
+                            // Only exact ZDOs newly acquired in this batch enter the short retry lease.
+                            OwnershipLeaseManager.HoldForRetry(ownership);
+                            keepRetryLease = true;
                             RuntimeContext.ShowTopLeft("Stackmaster: required materials ready — try the action again.");
                         }
                     }
@@ -1327,6 +1366,11 @@ namespace Stackmaster
                 {
                     try
                     {
+                        if (!keepRetryLease)
+                        {
+                            OwnershipLeaseManager.ReleaseBatch(ownership,
+                                "ownership acquisition did not reach the retry lease");
+                        }
                         OwnershipCoordinator.End(ownership);
                     }
                     finally

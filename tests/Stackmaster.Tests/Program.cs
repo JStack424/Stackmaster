@@ -63,7 +63,13 @@ internal static class Program
             ResourceReadOnlyDecodeFailureFailsClosed,
             ResourceLiveSnapshotRequiresKnownInventory,
             DetachedHydrationMakesLoadedItemsCountable,
-            DetachedHydrationRejectsIncompleteMetadata
+            DetachedHydrationRejectsIncompleteMetadata,
+            OwnershipReleaseRequiresExactIdentity,
+            OwnershipReleaseRequiresOriginalLocalSession,
+            OwnershipReleaseRequiresCurrentLocalOwner,
+            OwnershipReleaseRequiresExactOwnerRevision,
+            OwnershipRevisionSuccessorWrapsExactly,
+            OwnershipReleaseAlwaysReturnsToVanillaUnownedState
         };
 
         var failures = 0;
@@ -906,6 +912,43 @@ internal static class Program
         True(!hydrated, "one unresolved detached row rejects the entire chest snapshot");
         True(complete.Shared == null && incomplete.Shared == null,
             "metadata is resolved for every row before any detached item is mutated");
+    }
+
+    private static void OwnershipReleaseRequiresExactIdentity()
+    {
+        var decision = OwnershipLeasePolicy.Decide(false, true, true, true);
+        True(!decision.ShouldRelease, "a recycled or mismatched ZDO identity is never released");
+    }
+
+    private static void OwnershipReleaseRequiresOriginalLocalSession()
+    {
+        var decision = OwnershipLeasePolicy.Decide(true, false, true, true);
+        True(!decision.ShouldRelease, "a later local session never inherits an older Stackmaster lease");
+    }
+
+    private static void OwnershipReleaseRequiresCurrentLocalOwner()
+    {
+        var decision = OwnershipLeasePolicy.Decide(true, true, false, true);
+        True(!decision.ShouldRelease, "ownership already transferred by vanilla is never overwritten");
+    }
+
+    private static void OwnershipReleaseRequiresExactOwnerRevision()
+    {
+        var decision = OwnershipLeasePolicy.Decide(true, true, true, false);
+        True(!decision.ShouldRelease, "a newer ownership revision is never overwritten");
+    }
+
+    private static void OwnershipRevisionSuccessorWrapsExactly()
+    {
+        Equal((ushort)0, OwnershipLeasePolicy.NextOwnerRevision(ushort.MaxValue),
+            "owner revision successor preserves Valheim ushort rollover");
+    }
+
+    private static void OwnershipReleaseAlwaysReturnsToVanillaUnownedState()
+    {
+        var decision = OwnershipLeasePolicy.Decide(true, true, true, true);
+        True(decision.ShouldRelease, "an exact Stackmaster acquisition is released");
+        Equal(0L, decision.TargetOwner, "release never restores a stale peer or assigns a topology-dependent server");
     }
 
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)

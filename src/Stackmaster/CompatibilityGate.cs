@@ -98,6 +98,15 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Container), "StackAll");
             RequireMethod(failures, typeof(Container), "RPC_RequestStack", typeof(long), typeof(long));
             RequireMethod(failures, typeof(Container), "RPC_StackResponse", typeof(long), typeof(bool));
+            RequireMethod(failures, typeof(Game), "Shutdown", typeof(bool));
+            RequireMethod(failures, typeof(ZNet), "Shutdown", typeof(bool));
+            RequireMethod(failures, typeof(ZNet), "ShutdownWithoutSave", typeof(bool));
+            RequireMethod(failures, typeof(ZNet), "Update");
+            RequireMethod(failures, typeof(ZDO), "GetOwner");
+            RequireMethod(failures, typeof(ZDO), "SetOwner", typeof(long));
+            RequireMethod(failures, typeof(ZDOMan), "GetSessionID");
+            RequireMethod(failures, typeof(ZDOMan), "GetZDO", typeof(ZDOID));
+            RequireMethod(failures, typeof(ZDOMan), "ForceSendZDO", typeof(ZDOID));
             RequireMethod(failures, typeof(Character), "IsDead");
             RequireMethod(failures, typeof(Character), "InCutscene");
             RequireMethod(failures, typeof(Character), "IsTeleporting");
