@@ -2,6 +2,20 @@
 
 All notable changes to Stackmaster are documented here.
 
+## [0.2.0 Test Build 7] - 2026-09-12
+
+Unpublished local test build.
+
+### Fixed
+
+- Fixed the Test Build 6 `/ 0` regression: detached serialized chest items now hydrate their shared item metadata from each resolved prefab before nearby-resource accounting.
+- If any detached item lacks a resolved prefab or complete shared metadata, the entire affected chest is excluded rather than exposing a partial or misleading resource snapshot.
+
+### Automated verification
+
+- Release build succeeds with zero warnings and zero errors.
+- 53/53 pure-domain tests and 44/44 static/repository checks pass.
+
 ## [0.2.0 Test Build 6] - 2026-09-12
 
 Unpublished local test build.

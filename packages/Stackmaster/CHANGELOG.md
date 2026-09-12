@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 Test Build 7
+
+Unpublished local test build.
+
+- Fixed the Test Build 6 `/ 0` regression by hydrating detached serialized chest items with shared metadata from their resolved prefabs before resource accounting.
+- A detached chest with any unresolved prefab/shared metadata is excluded as a whole instead of contributing a partial snapshot.
+- Automated verification passes: zero build warnings/errors, 53/53 domain tests, and 44/44 static/repository checks.
+
 ## 0.2.0 Test Build 6
 
 Unpublished local test build.

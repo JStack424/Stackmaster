@@ -59,7 +59,9 @@ internal static class Program
             ResourceOwnershipRevisionIgnoresUnrelatedChest,
             ResourceReadOnlyRemoteUnopenedUsesDetachedInventory,
             ResourceReadOnlyDecodeFailureFailsClosed,
-            ResourceLiveSnapshotRequiresKnownInventory
+            ResourceLiveSnapshotRequiresKnownInventory,
+            DetachedHydrationMakesLoadedItemsCountable,
+            DetachedHydrationRejectsIncompleteMetadata
         };
 
         var failures = 0;
@@ -850,6 +852,40 @@ internal static class Program
             "ordinary storage discovery never substitutes a detached resource snapshot");
     }
 
+    private static void DetachedHydrationMakesLoadedItemsCountable()
+    {
+        var wood = new FakeDetachedItem(17, new FakeSharedMetadata("Wood"));
+        var stone = new FakeDetachedItem(4, new FakeSharedMetadata("Stone"));
+        var loaded = new[] { wood, stone };
+
+        var hydrated = DetachedItemHydrator.TryHydrate(
+            loaded,
+            item => item.ResolvedPrefabMetadata,
+            (item, shared) => item.Shared = shared);
+        var countableWood = loaded
+            .Where(item => item.Shared != null && item.Shared.Name == "Wood")
+            .Sum(item => item.Quantity);
+
+        True(hydrated, "complete detached prefab metadata hydrates successfully");
+        Equal(17, countableWood, "hydrated detached items contribute to nearby-resource totals");
+    }
+
+    private static void DetachedHydrationRejectsIncompleteMetadata()
+    {
+        var complete = new FakeDetachedItem(17, new FakeSharedMetadata("Wood"));
+        var incomplete = new FakeDetachedItem(4, null);
+        var loaded = new[] { complete, incomplete };
+
+        var hydrated = DetachedItemHydrator.TryHydrate(
+            loaded,
+            item => item.ResolvedPrefabMetadata,
+            (item, shared) => item.Shared = shared);
+
+        True(!hydrated, "one unresolved detached row rejects the entire chest snapshot");
+        True(complete.Shared == null && incomplete.Shared == null,
+            "metadata is resolved for every row before any detached item is mutated");
+    }
+
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
         => new ResourceWithdrawalPlanner().Plan(requirements, stacks);
 
@@ -921,6 +957,29 @@ internal static class Program
         Equal(TransferKind.Replenishment, step.Kind, "replenishment kind");
         Equal(sourceId, step.Source.InventoryId, "replenishment source");
         Equal(quantity, step.Quantity, "replenishment quantity");
+    }
+
+    private sealed class FakeDetachedItem
+    {
+        internal FakeDetachedItem(int quantity, FakeSharedMetadata? resolvedPrefabMetadata)
+        {
+            Quantity = quantity;
+            ResolvedPrefabMetadata = resolvedPrefabMetadata;
+        }
+
+        internal int Quantity { get; }
+        internal FakeSharedMetadata? ResolvedPrefabMetadata { get; }
+        internal FakeSharedMetadata? Shared { get; set; }
+    }
+
+    private sealed class FakeSharedMetadata
+    {
+        internal FakeSharedMetadata(string name)
+        {
+            Name = name;
+        }
+
+        internal string Name { get; }
     }
 
     private static void Valid(ValidationResult result)

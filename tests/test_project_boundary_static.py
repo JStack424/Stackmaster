@@ -485,6 +485,23 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("extraAmount = vanillaExtraAmount", nearby)
         self.assertIn("var nearbyResult = NearbyResourceService.FindFirstRequiredItem", nearby)
 
+    def test_detached_inventory_items_are_fully_hydrated_or_chest_is_rejected(self):
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        hydrator = (ROOT / "src" / "Stackmaster.Core" / "DetachedItemHydrator.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+
+        self.assertIn("public static class DetachedItemHydrator", hydrator)
+        self.assertIn("var resolved = new List<KeyValuePair<TItem, TMetadata>>()", hydrator)
+        self.assertLess(hydrator.index("resolved.Add("), hydrator.index("applyMetadata(pair.Key, pair.Value)"))
+        self.assertIn("var hydrated = DetachedItemHydrator.TryHydrate(", discovery)
+        self.assertIn("item.m_dropPrefab.GetComponent<ItemDrop>()", discovery)
+        self.assertIn("itemDrop.m_itemData.m_shared", discovery)
+        self.assertIn("(item, shared) => item.m_shared = shared", discovery)
+        self.assertIn('failure = "detached inventory item metadata could not be resolved"', discovery)
+        self.assertLess(discovery.index("snapshot.Load(new ZPackage(bytes))"), discovery.index("var hydrated = DetachedItemHydrator.TryHydrate("))
+        self.assertLess(discovery.index("var hydrated = DetachedItemHydrator.TryHydrate("), discovery.index("inventory = snapshot"))
+        self.assertIn("item == null || item.m_stack <= 0 || item.m_shared == null", nearby)
+
     def test_remote_ownership_is_staged_because_vanilla_rpc_cannot_complete_synchronously(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         self.assertIn("A Harmony prefix cannot synchronously wait for remote RPCs", nearby)

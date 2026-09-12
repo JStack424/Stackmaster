@@ -373,6 +373,29 @@ namespace Stackmaster
                     return false;
                 }
 
+                // Inventory(true) resolves each serialized row's drop prefab but does not populate
+                // ItemData.m_shared. Nearby resource accounting keys on shared metadata, so hydrate
+                // every row from the resolved prefab before exposing this detached snapshot. Resolve
+                // the whole inventory first: one incomplete row rejects the chest rather than
+                // presenting a partial count.
+                var hydrated = DetachedItemHydrator.TryHydrate(
+                    snapshot.GetAllItems(),
+                    item =>
+                    {
+                        var itemDrop = item.m_dropPrefab != null
+                            ? item.m_dropPrefab.GetComponent<ItemDrop>()
+                            : null;
+                        return itemDrop != null && itemDrop.m_itemData != null
+                            ? itemDrop.m_itemData.m_shared
+                            : null;
+                    },
+                    (item, shared) => item.m_shared = shared);
+                if (!hydrated)
+                {
+                    failure = "detached inventory item metadata could not be resolved";
+                    return false;
+                }
+
                 inventory = snapshot;
                 dataRevision = after;
                 return true;
