@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 Test Build 3
+
+Unpublished local test build.
+
+- Selected build-piece requirements now show `required / total available` across the player inventory and eligible nearby chests.
+- Requirement quantities no longer blink red when aggregate nearby stock satisfies the complete material requirement.
+- The HUD remains strictly vanilla when nearby-chest building or Stackmaster is disabled.
+- HUD stock discovery is interval-bounded; placement keeps its existing fresh validation and exact consumption path.
+
 ## 0.2.0 Test Build 2
 
 Unpublished local test build.

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Stackmaster.Core;
+using TMPro;
 using UnityEngine;
 
 namespace Stackmaster
@@ -170,6 +171,20 @@ namespace Stackmaster
         internal IReadOnlyDictionary<string, RuntimeResourceStack> RuntimeStacks { get; }
     }
 
+    internal sealed class PieceRequirementAvailability
+    {
+        internal PieceRequirementAvailability(int required, int available, bool isSatisfied)
+        {
+            Required = required;
+            Available = available;
+            IsSatisfied = isSatisfied;
+        }
+
+        internal int Required { get; }
+        internal int Available { get; }
+        internal bool IsSatisfied { get; }
+    }
+
     internal static class NearbyResourceService
     {
         private const string PlayerInventoryId = "player";
@@ -190,6 +205,41 @@ namespace Stackmaster
             if (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey())) return true;
             var requirements = PieceRequirements(piece);
             return requirements.Count == 0 || Plan(player, requirements, true, fresh).IsSatisfiable;
+        }
+
+        internal static IReadOnlyList<PieceRequirementAvailability> GetPieceRequirementAvailability(
+            Player player,
+            Piece piece,
+            bool fresh)
+        {
+            if (player == null || piece == null) return Array.Empty<PieceRequirementAvailability>();
+
+            var requirements = piece.m_resources ?? Array.Empty<Piece.Requirement>();
+            var capture = Capture(player, true, fresh);
+            var requiredByItem = requirements
+                .Where(requirement => requirement != null && requirement.m_resItem != null && requirement.m_amount > 0)
+                .GroupBy(requirement => requirement.m_resItem.m_itemData.m_shared.m_name, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => checked(group.Sum(requirement => requirement.m_amount)),
+                    StringComparer.Ordinal);
+            var result = new List<PieceRequirementAvailability>(requirements.Length);
+            foreach (var requirement in requirements)
+            {
+                if (requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0)
+                {
+                    result.Add(new PieceRequirementAvailability(0, 0, true));
+                    continue;
+                }
+
+                var itemName = requirement.m_resItem.m_itemData.m_shared.m_name;
+                var available = ResourceAvailability.CountAvailable(capture.Stacks, itemName);
+                result.Add(new PieceRequirementAvailability(
+                    requirement.m_amount,
+                    available,
+                    available >= requiredByItem[itemName]));
+            }
+            return result;
         }
 
         internal static bool HasRecipeRequirements(Player player, Recipe recipe, int qualityLevel, int craftMultiplier, bool fresh)
@@ -620,6 +670,60 @@ namespace Stackmaster
                 return;
             }
             __result = NearbyResourceService.HasPieceRequirements(__instance, piece, false);
+        }
+    }
+
+    internal static class NearbyBuildHudPatch
+    {
+        private const float RefreshIntervalSeconds = 0.25f;
+        private static Player _cachedPlayer;
+        private static Piece _cachedPiece;
+        private static float _cachedRadius;
+        private static float _nextRefreshTime;
+        private static IReadOnlyList<PieceRequirementAvailability> _cachedAvailability = Array.Empty<PieceRequirementAvailability>();
+
+        internal static void Postfix(Hud __instance, [HarmonyArgument(0)] Piece piece)
+        {
+            if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
+                !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
+                __instance == null || piece == null || Player.m_localPlayer == null)
+            {
+                return;
+            }
+
+            var requirements = piece.m_resources ?? Array.Empty<Piece.Requirement>();
+            var requirementItems = __instance.m_requirementItems ?? Array.Empty<GameObject>();
+            var player = Player.m_localPlayer;
+            var radius = RuntimeContext.Plugin.NearbyStorageRadius.Value;
+            if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedPiece, piece) ||
+                Math.Abs(_cachedRadius - radius) >= 0.001f || Time.time >= _nextRefreshTime)
+            {
+                _cachedAvailability = NearbyResourceService.GetPieceRequirementAvailability(player, piece, false);
+                _cachedPlayer = player;
+                _cachedPiece = piece;
+                _cachedRadius = radius;
+                _nextRefreshTime = Time.time + RefreshIntervalSeconds;
+            }
+            var itemCount = Math.Min(
+                Math.Min(requirementItems.Length, requirements.Length),
+                _cachedAvailability.Count);
+            var noBuildCost = ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey());
+            for (var index = 0; index < itemCount; index++)
+            {
+                var entry = _cachedAvailability[index];
+                if (entry.Required <= 0) continue;
+
+                var requirementRoot = requirementItems[index];
+                var amountTransform = requirementRoot == null ? null : requirementRoot.transform.Find("res_amount");
+                var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
+                if (amountLabel == null) continue;
+
+                amountLabel.text = entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +
+                                   entry.Available.ToString(CultureInfo.InvariantCulture);
+                amountLabel.color = noBuildCost || entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f
+                    ? Color.white
+                    : Color.red;
+            }
         }
     }
 

@@ -37,6 +37,7 @@ internal static class Program
             DuplicateChoiceIsDeterministic,
             MergeSurvivorKeepsOneRecord,
             NoMatchingItemProtectsNothingUnrelated,
+            ResourceAvailabilityCountsPlayerNearbyAndQuality,
             ResourcePlanAggregatesPlayerAndNearbyStacks,
             ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
@@ -509,6 +510,22 @@ internal static class Program
         Equal(0, resolution.Assignments.Count, "no unrelated stack is protected");
         Equal(1, state.Records.Count, "identified record stays dormant for its item");
         True(!resolution.Changed, "dormant record does not churn persistence");
+    }
+
+    private static void ResourceAvailabilityCountsPlayerNearbyAndQuality()
+    {
+        var stacks = new[]
+        {
+            Resource("player", "player-wood", "wood", 1, 2, 0, 0),
+            Resource("near", "near-wood", "wood", 1, 10, 1, 0),
+            Resource("far", "far-wood", "wood", 2, 5, 2, 0),
+            Resource("far", "far-stone", "stone", 1, 99, 2, 1)
+        };
+
+        Equal(17, ResourceAvailability.CountAvailable(stacks, "wood"), "HUD total includes player and every eligible captured chest stack");
+        Equal(12, ResourceAvailability.CountAvailable(stacks, "wood", 1), "quality filter includes only exact-quality stacks");
+        Equal(5, ResourceAvailability.CountAvailable(stacks, "wood", 2), "second quality total");
+        Equal(0, ResourceAvailability.CountAvailable(stacks, "resin"), "missing material total");
     }
 
     private static void ResourcePlanAggregatesPlayerAndNearbyStacks()

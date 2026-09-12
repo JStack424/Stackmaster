@@ -30,6 +30,7 @@ namespace Stackmaster
                 Prefix(typeof(Container), "RPC_StackResponse", new[] { typeof(long), typeof(bool) }, typeof(ContainerStackResponsePatch)),
                 Postfix(typeof(Player), "HaveRequirementItems", new[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) }, typeof(NearbyRequirementPatches), "RecipePostfix"),
                 Postfix(typeof(Player), "HaveRequirements", new[] { typeof(Piece), typeof(Player.RequirementMode) }, typeof(NearbyRequirementPatches), "PiecePostfix"),
+                Postfix(typeof(Hud), "SetupPieceInfo", new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch)),
                 Postfix(typeof(Player), "GetFirstRequiredItem", new[]
                 {
                     typeof(Inventory), typeof(Recipe), typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int)

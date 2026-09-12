@@ -4,9 +4,9 @@ This plan follows the behavior contract approved on September 11, 2026. [DESIGN-
 
 Environment validation, the complete local v0.1 gameplay implementation, and the solo clean-profile smoke gate are complete. On September 11, 2026, Joe explicitly approved the consolidated contract, authorized uninterrupted implementation, accepted the corrected Build 4 candidate after solo testing, and authorized the first public GitHub/Thunderstore release for co-op testing.
 
-The current unpublished **0.2.0 Test Build 2** fixes the first live-load failure and carries forward independently switchable building and crafting from eligible nearby chests; both default to enabled and share the existing configurable radius. Its complete-action planner normalizes duplicate costs, checks exact quality and multi-craft quantities, validates fresh chest/stack state, withdraws exact units before output/placement, suppresses vanilla double charging, and rolls back when vanilla does not complete the action.
+The current unpublished **0.2.0 Test Build 3** carries forward independently switchable building and crafting from eligible nearby chests; both default to enabled and share the existing configurable radius. Test Build 2 launched successfully and Joe confirmed an initial nearby-chest building check consumed the correct quantities. Test Build 3 adds the selected-piece requirement HUD: each material displays `required / total available` across the player and eligible nearby chests, with the red blink based on aggregate availability instead of player inventory alone. Its complete-action planner and withdrawal path are unchanged: they normalize duplicate costs, check exact quality and multi-craft quantities, validate fresh chest/stack state, withdraw exact units before output/placement, suppress vanilla double charging, and roll back when vanilla does not complete the action.
 
-Current local verification: zero compiler warnings/errors, 36/36 pure-domain tests, 38/38 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. The v0.1 solo smoke gate passed, but the new v0.2 paths still require the live-game checks below. These results do **not** establish multiplayer or network safety: co-op host, co-op guest, and unmodded dedicated-server validation remain mandatory before any proven multiplayer claim.
+Current local verification: zero compiler warnings/errors, 37/37 pure-domain tests, 39/39 static/repository checks, and only `Stackmaster.dll` plus `Stackmaster.pdb` in plugin output. The v0.1 solo smoke gate passed and v0.2 now has a successful startup plus initial nearby-build result, but the new HUD and broader v0.2 paths still require the live-game checks below. These results do **not** establish multiplayer or network safety: co-op host, co-op guest, and unmodded dedicated-server validation remain mandatory before any proven multiplayer claim.
 
 ## 1. Approved release boundary
 
@@ -374,15 +374,16 @@ Publishing remains a separate explicit action so building cannot accidentally re
 - Windows environment inspection and private compile-reference setup: complete; proprietary/runtime assemblies remain ignored and excluded.
 - v0.1 clean-profile solo smoke gate and corrected Test Build 4: passed.
 - Local 0.2.0 Test Build 1 failed during live HarmonyX patch installation because one hook relied on a local argument name that did not match Valheim's metadata; Stackmaster correctly disabled itself before installing item-changing behavior.
-- Local 0.2.0 Test Build 2 binds all new nearby-resource hook arguments by method position and is the current unpublished candidate.
-- Automated verification for Test Build 2 passes: 36/36 pure-domain tests and 38/38 static/repository checks, with zero compiler warnings/errors; live launch remains the first required check.
+- Local 0.2.0 Test Build 2 bound all new nearby-resource hook arguments by method position, launched successfully, and passed Joe's initial nearby-chest build/quantity check.
+- Local 0.2.0 Test Build 3 is the current unpublished candidate. It corrects the selected-piece shortage blink and displays each requirement as `required / total available` across player inventory and eligible nearby chests without changing consumption logic.
+- Automated verification for Test Build 3 passes: 37/37 pure-domain tests and 39/39 static/repository checks, with zero compiler warnings/errors; the new HUD behavior remains the immediate live check.
 - Original Viking-chest icon, JStack424 identity, MIT license, BepInEx dependency, deterministic package allowlist, and early-testing language are preserved.
 - Multiplayer position: co-op host, co-op guest, and unmodded dedicated-server gates remain incomplete.
 
-**Required 0.2.0 Test Build 2 live checks:**
+**Required 0.2.0 Test Build 3 live checks:**
 
-1. Confirm Stackmaster loads without the red HarmonyX `Parameter "recipe" not found` error, and that the log reports normal patch installation rather than disabling the mod.
-2. With each new toggle off independently, confirm its feature is strictly vanilla while the other feature still uses nearby chests.
+1. Select a build piece whose materials are split between inventory and eligible nearby chests; confirm each line reads `required / total available` (for example `2 / 17`) and stays white when the aggregate full requirement is satisfied. Remove enough stock to create a shortage and confirm only the short material resumes the vanilla red blink.
+2. Turn nearby-chest building off and confirm the selected-piece HUD and building behavior are strictly vanilla; independently confirm the crafting toggle still controls only crafting.
 3. Confirm a 50-unit craft and build both fail when player plus eligible chests contain only 25, with no item change and no output/piece.
 4. Confirm an exact 50-unit cost split among player and multiple partial chest stacks consumes exactly 50, never a whole extra stack.
 5. Confirm duplicate-material requirements, quality-specific `require only one ingredient` recipes, upgrades, and multi-craft quantities charge exact totals once.
@@ -391,4 +392,4 @@ Publishing remains a separate explicit action so building cannot accidentally re
 8. Repeat ordinary sort, deposit, replenish, protection, and open-container flows to catch regressions.
 9. Repeat the matrix as solo, co-op host, co-op guest, and against an unmodded dedicated server; treat loss, duplication, crash, corruption, or synchronization disagreement as release-blocking.
 
-**Next handoff:** Install and run the live checklist with the local 0.2.0 Test Build 2 candidate. Do not change the live Thunderstore or GitHub release until Joe explicitly approves a later publication step.
+**Next handoff:** Install and run the live checklist with the local 0.2.0 Test Build 3 candidate, beginning with its selected-piece requirement totals and color behavior. Do not change the live Thunderstore or GitHub release until Joe explicitly approves a later publication step.

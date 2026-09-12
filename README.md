@@ -6,7 +6,7 @@ Stackmaster is a Valheim quality-of-life mod by **JStack424** that combines auto
 
 ## Early public test release
 
-Version 0.2.0 Test Build 2 fixes the Test Build 1 startup failure and has passed automated domain and repository checks, but its new nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
+Version 0.2.0 Test Build 3 carries forward the successful Test Build 2 startup and initial nearby-chest building check, and fixes the selected-piece requirements HUD so nearby stock is counted visibly and colored correctly. Its broader nearby-chest building and crafting paths still need live-game testing. The complete co-op host, co-op guest, and unmodded dedicated-server matrix has not yet been completed, so this build does **not** claim proven multiplayer safety. Back up valuable characters and worlds before early testing, and report any item loss, duplication, crash, corrupt item data, or synchronization disagreement.
 
 Stackmaster is designed as an optional client-side install: each player who wants its features installs it, while the host, other players, and dedicated server should not need Stackmaster. That installation model still needs confirmation across the remaining multiplayer matrix.
 
@@ -21,6 +21,7 @@ Stackmaster is designed as an optional client-side install: each player who want
 - Uses the targeted chest first, then searches other matching storage nearest to farthest.
 - Replenishes protected stacks to optional target quantities during the same storage action.
 - Counts and consumes exact building costs from the player plus eligible nearby chests.
+- Shows each selected build-piece cost as `required / total available` across the player and eligible nearby chests, and blinks red only when that aggregate stock is short.
 - Counts and consumes exact crafting costs, including quality and multi-craft quantities, from the player plus eligible nearby chests.
 - Rechecks access, ownership, chest use, stack identity, and quantity immediately before removal; a failed multi-stack removal rolls back completed steps.
 - Leaves unmatched items and overflow safely in the player inventory.

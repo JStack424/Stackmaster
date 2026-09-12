@@ -2,6 +2,20 @@
 
 All notable changes to Stackmaster are documented here.
 
+## [0.2.0 Test Build 3] - 2026-09-12
+
+Unpublished local test build.
+
+### Added
+
+- Selected build-piece requirements now show `required / total available`, where available stock includes the player inventory plus the same eligible nearby chests used for building.
+
+### Fixed
+
+- Requirement quantities no longer blink red when aggregate nearby stock satisfies the full material requirement, including normalized duplicate-material costs.
+- The HUD override is gated by the building-from-nearby-chests setting and Stackmaster compatibility state, preserving vanilla UI when disabled.
+- HUD stock discovery is refreshed at a bounded interval while the red/white blink remains smooth each frame; placement still performs the existing fresh action-time validation before consuming anything.
+
 ## [0.2.0 Test Build 2] - 2026-09-12
 
 Unpublished local test build.

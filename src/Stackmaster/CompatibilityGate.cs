@@ -76,6 +76,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
+            RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece));
             RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
             RequireMethod(failures, typeof(Container), "CheckForChanges");
@@ -127,6 +128,7 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_textsDialog");
             RequireField(failures, typeof(InventoryGui), "m_splitDialog");
             RequireField(failures, typeof(InventoryGui), "m_variantDialog");
+            RequireField(failures, typeof(Hud), "m_requirementItems");
             RequireField(failures, typeof(Container), "m_nview");
             RequireField(failures, typeof(Inventory), "m_onChanged");
             RequireField(failures, typeof(Inventory), "m_inventory");

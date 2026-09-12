@@ -53,6 +53,23 @@ namespace Stackmaster.Core
         public int Slot { get; }
     }
 
+    /// <summary>Pure stock counting shared by availability UI and withdrawal planning.</summary>
+    public static class ResourceAvailability
+    {
+        public static int CountAvailable(IEnumerable<ResourceStack> stacks, string itemName, int quality = -1)
+        {
+            if (stacks == null) throw new ArgumentNullException(nameof(stacks));
+            if (string.IsNullOrWhiteSpace(itemName)) throw new ArgumentException("An item name is required.", nameof(itemName));
+            if (quality == 0 || quality < -1) throw new ArgumentOutOfRangeException(nameof(quality));
+
+            return stacks
+                .Where(stack => stack != null &&
+                                string.Equals(stack.ItemName, itemName, StringComparison.Ordinal) &&
+                                (quality < 0 || stack.Quality == quality))
+                .Sum(stack => checked(stack.Quantity));
+        }
+    }
+
     public sealed class ResourceWithdrawalStep
     {
         public ResourceWithdrawalStep(string inventoryId, string stackId, string itemName, int quality, int quantity)

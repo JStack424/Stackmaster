@@ -334,7 +334,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         # metadata names such as Valheim's Recipe `piece` cannot break startup.
         bindings = [int(index) for index in re.findall(r"\[HarmonyArgument\((\d+)\)\]", nearby)]
         self.assertEqual(
-            [0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
+            [0, 1, 2, 3, 0, 1, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
             bindings,
         )
         self.assertNotIn("RecipePostfix(Player __instance, Recipe recipe", nearby)
@@ -362,6 +362,28 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('Prefix(typeof(Inventory), "RemoveItem"', installer)
         for method in ("HaveRequirementItems", "HaveRequirements", "GetFirstRequiredItem", "DoCrafting", "UpdatePlacement", "TryPlacePiece"):
             self.assertIn(f'"{method}"', gate)
+
+    def test_build_hud_uses_aggregate_nearby_totals_and_matching_availability_color(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn('Postfix(typeof(Hud), "SetupPieceInfo", new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch))', installer)
+        self.assertIn('RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece))', gate)
+        self.assertIn('RequireField(failures, typeof(Hud), "m_requirementItems")', gate)
+        self.assertIn("internal static class NearbyBuildHudPatch", nearby)
+        self.assertIn("!RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value", nearby)
+        self.assertIn("ResourceAvailability.CountAvailable(capture.Stacks, itemName)", nearby)
+        self.assertIn("available >= requiredByItem[itemName]", nearby)
+        self.assertIn('requirementRoot.transform.Find("res_amount")', nearby)
+        self.assertIn('entry.Required.ToString(CultureInfo.InvariantCulture) + " / " +', nearby)
+        self.assertIn("entry.Available.ToString(CultureInfo.InvariantCulture)", nearby)
+        self.assertIn("entry.IsSatisfied || Mathf.Sin(Time.time * 10f) <= 0f", nearby)
+        self.assertIn("? Color.white", nearby)
+        self.assertIn(": Color.red", nearby)
+        self.assertIn("RefreshIntervalSeconds = 0.25f", nearby)
+        self.assertIn("public static class ResourceAvailability", core)
+        self.assertIn("string.Equals(stack.ItemName, itemName, StringComparison.Ordinal)", core)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"
