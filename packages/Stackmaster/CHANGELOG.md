@@ -2,7 +2,7 @@
 
 ## 0.4.0
 
-Local test candidate.
+Public release.
 
 - Added one uniform storage scope for auto-deposit, protected-stack replenishment, building, and crafting.
 - While the player is inside a valid vanilla workbench build zone, Stackmaster now searches the complete connected graph of overlapping loaded workbench zones and treats their exact union as one base mesh.
@@ -13,7 +13,7 @@ Local test candidate.
 - Added one fresh immutable scope snapshot per mutation phase plus topology-aware HUD/resource caching. A connected mesh is never silently truncated by the ordinary nearby-action inspection budget.
 - Added fail-closed compatibility checks for the current workbench instances, build-range, prefab-identity, and ZDO APIs used by the mesh resolver.
 - Automated verification passes with zero build warnings/errors, 78 pure-domain tests, and 51 static/repository safety checks.
-- Live solo, co-op host/client, dedicated-server, workbench-extension, and load/unload testing remains pending; this candidate does not claim live verification.
+- Core connected-workbench storage behavior has been live-tested in Valheim. Multiplayer behavior, dedicated-server behavior, workbench extensions, and broader load/unload edge cases have not yet been independently verified.
 
 ## 0.3.0
 

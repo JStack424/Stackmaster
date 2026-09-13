@@ -10,7 +10,7 @@ Stackmaster is built to preserve the vanilla experience. It adds no gameplay adv
 
 Convenience stays deliberate. Auto-deposit works only when you look at or interact with a chest and press `Left Alt + E`; simply walking near your base never empties your backpack.
 
-> **Tested:** Stackmaster works solo and as a client-only mod connected to a vanilla server. The host, server, and other players do not need Stackmaster. This is still an early public release, so back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
+> **Testing status:** Stackmaster 0.4.0's core connected-workbench storage behavior has been live-tested in Valheim. The 0.4.0 multiplayer behavior has not yet been independently verified, so back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
 
 ## Features
 
