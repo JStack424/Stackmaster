@@ -20,9 +20,14 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Sorts an enabled chest when its UI opens and again when it closes, so removing items does not require a reopen to restore order.
   - Remembers disabled chests locally per player, world, and chest without writing preferences to shared world state or affecting other players.
   - Keeps the whole quick bar, equipped items, and protected stacks fixed.
+- **One consistent storage scope**
+  - Inside a vanilla workbench build zone, follows every overlapping workbench zone as one connected base mesh and includes loaded supported chests anywhere in that exact union.
+  - Excludes nearby chests outside the connected mesh, even if they are within the fallback radius.
+  - Outside every workbench mesh, uses the configurable player-centered radius (20 metres by default).
+  - Applies the same scope to deposit, replenishment, building, and crafting; a chest's **Auto-sort chest** checkbox never changes storage eligibility.
 - **Auto-deposit**
   - Runs only when you press `Left Alt + E` while targeting or interacting with a vanilla chest.
-  - Deposits only into nearby eligible vanilla containers that already hold a compatible item.
+  - Deposits only into eligible vanilla containers in the active storage scope that already hold a compatible item.
   - Fills partial stacks first, prioritizing the targeted chest and then searching nearest to farthest.
   - Leaves unmatched items and overflow safely in the player inventory.
 - **Auto-replenish**
@@ -30,14 +35,14 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Sets, changes, or removes protection and replenishment targets directly with `Left Alt-click`.
   - Keeps protected stacks fixed while sorting and follows one compatible stack when it moves or survives a merge.
 - **Build and craft from nearby chests**
-  - Counts and consumes exact building, crafting, and upgrade costs from the player plus accessible nearby vanilla chests within the configured radius, regardless of current network ownership.
+  - Counts and consumes exact building, crafting, and upgrade costs from the player plus accessible vanilla chests in the active storage scope, regardless of current network ownership.
   - Shows selected build-piece costs as `required / total available`; satisfied combined stock stays white, while a true shortage flashes red.
   - Shows workbench, forge, cauldron, and equivalent crafting or upgrade costs in the same format, including selected upgrade quality and multi-craft totals.
   - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
   - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
 - **Safety**
   - Reads nearby build and craft totals without claiming chest ownership.
-  - Requests ownership only for required chests, then rechecks access, ownership, chest use, serialized revision, stack identity, and quantity before removal.
+  - Requests ownership only for required chests, then rechecks active-scope membership, access, ownership, chest use, serialized revision, stack identity, and quantity before removal.
   - Withdraws exact quantities and rolls back completed steps if a later removal fails.
   - Cancels before consuming anything and shows `The required materials are currently in use` when a required chest is busy.
   - Returns ownership acquired by Stackmaster after the action or bounded retry window, including cancellation and disconnect cleanup.
@@ -54,14 +59,14 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 
-Version 0.3.0 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 0.4.0 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
 Stackmaster has exactly five settings:
 
 1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory. Chest auto-sort is controlled separately in each chest UI and is not a sixth global setting.
-2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and shared by all nearby-storage features.
+2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and used by all four chest-powered features only while the player is outside every valid connected workbench mesh.
 3. **Storage-action keybind** — Left Alt + E by default.
 4. **Enable building from nearby chests** — on by default and independently switchable.
 5. **Enable crafting from nearby chests** — on by default and independently switchable.
@@ -76,9 +81,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 0.3.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 0.4.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
 
-Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. The retry window lasts 10 seconds. Cleanup then returns only ownership demonstrably acquired by Stackmaster to Valheim's unowned state, retrying later if an immediate release cannot be proven safe.
+Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. The retry window lasts 10 seconds. Cleanup then returns only ownership demonstrably acquired by Stackmaster to Valheim's unowned state, retrying later if an immediate release cannot be proven safe.
 
 Plugin GUID: `com.jstack424.stackmaster`
 

@@ -72,7 +72,21 @@ internal static class Program
             OwnershipReleaseRequiresCurrentLocalOwner,
             OwnershipReleaseRequiresExactOwnerRevision,
             OwnershipRevisionSuccessorWrapsExactly,
-            OwnershipReleaseAlwaysReturnsToVanillaUnownedState
+            OwnershipReleaseAlwaysReturnsToVanillaUnownedState,
+            WorkbenchMeshIgnoresVerticalDistance,
+            WorkbenchMeshUsesStrictBoundaries,
+            TangentWorkbenchZonesDoNotConnect,
+            WorkbenchMeshConnectsTransitively,
+            WorkbenchMeshSeedsEveryZoneContainingPlayer,
+            WorkbenchMeshExcludesDisconnectedIsland,
+            FarChestIsIncludedThroughOverlapChain,
+            ChestInGeometricGapIsExcluded,
+            OutsideMeshUsesConfiguredThreeDimensionalFallback,
+            InvalidWorkbenchZonesAreRejected,
+            WorkbenchEnumerationOrderIsDeterministic,
+            ConflictingDuplicateWorkbenchIdsAreRejected,
+            PlayerMovementSwitchesMeshAndFallback,
+            WorkbenchPlacementAndDestructionChangeMesh
         };
 
         var failures = 0;
@@ -989,6 +1003,126 @@ internal static class Program
         True(decision.ShouldRelease, "an exact Stackmaster acquisition is released");
         Equal(0L, decision.TargetOwner, "release never restores a stale peer or assigns a topology-dependent server");
     }
+
+    private static void WorkbenchMeshIgnoresVerticalDistance()
+    {
+        var scope = Scope(P(0, 100, 0), Zone("a", 0, 0, 0, 10));
+        Equal(StorageScopeKind.WorkbenchMesh, scope.Kind, "player is inside the vertical workbench cylinder");
+        True(scope.Contains(P(0, -500, 9)), "mesh chest containment ignores vertical separation");
+    }
+
+    private static void WorkbenchMeshUsesStrictBoundaries()
+    {
+        var onBoundary = Scope(P(10, 0, 0), Zone("a", 0, 0, 0, 10));
+        Equal(StorageScopeKind.NearbyRadius, onBoundary.Kind, "player exactly on build-radius boundary is outside");
+        var inside = Scope(P(9.999, 0, 0), Zone("a", 0, 0, 0, 10));
+        True(!inside.Contains(P(10, 0, 0)), "chest exactly on build-radius boundary is excluded");
+    }
+
+    private static void TangentWorkbenchZonesDoNotConnect()
+    {
+        var scope = Scope(P(0, 0, 0), Zone("a", 0, 0, 0, 10), Zone("b", 20, 0, 0, 10));
+        SequenceEqual(new[] { "a" }, scope.ConnectedZones.Select(zone => zone.Id), "exactly tangent zones do not overlap");
+    }
+
+    private static void WorkbenchMeshConnectsTransitively()
+    {
+        var scope = Scope(P(0, 0, 0),
+            Zone("a", 0, 0, 0, 10), Zone("b", 15, 0, 0, 10), Zone("c", 30, 0, 0, 10));
+        SequenceEqual(new[] { "a", "b", "c" }, scope.ConnectedZones.Select(zone => zone.Id), "overlap graph is transitive");
+    }
+
+    private static void WorkbenchMeshSeedsEveryZoneContainingPlayer()
+    {
+        var scope = Scope(P(0, 0, 0),
+            Zone("a", -9, 0, 0, 10), Zone("b", 9, 0, 0, 10), Zone("c", 27, 0, 0, 10));
+        SequenceEqual(new[] { "a", "b", "c" }, scope.ConnectedZones.Select(zone => zone.Id), "all player-containing zones seed the graph");
+    }
+
+    private static void WorkbenchMeshExcludesDisconnectedIsland()
+    {
+        var scope = Scope(P(0, 0, 0), Zone("home", 0, 0, 0, 10), Zone("island", 100, 0, 0, 10));
+        SequenceEqual(new[] { "home" }, scope.ConnectedZones.Select(zone => zone.Id), "disconnected base is excluded");
+        True(!scope.Contains(P(100, 0, 0)), "chest on disconnected island is excluded");
+    }
+
+    private static void FarChestIsIncludedThroughOverlapChain()
+    {
+        var scope = Scope(P(0, 0, 0),
+            Zone("a", 0, 0, 0, 10), Zone("b", 15, 0, 0, 10), Zone("c", 30, 0, 0, 10));
+        True(scope.Contains(P(39, 0, 0)), "a chest far from the player is included by the connected union");
+    }
+
+    private static void ChestInGeometricGapIsExcluded()
+    {
+        var scope = Scope(P(0, 0, 0),
+            Zone("a", 0, 0, 0, 10), Zone("b", 15, 0, 0, 10), Zone("c", 15, 0, 15, 10));
+        True(!scope.Contains(P(0, 0, 14)), "the mesh is a disk union, not a convex hull");
+    }
+
+    private static void OutsideMeshUsesConfiguredThreeDimensionalFallback()
+    {
+        var scope = StorageScopePolicy.Resolve(P(0, 0, 0), 7, new[] { Zone("far", 100, 0, 0, 10) });
+        Equal(StorageScopeKind.NearbyRadius, scope.Kind, "no containing workbench selects fallback");
+        True(scope.Contains(P(0, 0, 7)), "configured fallback includes its exact 3D boundary");
+        True(!scope.Contains(P(0, 0, 7.001)), "configured fallback excludes points beyond its chosen radius");
+    }
+
+    private static void InvalidWorkbenchZonesAreRejected()
+    {
+        var scope = Scope(P(0, 0, 0),
+            Zone("", 0, 0, 0, 10), Zone("zero", 0, 0, 0, 0),
+            Zone("negative", 0, 0, 0, -1), Zone("nan", double.NaN, 0, 0, 10),
+            Zone("infinite", 0, 0, 0, double.PositiveInfinity));
+        Equal(StorageScopeKind.NearbyRadius, scope.Kind, "invalid workbench data cannot seed a mesh");
+    }
+
+    private static void WorkbenchEnumerationOrderIsDeterministic()
+    {
+        var zones = new[] { Zone("c", 30, 0, 0, 10), Zone("a", 0, 0, 0, 10), Zone("b", 15, 0, 0, 10) };
+        var forward = StorageScopePolicy.Resolve(P(0, 0, 0), 20, zones);
+        var reverse = StorageScopePolicy.Resolve(P(0, 0, 0), 20, zones.Reverse());
+        SequenceEqual(forward.ConnectedZones.Select(zone => zone.Id), reverse.ConnectedZones.Select(zone => zone.Id),
+            "station enumeration order does not change the component");
+    }
+
+    private static void ConflictingDuplicateWorkbenchIdsAreRejected()
+    {
+        var scope = Scope(P(0, 0, 0), Zone("duplicate", 0, 0, 0, 10), Zone("duplicate", 100, 0, 0, 10));
+        Equal(StorageScopeKind.Unavailable, scope.Kind, "ambiguous duplicate stable identities fail closed");
+    }
+
+    private static void PlayerMovementSwitchesMeshAndFallback()
+    {
+        var zones = new[] { Zone("home", 0, 0, 0, 10) };
+        Equal(StorageScopeKind.WorkbenchMesh, StorageScopePolicy.Resolve(P(0, 0, 0), 20, zones).Kind,
+            "inside position uses mesh");
+        Equal(StorageScopeKind.NearbyRadius, StorageScopePolicy.Resolve(P(11, 0, 0), 20, zones).Kind,
+            "moving beyond the strict zone boundary uses fallback");
+    }
+
+    private static void WorkbenchPlacementAndDestructionChangeMesh()
+    {
+        var home = Zone("home", 0, 0, 0, 10);
+        var bridge = Zone("bridge", 15, 0, 0, 10);
+        var far = Zone("far", 30, 0, 0, 10);
+        var before = StorageScopePolicy.Resolve(P(0, 0, 0), 20, new[] { home, far });
+        var placed = StorageScopePolicy.Resolve(P(0, 0, 0), 20, new[] { home, bridge, far });
+        var destroyed = StorageScopePolicy.Resolve(P(0, 0, 0), 20, new[] { home, far });
+        SequenceEqual(new[] { "home" }, before.ConnectedZones.Select(zone => zone.Id), "separated station starts outside mesh");
+        SequenceEqual(new[] { "bridge", "far", "home" }, placed.ConnectedZones.Select(zone => zone.Id),
+            "placing a bridge expands the connected mesh deterministically");
+        SequenceEqual(new[] { "home" }, destroyed.ConnectedZones.Select(zone => zone.Id),
+            "destroying the bridge contracts the mesh again");
+    }
+
+    private static StorageScopePlan Scope(ScopePoint player, params WorkbenchZone[] zones)
+        => StorageScopePolicy.Resolve(player, 20, zones);
+
+    private static ScopePoint P(double x, double y, double z) => new ScopePoint(x, y, z);
+
+    private static WorkbenchZone Zone(string id, double x, double y, double z, double range)
+        => new WorkbenchZone(id, P(x, y, z), range);
 
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
         => new ResourceWithdrawalPlanner().Plan(requirements, stacks);

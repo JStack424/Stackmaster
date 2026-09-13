@@ -18,6 +18,7 @@ namespace Stackmaster
     {
         internal static TransferExecutionResult Execute(
             Player player,
+            StorageScope executionScope,
             IReadOnlyDictionary<string, ContainerHandle> handles,
             TransferPlan plan,
             CompatibilityCatalog catalog,
@@ -39,7 +40,7 @@ namespace Stackmaster
                 }
 
                 string failure;
-                var outcome = TryExecuteStep(player, handles, step, catalog, out failure);
+                var outcome = TryExecuteStep(player, executionScope, handles, step, catalog, out failure);
                 if (outcome == StepOutcome.FailedSafely)
                 {
                     result.FailedContainers[containerId] = failure;
@@ -70,6 +71,7 @@ namespace Stackmaster
 
         private static StepOutcome TryExecuteStep(
             Player player,
+            StorageScope executionScope,
             IReadOnlyDictionary<string, ContainerHandle> handles,
             TransferStep step,
             CompatibilityCatalog catalog,
@@ -86,7 +88,7 @@ namespace Stackmaster
                 return StepOutcome.FailedSafely;
             }
 
-            if (!RevalidateAndOwn(player, handle, out failure))
+            if (!RevalidateAndOwn(player, executionScope, handle, out failure))
             {
                 return StepOutcome.FailedSafely;
             }
@@ -153,7 +155,7 @@ namespace Stackmaster
             return StepOutcome.FatalPostconditionFailure;
         }
 
-        private static bool RevalidateAndOwn(Player player, ContainerHandle handle, out string failure)
+        private static bool RevalidateAndOwn(Player player, StorageScope executionScope, ContainerHandle handle, out string failure)
         {
             failure = null;
             var container = handle.Container;
@@ -167,6 +169,11 @@ namespace Stackmaster
             if ((!locallyOpenTarget && container.IsInUse()) || (container.m_wagon != null && container.m_wagon.InUse()))
             {
                 failure = "container became in use";
+                return false;
+            }
+            if (executionScope == null || !executionScope.Contains(container.transform.position))
+            {
+                failure = "container left the active storage scope";
                 return false;
             }
             if (!ContainerDiscovery.CheckAccess(player, container))

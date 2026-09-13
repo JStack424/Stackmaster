@@ -4,6 +4,12 @@ This plan follows the behavior contract approved on September 11, 2026. [DESIGN-
 
 Environment validation, the complete local v0.1 gameplay implementation, and the solo clean-profile smoke gate are complete. On September 11, 2026, Joe explicitly approved the consolidated contract, authorized uninterrupted implementation, accepted the corrected Build 4 candidate after solo testing, and authorized the first public GitHub/Thunderstore release for co-op testing.
 
+The **0.4.0 local test candidate** replaces four separate notions of “nearby” with one shared storage-scope resolver. Inside a canonical vanilla workbench build zone, it seeds from every zone containing the local player, traverses every transitively overlapping loaded workbench zone, and includes loaded supported vanilla containers only inside that exact connected union. It uses each station's current `GetStationBuildRange()` result and Valheim's horizontal, strict-boundary semantics rather than a hardcoded radius. Outside every valid mesh, deposit, replenishment, building, and crafting all use the existing configurable player-centered fallback radius (20 metres by default). Explicit-target-first and nearest routing, player-first exact minimum-chest resource planning, and loaded-only discovery remain unchanged. The per-chest `Auto-sort chest` checkbox affects sorting only and never removes a chest from this shared scope.
+
+The mesh resolver uses the canonical `piece_workbench` prefab resolved through `ZNetScene`, verifies each loaded station's ZDO prefab identity, and is covered by the exact runtime compatibility gate. Mesh discovery is complete rather than subject to the ordinary nearby-action responsiveness cutoff. Read-only resource display still claims nothing. After any asynchronous ownership yield and again before mutation, actions recompute a single immutable scope snapshot and validate selected chest membership together with identity, access, use state, revisions, quantities, and ownership. Scope signatures invalidate same-frame/HUD captures when player location or connected workbench topology changes; no unloaded station or chest is represented.
+
+Current 0.4.0 automated verification passes with zero compiler warnings/errors, 78/78 pure-domain tests, and 51/51 static/repository safety checks. Live solo, co-op host/client, dedicated-server, workbench-extension, topology-change, and sector load/unload testing remains pending. The candidate is local only and must not be presented as live-verified or published.
+
 The **0.3.0 local test candidate** adds one per-chest `Auto-sort chest` checkbox. Its default is enabled; its disabled exception is kept only in local Unity preferences under a versioned key composed from the local player ID, current world UID, and the chest's stable ZDO ID. It never writes this preference to player custom data, ZDOs, or other shared world state. An enabled chest sorts on UI open and in the guarded `InventoryGui.Hide` prefix immediately before vanilla closes the UI. The close path uses only the cached chest being closed, never sorts the player inventory, requires the same exact vanilla type/owner/inventory checks as open-time sorting, and catches failures so vanilla close behavior continues. Missing identity, malformed local data, or failed local storage disables chest sorting safely. Deposit, replenishment, nearby build/craft, protection, and ownership flows are unchanged.
 
 The **0.2.2 documentation-only release candidate** carries forward independently switchable building and crafting from nearby chests plus aggregate build/craft HUD totals without changing gameplay behavior. It reads stable `ZDOVars.s_items` snapshots without claiming ownership, hydrates detached item metadata from resolved prefabs, rejects incomplete chest snapshots as a whole, and fails open to vanilla UI behavior if nearby-resource display calculation fails. At action time the complete player-first plan selects only the minimum distinct chest set it needs, revalidates exact identity, access, revisions, use state, and contents, then withdraws exact quantities with rollback protection.
@@ -32,7 +38,7 @@ Keep internal modules separate for testability and safe maintenance, but do not 
 - The entire quick bar, equipped items, and each resolved protected stack remain fixed; protected partial stacks are untouched.
 - Left Alt-click manages one-record/one-matching-stack protection and optional legal per-stack replenishment targets. Stackable-item prompts prefill and select the legal full-stack target for immediate Enter acceptance while still allowing a lower value or `0` for protection only. Preferred-slot matches win; moved stacks reattach deterministically; unrelated replacements never inherit.
 - Configurable Left Alt + E performs the combined deposit/replenish action while deliberately targeting a valid container, or against the currently open vanilla chest without closing its UI.
-- Discovery is player-centered, on demand, and 20 meters by default.
+- Current storage discovery is on demand and uniform across deposit, replenishment, building, and crafting: connected workbench mesh while inside a base, otherwise the configurable player-centered radius (20 metres by default).
 - Only accessible vanilla containers participate; unknown/modded or in-use containers are skipped safely.
 - Deposit only to containers that already hold a compatible item. Fill every compatible partial stack before creating a new stack, using the targeted chest first and then nearest-to-farthest routing.
 - Replenish from the targeted chest first, then other eligible containers. Take partial available stock, report shortages, and route excess above targets back through normal deposit rules.
@@ -252,11 +258,11 @@ Exit criterion: serialization, v1 migration, malformed-record handling, matching
 
 ### Milestone 4 — discovery and storage planning
 
-- [x] Discover supported vanilla containers only when needed, centered on the player, within the configured radius.
-- [x] Filter by known vanilla type, access, state, distance, ownership, and active use.
+- [x] Discover supported loaded vanilla containers only when needed, using the connected canonical-workbench mesh while inside a base and the configured player-centered radius outside every mesh.
+- [x] Filter by known vanilla type, access, state, active-scope membership, ownership, and active use.
 - [x] Use the deliberately targeted container as first routing priority.
 - [x] Build and validate the dry-run transfer plan before mutation.
-- [x] Apply a 12 ms internal planning budget while preserving routing order and reporting partial search.
+- [x] Apply the bounded ordinary-action inspection budget only to fallback-radius searches; always enumerate a complete loaded workbench mesh rather than presenting a partial mesh as complete.
 - [x] Unit-test stale-plan rejection, conservation, and budget exhaustion boundaries.
 
 Exit criterion: the local dry-run path explains moves and meaningful skips; gameplay profiling remains in the Windows gate.
@@ -277,7 +283,7 @@ Exit criterion: source follows the inspected vanilla authority path and solo beh
 
 ### Milestone 6 — configuration and feedback
 
-- [x] Bind exactly three settings: auto-sort, 20-meter radius, and Left Alt + E action binding.
+- [x] Bind exactly five global settings: auto-sort, 20-metre outside-base fallback radius, Left Alt + E action binding, and independent build/craft-from-chests toggles. Keep per-chest auto-sort as local preference data rather than a sixth setting.
 - [x] Clamp the radius and report unsafe startup compatibility clearly.
 - [x] Add the targeted-container tooltip and compact visual result popup.
 - [x] Run the configured storage shortcut against an already open vanilla chest without closing its UI, while preserving the closed-UI targeted-container path.

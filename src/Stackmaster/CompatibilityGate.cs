@@ -142,6 +142,12 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNetView), "IsOwner");
             RequireMethod(failures, typeof(ZNetView), "IsValid");
             RequireMethod(failures, typeof(ZNetView), "GetZDO");
+            RequireStaticMethod(failures, typeof(CraftingStation), "get_Instances");
+            RequireMethod(failures, typeof(CraftingStation), "GetStationBuildRange");
+            RequireStaticMethod(failures, typeof(ZNetScene), "get_instance");
+            RequireMethod(failures, typeof(ZNetScene), "GetPrefab", typeof(string));
+            RequireMethod(failures, typeof(ZNetScene), "GetPrefabHash", typeof(GameObject));
+            RequireMethod(failures, typeof(ZDO), "GetPrefab");
             RequireMethod(failures, typeof(ZNetView), "InvokeRPC", typeof(string), typeof(object[]));
             RequireMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool));
             RequireField(failures, typeof(InventoryGui), "m_pvp");

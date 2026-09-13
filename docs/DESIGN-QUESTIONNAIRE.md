@@ -48,6 +48,21 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - Missing stable identity, unreadable or malformed local data, failed local persistence, unavailable ownership, or unavailable inventory access skips chest sorting safely without blocking vanilla open/close behavior.
 - This amendment does not change manual transfers, deposit/replenishment, nearby build/craft, protection, access rules, ownership behavior, or the five global settings.
 
+## Post-release approved amendment — uniform base-mesh storage scope (September 13, 2026)
+
+This amendment supersedes the player-radius portions of checkpoints 8, 11, 12, 15, 16, and 18 without changing their other decisions.
+
+- Deposit, replenishment, building, and crafting use one shared eligible-storage scope.
+- When the local player stands inside one or more valid canonical vanilla workbench build zones, seed from every containing zone and traverse every transitively overlapping loaded workbench zone. The connected component is one base mesh.
+- Mesh geometry matches Valheim's current workbench build-zone semantics: current game-reported build ranges, horizontal distance, strict interior membership, and strict overlap. Never hardcode a build radius.
+- Include supported loaded vanilla containers only when their position lies inside the exact union of the connected zones. Do not use a convex hull and do not mix in a nearby chest outside the mesh.
+- If the player is outside every valid workbench mesh, all four features use the existing configurable player-centered radius, default 20 metres.
+- Keep explicit target first, then deterministic nearest-to-player routing for deposit and replenishment. Keep exact player-first/minimum-chest planning for building and crafting.
+- `Auto-sort chest` controls sorting only. An unchecked manually organized chest remains eligible storage for all four chest-powered features.
+- Read and plan without claiming storage. Before mutation, recompute the active scope and revalidate stable identity, membership, access, use state, revisions, quantities, and ownership safety; acquire and release only containers actually mutated.
+- Never claim or represent unloaded or unresolved storage. Any workbench mesh scan must be complete; do not present arbitrary bounded or truncated mesh totals as complete.
+- Invalidate display snapshots when the player crosses scope boundaries or loaded workbench topology changes. Mutation-time scope validation is mandatory regardless of cached discovery.
+
 ## Settled answers
 
 ### 1. Ideal gameplay flow

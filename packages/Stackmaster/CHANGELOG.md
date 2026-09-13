@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0
+
+Local test candidate.
+
+- Added one uniform storage scope for auto-deposit, protected-stack replenishment, building, and crafting.
+- While the player is inside a valid vanilla workbench build zone, Stackmaster now searches the complete connected graph of overlapping loaded workbench zones and treats their exact union as one base mesh.
+- Chests inside the connected mesh are eligible throughout the base; nearby chests outside that mesh are excluded.
+- While the player is outside every valid workbench mesh, all four chest-powered features use the existing configurable player-centered fallback radius (20 metres by default).
+- Preserved targeted-chest-first then nearest-to-player routing, exact minimum-chest build/craft planning, loaded-only discovery, and read-only planning before ownership.
+- The per-chest **Auto-sort chest** checkbox still controls sorting only; disabled, manually organized chests remain fully eligible for every chest-powered feature.
+- Added one fresh immutable scope snapshot per mutation phase plus topology-aware HUD/resource caching. A connected mesh is never silently truncated by the ordinary nearby-action inspection budget.
+- Added fail-closed compatibility checks for the current workbench instances, build-range, prefab-identity, and ZDO APIs used by the mesh resolver.
+- Automated verification passes with zero build warnings/errors, 78 pure-domain tests, and 51 static/repository safety checks.
+- Live solo, co-op host/client, dedicated-server, workbench-extension, and load/unload testing remains pending; this candidate does not claim live verification.
+
 ## 0.3.0
 
 - Added an **Auto-sort chest** checkbox beneath supported opened vanilla chests.

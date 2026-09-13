@@ -246,15 +246,18 @@ namespace Stackmaster
     internal sealed class NearbyResourceCapture
     {
         internal NearbyResourceCapture(
+            StorageScope scope,
             IReadOnlyList<ContainerHandle> containers,
             IReadOnlyList<ResourceStack> stacks,
             IReadOnlyDictionary<string, RuntimeResourceStack> runtimeStacks)
         {
+            Scope = scope;
             Containers = containers;
             Stacks = stacks;
             RuntimeStacks = runtimeStacks;
         }
 
+        internal StorageScope Scope { get; }
         internal IReadOnlyList<ContainerHandle> Containers { get; }
         internal IReadOnlyList<ResourceStack> Stacks { get; }
         internal IReadOnlyDictionary<string, RuntimeResourceStack> RuntimeStacks { get; }
@@ -284,9 +287,18 @@ namespace Stackmaster
             new[] { typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool) });
         private static int _cachedFrame = -1;
         private static Player _cachedPlayer;
-        private static float _cachedRadius;
+        private static string _cachedScopeSignature;
         private static bool _cachedMatchWorldLevel;
         private static NearbyResourceCapture _cachedCapture;
+
+        internal static void ResetCaches()
+        {
+            _cachedFrame = -1;
+            _cachedPlayer = null;
+            _cachedScopeSignature = null;
+            _cachedMatchWorldLevel = false;
+            _cachedCapture = null;
+        }
 
         internal static bool HasPieceRequirements(Player player, Piece piece, bool fresh)
         {
@@ -566,8 +578,8 @@ namespace Stackmaster
                 if (!RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure)) return false;
 
                 IReadOnlyList<ContainerReservation> reservations;
-                if (!TryReserveContainers(player, requiredHandles, out reservations, out failure)) return false;
-                if (!RevalidateReservedContainers(player, reservations, out failure) ||
+                if (!TryReserveContainers(player, mutableCapture.Scope, requiredHandles, out reservations, out failure)) return false;
+                if (!RevalidateReservedContainers(player, mutableCapture.Scope, reservations, out failure) ||
                     !RevalidateStacks(mutablePlan, mutableCapture, matchWorldLevel, out failure))
                 {
                     ReleaseReservations(reservations);
@@ -665,18 +677,18 @@ namespace Stackmaster
 
         private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)
         {
-            var radius = RuntimeContext.Plugin.NearbyStorageRadius.Value;
+            var scope = StorageScopeProvider.Resolve(player);
             if (!fresh && _cachedCapture != null && _cachedFrame == Time.frameCount &&
                 ReferenceEquals(_cachedPlayer, player) && _cachedMatchWorldLevel == matchWorldLevel &&
-                Math.Abs(_cachedRadius - radius) < 0.001f)
+                string.Equals(_cachedScopeSignature, scope.Signature, StringComparison.Ordinal))
             {
                 return _cachedCapture;
             }
 
             var catalog = new CompatibilityCatalog();
-            // Resource accounting must inspect the complete radius: a responsiveness cutoff may
-            // safely omit deposit destinations, but it must never make a build/craft total partial.
-            var discovery = ContainerDiscovery.Discover(player, null, catalog, radius, true, true);
+            // Resource accounting must inspect the complete active scope. Returning a partial
+            // workbench mesh would advertise materials that an exact transaction cannot honor.
+            var discovery = ContainerDiscovery.Discover(player, null, catalog, scope, true, true);
             var containers = discovery.Containers
                 .Where(handle => handle != null && handle.ResourceReadable &&
                                  handle.ResourceInventory != null &&
@@ -691,10 +703,10 @@ namespace Stackmaster
                 AddInventory(resourceStacks, runtimeStacks, handle.Id, handle.ResourceInventory, handle, index + 1, matchWorldLevel);
             }
 
-            var capture = new NearbyResourceCapture(containers, resourceStacks, runtimeStacks);
+            var capture = new NearbyResourceCapture(scope, containers, resourceStacks, runtimeStacks);
             _cachedFrame = Time.frameCount;
             _cachedPlayer = player;
-            _cachedRadius = radius;
+            _cachedScopeSignature = scope.Signature;
             _cachedMatchWorldLevel = matchWorldLevel;
             _cachedCapture = capture;
             return capture;
@@ -744,7 +756,7 @@ namespace Stackmaster
             foreach (var id in requiredIds)
             {
                 ContainerHandle handle;
-                if (!handles.TryGetValue(id, out handle) || !ValidateReadOnlyHandle(player, handle, out failure))
+                if (!handles.TryGetValue(id, out handle) || !ValidateReadOnlyHandle(player, capture.Scope, handle, out failure))
                 {
                     requiredHandles = Array.Empty<ContainerHandle>();
                     return false;
@@ -755,11 +767,11 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool ValidateReadOnlyHandle(Player player, ContainerHandle handle, out string failure)
+        private static bool ValidateReadOnlyHandle(Player player, StorageScope scope, ContainerHandle handle, out string failure)
         {
             failure = null;
             if (handle == null || handle.Container == null || handle.Container.GetType() != typeof(Container) ||
-                Vector3.Distance(player.transform.position, handle.Container.transform.position) > RuntimeContext.Plugin.NearbyStorageRadius.Value ||
+                (scope == null || !scope.Contains(handle.Container.transform.position)) ||
                 handle.NetworkView == null || !handle.NetworkView.IsValid() || handle.NetworkView.GetZDO() == null ||
                 !string.Equals(handle.NetworkView.GetZDO().m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
                 !handle.NetworkView.HasOwner() || !handle.ResourceReadable || handle.ResourceInventory == null)
@@ -847,9 +859,10 @@ namespace Stackmaster
             AddInventory(resourceStacks, runtimeStacks, PlayerInventoryId, player.GetInventory(), null, 0, matchWorldLevel);
 
             var inventoryOrder = 1;
+            var freshScope = StorageScopeProvider.Resolve(player);
             foreach (var handle in readOnlyCapture.Containers.Where(handle => requiredIds.Contains(handle.Id)))
             {
-                if (!ValidateReadOnlyHandle(player, handle, out failure) ||
+                if (!ValidateReadOnlyHandle(player, freshScope, handle, out failure) ||
                     !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
                 {
                     if (failure == null) failure = "required container ownership changed before consumption";
@@ -879,7 +892,7 @@ namespace Stackmaster
                     matchWorldLevel);
             }
 
-            mutableCapture = new NearbyResourceCapture(requiredHandles, resourceStacks, runtimeStacks);
+            mutableCapture = new NearbyResourceCapture(freshScope, requiredHandles, resourceStacks, runtimeStacks);
             if (!Planner.TryPlanWithMinimumContainers(
                     requirements,
                     mutableCapture.Stacks,
@@ -908,6 +921,7 @@ namespace Stackmaster
 
         private static bool TryReserveContainers(
             Player player,
+            StorageScope transactionScope,
             IEnumerable<ContainerHandle> requiredHandles,
             out IReadOnlyList<ContainerReservation> reservations,
             out string failure)
@@ -916,7 +930,7 @@ namespace Stackmaster
             failure = null;
             foreach (var handle in requiredHandles)
             {
-                if (!ValidateReadOnlyHandle(player, handle, out failure))
+                if (!ValidateReadOnlyHandle(player, transactionScope, handle, out failure))
                 {
                     ReleaseReservations(held);
                     reservations = Array.Empty<ContainerReservation>();
@@ -967,6 +981,7 @@ namespace Stackmaster
 
         private static bool RevalidateReservedContainers(
             Player player,
+            StorageScope transactionScope,
             IEnumerable<ContainerReservation> reservations,
             out string failure)
         {
@@ -981,7 +996,7 @@ namespace Stackmaster
                     !string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
                     zdo.DataRevision != reservation.DataRevision ||
                     zdo.OwnerRevision != reservation.OwnerRevision ||
-                    Vector3.Distance(player.transform.position, handle.Container.transform.position) > RuntimeContext.Plugin.NearbyStorageRadius.Value ||
+                    (transactionScope == null || !transactionScope.Contains(handle.Container.transform.position)) ||
                     !ContainerDiscovery.CheckAccess(player, handle.Container))
                 {
                     failure = "required container reservation or state changed before consumption";
@@ -1023,6 +1038,7 @@ namespace Stackmaster
             out string failure)
         {
             failure = null;
+            var transactionScope = capture != null ? capture.Scope : null;
             foreach (var containerId in plan.Steps
                 .Where(step => !string.Equals(step.InventoryId, PlayerInventoryId, StringComparison.Ordinal))
                 .Select(step => step.InventoryId)
@@ -1030,7 +1046,7 @@ namespace Stackmaster
             {
                 var handle = capture.Containers.FirstOrDefault(item => string.Equals(item.Id, containerId, StringComparison.Ordinal));
                 if (handle == null || handle.Container == null || handle.Container.GetType() != typeof(Container) ||
-                    Vector3.Distance(player.transform.position, handle.Container.transform.position) > RuntimeContext.Plugin.NearbyStorageRadius.Value ||
+                    (transactionScope == null || !transactionScope.Contains(handle.Container.transform.position)) ||
                     handle.NetworkView == null || !handle.NetworkView.IsValid() || handle.NetworkView.GetZDO() == null ||
                     !string.Equals(handle.NetworkView.GetZDO().m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
                     !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
@@ -1090,6 +1106,7 @@ namespace Stackmaster
             out string failure)
         {
             failure = null;
+            var transactionScope = capture != null ? capture.Scope : null;
             var reservationByContainer = reservations.ToDictionary(item => item.Container);
             foreach (var step in plan.Steps)
             {
@@ -1098,7 +1115,7 @@ namespace Stackmaster
                 if (runtime.Container != null)
                 {
                     if (!reservationByContainer.TryGetValue(runtime.Container.Container, out reservation) ||
-                        !ReservationMatches(player, reservation))
+                        !ReservationMatches(player, transactionScope, reservation))
                     {
                         failure = "required container reservation changed before resource removal";
                         return false;
@@ -1140,7 +1157,7 @@ namespace Stackmaster
                 }
                 if (reservation != null)
                 {
-                    if (!reservation.AdvanceDataRevisionAfterMutation() || !ReservationMatches(player, reservation))
+                    if (!reservation.AdvanceDataRevisionAfterMutation() || !ReservationMatches(player, transactionScope, reservation))
                     {
                         failure = "required container reservation changed after resource removal";
                         return false;
@@ -1150,7 +1167,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool ReservationMatches(Player player, ContainerReservation reservation)
+        private static bool ReservationMatches(Player player, StorageScope transactionScope, ContainerReservation reservation)
         {
             if (reservation == null || reservation.Handle == null || reservation.Container == null) return false;
             var handle = reservation.Handle;
@@ -1160,7 +1177,7 @@ namespace Stackmaster
                    string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) &&
                    zdo.DataRevision == reservation.DataRevision &&
                    zdo.OwnerRevision == reservation.OwnerRevision &&
-                   Vector3.Distance(player.transform.position, handle.Container.transform.position) <= RuntimeContext.Plugin.NearbyStorageRadius.Value &&
+                   transactionScope != null && transactionScope.Contains(handle.Container.transform.position) &&
                    ContainerDiscovery.CheckAccess(player, handle.Container);
         }
 
@@ -1484,9 +1501,18 @@ namespace Stackmaster
         private const float RefreshIntervalSeconds = 0.25f;
         private static Player _cachedPlayer;
         private static Piece _cachedPiece;
-        private static float _cachedRadius;
+        private static string _cachedScopeSignature;
         private static float _nextRefreshTime;
         private static IReadOnlyList<RuntimeRequirementAvailability> _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
+
+        internal static void ResetCache()
+        {
+            _cachedPlayer = null;
+            _cachedPiece = null;
+            _cachedScopeSignature = null;
+            _nextRefreshTime = 0f;
+            _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
+        }
 
         internal static void Postfix(Hud __instance, [HarmonyArgument(0)] Piece piece)
         {
@@ -1512,14 +1538,14 @@ namespace Stackmaster
             var requirements = piece.m_resources ?? Array.Empty<Piece.Requirement>();
             var requirementItems = __instance.m_requirementItems ?? Array.Empty<GameObject>();
             var player = Player.m_localPlayer;
-            var radius = RuntimeContext.Plugin.NearbyStorageRadius.Value;
+            var scopeSignature = StorageScopeProvider.Resolve(player).Signature;
             if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedPiece, piece) ||
-                Math.Abs(_cachedRadius - radius) >= 0.001f || Time.time >= _nextRefreshTime)
+                !string.Equals(_cachedScopeSignature, scopeSignature, StringComparison.Ordinal) || Time.time >= _nextRefreshTime)
             {
                 _cachedAvailability = NearbyResourceService.GetPieceRequirementAvailability(player, piece, false);
                 _cachedPlayer = player;
                 _cachedPiece = piece;
-                _cachedRadius = radius;
+                _cachedScopeSignature = scopeSignature;
                 _nextRefreshTime = Time.time + RefreshIntervalSeconds;
             }
             var itemCount = Math.Min(
@@ -1560,9 +1586,21 @@ namespace Stackmaster
         private static int _cachedQuality;
         private static int _cachedCraftMultiplier;
         private static int _cachedRequirementSignature;
-        private static float _cachedRadius;
+        private static string _cachedScopeSignature;
         private static float _nextRefreshTime;
         private static IReadOnlyList<RuntimeRequirementAvailability> _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
+
+        internal static void ResetCache()
+        {
+            _cachedPlayer = null;
+            _cachedRecipe = null;
+            _cachedQuality = 0;
+            _cachedCraftMultiplier = 0;
+            _cachedRequirementSignature = 0;
+            _cachedScopeSignature = null;
+            _nextRefreshTime = 0f;
+            _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
+        }
 
         // InventoryGui.SetupRequirement is static in the supported Valheim build. A Harmony
         // __instance argument is therefore always null, and instance-field injection cannot
@@ -1613,11 +1651,12 @@ namespace Stackmaster
             var requirementIndex = requirements.FindIndex(item => ReferenceEquals(item, requirement));
             if (requirementIndex < 0) return;
 
-            var radius = RuntimeContext.Plugin.NearbyStorageRadius.Value;
+            var scopeSignature = StorageScopeProvider.Resolve(player).Signature;
             var signature = RequirementSignature(requirements, quality, craftMultiplier);
             if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedRecipe, recipe) ||
                 _cachedQuality != quality || _cachedCraftMultiplier != craftMultiplier ||
-                _cachedRequirementSignature != signature || Math.Abs(_cachedRadius - radius) >= 0.001f ||
+                _cachedRequirementSignature != signature ||
+                !string.Equals(_cachedScopeSignature, scopeSignature, StringComparison.Ordinal) ||
                 Time.time >= _nextRefreshTime)
             {
                 _cachedAvailability = NearbyResourceService.GetRecipeRequirementAvailability(
@@ -1632,7 +1671,7 @@ namespace Stackmaster
                 _cachedQuality = quality;
                 _cachedCraftMultiplier = craftMultiplier;
                 _cachedRequirementSignature = signature;
-                _cachedRadius = radius;
+                _cachedScopeSignature = scopeSignature;
                 _nextRefreshTime = Time.time + RefreshIntervalSeconds;
             }
 

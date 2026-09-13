@@ -30,15 +30,15 @@ namespace Stackmaster
             AutoSortEnabled = Config.Bind("General", "Auto-sort enabled", true,
                 "Sort movable player inventory slots once when the inventory opens. Opened chests use their own local checkbox.");
             NearbyStorageRadius = Config.Bind("General", "Nearby-storage radius", 20f,
-                new ConfigDescription("Player-centered vanilla-container search radius in metres.",
+                new ConfigDescription("Player-centered vanilla-container fallback radius in metres, used by all chest-powered features only while outside every connected vanilla workbench mesh.",
                     new AcceptableValueRange<float>(1f, 50f)));
             StorageActionShortcut = Config.Bind("General", "Storage-action keybind",
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
                 "While targeting or viewing an eligible container: deposit matching items and replenish protected stack targets.");
             BuildingFromNearbyChestsEnabled = Config.Bind("General", "Enable building from nearby chests", true,
-                "Count and consume exact building costs from eligible nearby vanilla chests within the nearby-storage radius.");
+                "Count and consume exact building costs from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
             CraftingFromNearbyChestsEnabled = Config.Bind("General", "Enable crafting from nearby chests", true,
-                "Count and consume exact crafting costs from eligible nearby vanilla chests within the nearby-storage radius.");
+                "Count and consume exact crafting costs from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
 
             var compatibility = CompatibilityGate.Evaluate();
             RuntimeContext.Initialize(this, compatibility);

@@ -16,6 +16,10 @@ namespace Stackmaster
             Plugin = plugin;
             Compatibility = compatibility;
             ChestSortPreferences.Initialize();
+            StorageScopeProvider.Reset();
+            NearbyResourceService.ResetCaches();
+            NearbyBuildHudPatch.ResetCache();
+            NearbyCraftingHudPatch.ResetCache();
         }
 
         internal static void Disable(string reason)
@@ -47,6 +51,10 @@ namespace Stackmaster
                 {
                     InventoryIntegration.OnCompatibilityDisabled();
                     ChestSortPreferences.Shutdown();
+                    StorageScopeProvider.Reset();
+                    NearbyResourceService.ResetCaches();
+                    NearbyBuildHudPatch.ResetCache();
+                    NearbyCraftingHudPatch.ResetCache();
                 }
                 catch (Exception exception)
                 {
@@ -58,6 +66,10 @@ namespace Stackmaster
         internal static void Shutdown()
         {
             ChestSortPreferences.Shutdown();
+            StorageScopeProvider.Reset();
+            NearbyResourceService.ResetCaches();
+            NearbyBuildHudPatch.ResetCache();
+            NearbyCraftingHudPatch.ResetCache();
             Plugin = null;
             Compatibility = new CompatibilityResult(false, "shut down");
         }

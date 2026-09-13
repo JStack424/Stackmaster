@@ -176,17 +176,18 @@ namespace Stackmaster
                 }
                 var catalog = new CompatibilityCatalog();
                 var playerSnapshot = InventorySnapshots.CapturePlayer(player, protection, catalog);
+                var scope = StorageScopeProvider.Resolve(player);
                 var discovery = ContainerDiscovery.Discover(
                     player,
                     target,
                     catalog,
-                    RuntimeContext.Plugin.NearbyStorageRadius.Value);
+                    scope);
 
                 var targetHandle = discovery.Containers.FirstOrDefault(handle => handle.Container == target);
                 if (targetHandle == null || !targetHandle.Snapshot.IsEligible)
                 {
                     LogTargetRejection("initial discovery", discovery);
-                    RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the configured radius.");
+                    RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the active storage scope.");
                     _actionRunning = false;
                     return;
                 }
@@ -237,8 +238,7 @@ namespace Stackmaster
                 RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(
                     player,
                     target,
-                    neededHandles,
-                    RuntimeContext.Plugin.NearbyStorageRadius.Value));
+                    neededHandles));
             }
             catch (Exception exception)
             {
@@ -251,8 +251,7 @@ namespace Stackmaster
         private static IEnumerator FinishAfterOwnership(
             Player player,
             Container target,
-            ContainerHandle[] neededHandles,
-            float radius)
+            ContainerHandle[] neededHandles)
         {
             OwnershipBatch ownership = null;
             try
@@ -307,12 +306,13 @@ namespace Stackmaster
                 // reference is ever used for mutation.
                 var freshCatalog = new CompatibilityCatalog();
                 var freshPlayer = InventorySnapshots.CapturePlayer(player, freshProtection, freshCatalog);
-                var freshDiscovery = ContainerDiscovery.Discover(player, target, freshCatalog, radius);
+                var freshScope = StorageScopeProvider.Resolve(player);
+                var freshDiscovery = ContainerDiscovery.Discover(player, target, freshCatalog, freshScope);
                 var freshTarget = freshDiscovery.Containers.FirstOrDefault(handle => handle.Container == target);
                 if (freshTarget == null || !freshTarget.Snapshot.IsEligible)
                 {
                     LogTargetRejection("post-ownership refresh", freshDiscovery);
-                    RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the configured radius.");
+                    RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the active storage scope.");
                     yield break;
                 }
                 var freshHandles = freshDiscovery.Containers.ToDictionary(handle => handle.Id, StringComparer.Ordinal);
@@ -345,6 +345,7 @@ namespace Stackmaster
                 {
                     var execution = TransferExecutor.Execute(
                         player,
+                        freshScope,
                         freshHandles,
                         freshPlan,
                         freshCatalog,

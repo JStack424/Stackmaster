@@ -53,18 +53,18 @@ namespace Stackmaster
 
     internal sealed class TargetDiscoveryDiagnostic
     {
-        internal TargetDiscoveryDiagnostic(bool targetPresent, double distance, float radius)
+        internal TargetDiscoveryDiagnostic(bool targetPresent, double distance, StorageScope scope, Vector3 targetPosition)
         {
             TargetPresent = targetPresent;
             Distance = distance;
-            Radius = radius;
-            WithinRadius = targetPresent && distance <= radius;
+            Scope = scope != null ? scope.Description : "unavailable";
+            WithinScope = targetPresent && scope != null && scope.Contains(targetPosition);
         }
 
         internal bool TargetPresent { get; }
         internal double Distance { get; }
-        internal float Radius { get; }
-        internal bool WithinRadius { get; }
+        internal string Scope { get; }
+        internal bool WithinScope { get; }
         internal bool Discovered { get; set; }
         internal string ObservedType { get; set; }
         internal bool? IsVanilla { get; set; }
@@ -82,12 +82,12 @@ namespace Stackmaster
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "targetPresent={0} discovered={1} distance={2} radius={3:0.0} withinRadius={4} searchTruncated={5} truncationReason={6} searchMs={7:0.00} objectScanMs={8:0.00} inspectionMs={9:0.00} budgetMs={10:0.00} candidates={11} inspected={12} minimumBeforeBudget={13} maximumNearby={14} type={15} vanilla={16} nview={17} nviewValid={18} zdo={19} refresh={20} inventory={21} inUse={22} access={23} refreshError={24} accessError={25}",
+                "targetPresent={0} discovered={1} distance={2} scope={3} withinScope={4} searchTruncated={5} truncationReason={6} searchMs={7:0.00} objectScanMs={8:0.00} inspectionMs={9:0.00} budgetMs={10:0.00} candidates={11} inspected={12} minimumBeforeBudget={13} maximumNearby={14} type={15} vanilla={16} nview={17} nviewValid={18} zdo={19} refresh={20} inventory={21} inUse={22} access={23} refreshError={24} accessError={25}",
                 TargetPresent,
                 Discovered,
                 double.IsPositiveInfinity(Distance) ? "n/a" : Distance.ToString("0.0", CultureInfo.InvariantCulture),
-                Radius,
-                WithinRadius,
+                Scope,
+                WithinScope,
                 discovery.Truncated,
                 discovery.TruncationReason ?? "none",
                 discovery.SearchMilliseconds,
@@ -135,7 +135,8 @@ namespace Stackmaster
             int nearbyCandidates,
             int inspectedNearby,
             string truncationReason,
-            TargetDiscoveryDiagnostic targetDiagnostic)
+            TargetDiscoveryDiagnostic targetDiagnostic,
+            StorageScope scope)
         {
             Containers = containers;
             Truncated = truncated;
@@ -146,6 +147,7 @@ namespace Stackmaster
             InspectedNearby = inspectedNearby;
             TruncationReason = truncationReason;
             TargetDiagnostic = targetDiagnostic;
+            Scope = scope;
         }
 
         internal IReadOnlyList<ContainerHandle> Containers { get; }
@@ -157,6 +159,7 @@ namespace Stackmaster
         internal int InspectedNearby { get; }
         internal string TruncationReason { get; }
         internal TargetDiscoveryDiagnostic TargetDiagnostic { get; }
+        internal StorageScope Scope { get; }
     }
 
     internal static class ContainerDiscovery
@@ -180,20 +183,25 @@ namespace Stackmaster
             Player player,
             Container target,
             CompatibilityCatalog catalog,
-            float radius,
+            StorageScope scope,
             bool requireComplete = false,
             bool resourceReadOnly = false)
         {
             var handles = new List<ContainerHandle>();
+            scope = scope ?? StorageScopeProvider.Resolve(player);
             var targetDistance = target != null
                 ? (double)Vector3.Distance(player.transform.position, target.transform.position)
                 : double.PositiveInfinity;
-            var targetDiagnostic = new TargetDiscoveryDiagnostic(target != null, targetDistance, radius);
+            var targetDiagnostic = new TargetDiscoveryDiagnostic(
+                target != null,
+                targetDistance,
+                scope,
+                target != null ? target.transform.position : default(Vector3));
 
             // The explicit target is the user's requested action surface. Inspect it before
             // object discovery and outside the nearby-search budget so a busy scene can never
             // cause a valid targeted container to be omitted.
-            if (target != null && targetDistance <= radius)
+            if (target != null && scope.Contains(target.transform.position))
             {
                 handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic, resourceReadOnly));
             }
@@ -207,7 +215,7 @@ namespace Stackmaster
                     Container = container,
                     Distance = (double)Vector3.Distance(player.transform.position, container.transform.position)
                 })
-                .Where(candidate => candidate.Distance <= radius)
+                .Where(candidate => scope.Contains(candidate.Container.transform.position))
                 .OrderBy(candidate => candidate.Distance)
                 .ThenBy(candidate => candidate.Container.GetInstanceID())
                 .ToArray();
@@ -222,7 +230,8 @@ namespace Stackmaster
             foreach (var candidate in nearby)
             {
                 var elapsedInspectionMilliseconds = inspectionStopwatch.Elapsed.TotalMilliseconds;
-                if (!requireComplete && !NearbyPolicy.CanInspectNext(inspectedNearby, elapsedInspectionMilliseconds))
+                if (!requireComplete && !scope.RequiresCompleteDiscovery &&
+                    !NearbyPolicy.CanInspectNext(inspectedNearby, elapsedInspectionMilliseconds))
                 {
                     truncationReason = NearbyPolicy.StopReason(inspectedNearby, elapsedInspectionMilliseconds);
                     break;
@@ -248,7 +257,8 @@ namespace Stackmaster
                 nearby.Length,
                 inspectedNearby,
                 truncationReason,
-                targetDiagnostic);
+                targetDiagnostic,
+                scope);
         }
 
         private static ContainerHandle Inspect(

@@ -59,6 +59,63 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('"Enable building from nearby chests", true', self.gameplay)
         self.assertIn('"Enable crafting from nearby chests", true', self.gameplay)
 
+    def test_all_chest_features_share_the_workbench_mesh_or_fallback_scope(self):
+        scope = (PLUGIN_DIR / "StorageScope.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "StorageScopePolicy.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+
+        self.assertIn('WorkbenchPrefabName = "piece_workbench"', scope)
+        self.assertIn("CraftingStation.Instances", scope)
+        self.assertIn("stations.OfType<CraftingStation>()", scope)
+        self.assertIn("station.GetType() != typeof(CraftingStation)", scope)
+        self.assertIn("station.GetComponent<ZNetView>()", scope)
+        self.assertIn("zdo.GetPrefab() != workbenchPrefabHash", scope)
+        self.assertIn("station.GetStationBuildRange()", scope)
+        self.assertIn("DistanceSquaredXZ", policy)
+        self.assertIn("< zone.BuildRange * zone.BuildRange", policy)
+        self.assertIn("< combinedRange * combinedRange", policy)
+        self.assertIn("DistanceSquared3D", policy)
+        self.assertIn("<= _fallbackRadius * _fallbackRadius", policy)
+        self.assertIn("while (queue.Count > 0)", policy)
+        self.assertNotIn("m_allStations", scope)
+        self.assertNotIn("m_nview", scope)
+
+        self.assertIn("StorageScope scope", discovery)
+        self.assertIn("scope.Contains(target.transform.position)", discovery)
+        self.assertIn("scope.Contains(candidate.Container.transform.position)", discovery)
+        self.assertIn("!scope.RequiresCompleteDiscovery", discovery)
+        self.assertNotIn("float radius,\n            bool requireComplete", discovery)
+        self.assertGreaterEqual(action.count("StorageScopeProvider.Resolve(player)"), 2)
+        self.assertIn("StorageScopeProvider.Resolve(player)", nearby)
+        self.assertIn("ContainerDiscovery.Discover(player, null, catalog, scope, true, true)", nearby)
+        self.assertIn("StorageScope executionScope", executor)
+        self.assertIn("executionScope.Contains(container.transform.position)", executor)
+        self.assertNotIn("StorageScopeProvider.Resolve", executor)
+        self.assertIn("ValidateReadOnlyHandle(player, freshScope, handle", nearby)
+        transaction = nearby[nearby.index("private static bool TryBeginTransaction") : nearby.index("internal static ResourceWithdrawalPlan Plan")]
+        self.assertIn("TryReserveContainers(player, mutableCapture.Scope", transaction)
+        self.assertIn("RevalidateReservedContainers(player, mutableCapture.Scope", transaction)
+        self.assertNotIn("StorageScopeProvider.Resolve", transaction)
+        self.assertIn("freshScope,\n                        freshHandles", action)
+        self.assertNotIn("ChestSortPreferences", scope + policy + discovery + action + nearby + executor)
+        self.assertGreaterEqual(runtime.count("StorageScopeProvider.Reset()"), 3)
+
+        for signature in (
+            'RequireStaticMethod(failures, typeof(CraftingStation), "get_Instances")',
+            'RequireMethod(failures, typeof(CraftingStation), "GetStationBuildRange")',
+            'RequireStaticMethod(failures, typeof(ZNetScene), "get_instance")',
+            'RequireMethod(failures, typeof(ZNetScene), "GetPrefab", typeof(string))',
+            'RequireMethod(failures, typeof(ZNetScene), "GetPrefabHash", typeof(GameObject))',
+            'RequireMethod(failures, typeof(ZNetView), "GetZDO")',
+            'RequireMethod(failures, typeof(ZDO), "GetPrefab")',
+        ):
+            self.assertIn(signature, gate)
+
     def test_mutation_uses_verified_game_primitive_and_never_claims_blindly(self):
         self.assertIn("MoveItemToThis", self.gameplay)
         self.assertIn("container.StackAll()", self.gameplay)
@@ -452,14 +509,14 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_generic_target_rejection_is_paired_with_local_diagnostics(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
-        generic = 'targeted container is inaccessible, in use, unknown, or outside the configured radius.'
+        generic = 'targeted container is inaccessible, in use, unknown, or outside the active storage scope.'
         self.assertIn(generic, action)
         initial_log = action.index('LogTargetRejection("initial discovery", discovery)')
         initial_ui = action.index(generic, initial_log)
         self.assertLess(initial_log, initial_ui)
         self.assertIn("RuntimeContext.Plugin.Log.LogWarning", action)
         for signal in (
-            "targetPresent=", "discovered=", "distance=", "radius=", "withinRadius=",
+            "targetPresent=", "discovered=", "distance=", "scope=", "withinScope=",
             "searchTruncated=", "truncationReason=", "searchMs=", "objectScanMs=", "inspectionMs=",
             "budgetMs=", "candidates=", "inspected=", "minimumBeforeBudget=", "maximumNearby=", "type=", "vanilla=",
             "nview=", "nviewValid=", "zdo=", "refresh=", "inventory=", "inUse=", "access=",
@@ -487,7 +544,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("public int PlannedUnits", core)
         self.assertIn("TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure)", nearby)
         self.assertIn("TryBeginPieceTransaction(__instance, piece, out failure)", nearby)
-        self.assertIn("ContainerDiscovery.Discover(player, null, catalog, radius, true, true)", nearby)
+        self.assertIn("ContainerDiscovery.Discover(player, null, catalog, scope, true, true)", nearby)
         self.assertIn("handle.ResourceReadable", nearby)
         self.assertIn("handle.ResourceInventory", nearby)
         self.assertNotIn("handle.Snapshot.IsEligible &&\n                                 handle.NetworkView", nearby)
