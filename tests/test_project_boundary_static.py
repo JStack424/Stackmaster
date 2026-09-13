@@ -563,7 +563,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         # metadata names such as Valheim's Recipe `piece` cannot break startup.
         bindings = [int(index) for index in re.findall(r"\[HarmonyArgument\((\d+)\)\]", nearby)]
         self.assertEqual(
-            [0, 1, 2, 3, 0, 1, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
+            [0, 1, 2, 3, 0, 1, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
             bindings,
         )
         self.assertNotIn("RecipePostfix(Player __instance, Recipe recipe", nearby)
@@ -766,7 +766,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
         installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
-        self.assertIn('Postfix(typeof(InventoryGui), "SetupRequirement", new[]', installer)
+        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", new[]', installer)
         self.assertIn('typeof(UnityEngine.Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int)', installer)
         self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int))', gate)
         self.assertIn('RequireMethod(failures, typeof(InventoryGui), "get_instance")', gate)
@@ -793,6 +793,46 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("=> !noCost && !isSatisfied && flashSignal > 0f", core)
         self.assertIn("GroupBy(requirement => new RequirementKey", core)
         self.assertIn("GroupBy(stack => stack.Quality)", core)
+
+    def test_crafting_requirement_text_uses_bounded_adaptive_fit_without_changing_exact_values(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        section = nearby[
+            nearby.index("internal static class RequirementAmountTextFitter"):
+            nearby.index("internal static class NearbyFirstRequiredItemPatch")
+        ]
+        self.assertIn("MinimumReadableFontSize = 10f", section)
+        self.assertIn("MinimumFontScale = 0.55f", section)
+        self.assertIn("label.text = exactText", section)
+        self.assertIn("label.textWrappingMode = TextWrappingModes.NoWrap", section)
+        self.assertIn("label.enableAutoSizing = true", section)
+        self.assertIn("label.fontSizeMin = minimumSize", section)
+        self.assertIn("label.fontSizeMax = normalSize", section)
+        self.assertIn("label.fontSize = normalSize", section)
+        self.assertIn("RequirementAmountTextFitter.Apply(", section)
+        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.Available)", section)
+        self.assertNotIn("Substring(", section)
+        self.assertNotIn("…", section)
+
+    def test_crafting_requirement_text_restores_vanilla_state_for_reused_rows_and_disable_paths(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        section = nearby[
+            nearby.index("internal static class RequirementAmountTextFitter"):
+            nearby.index("internal static class NearbyFirstRequiredItemPatch")
+        ]
+        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", new[]', installer)
+        self.assertIn("internal static void Prefix([HarmonyArgument(0)] Transform elementRoot)", section)
+        self.assertIn("RequirementAmountTextFitter.PrepareForVanilla(elementRoot)", section)
+        self.assertIn("FontSize = label.fontSize", section)
+        self.assertIn("EnableAutoSizing = label.enableAutoSizing", section)
+        self.assertIn("FontSizeMin = label.fontSizeMin", section)
+        self.assertIn("FontSizeMax = label.fontSizeMax", section)
+        self.assertIn("TextWrappingMode = label.textWrappingMode", section)
+        self.assertIn("Label.enableAutoSizing = EnableAutoSizing", section)
+        self.assertIn("Label.fontSize = FontSize", section)
+        self.assertIn("Label.textWrappingMode = TextWrappingMode", section)
+        self.assertIn("RequirementAmountTextFitter.RestoreAll()", section)
+        self.assertLess(section.index("internal static void Prefix"), section.index("internal static void Postfix"))
 
     def test_crafting_requirement_hook_matches_static_current_game_surface(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")

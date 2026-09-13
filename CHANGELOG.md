@@ -10,7 +10,8 @@ Local r2modman test candidate; not published.
 - Lease expiry returns the exact tracked chest to Valheim owner `0` only while identity, local session, current owner, and successor owner-revision guards still prove it is the ownership Stackmaster acquired.
 - Cancellation, failure, rollback, partial or unused acquisition, disable, disconnect, logout, scene unload, shutdown, hot unload, compatibility disable, and exceptions preserve immediate guarded cleanup. Unrelated, merely inspected, already-local, or non-acquired chests are never retained or released.
 - Preserved exact nearby-resource accounting, minimum mutated-chest planning, connected-workbench/20 m fallback scope, chest auto-sort opt-outs, and the exact busy message `The required materials are currently in use`.
-- Automated verification passes with zero build warnings/errors, 86 pure-domain tests, and 52 static/repository safety checks.
+- Crafting and upgrade requirement labels now keep every digit visible by using the normal vanilla font size when it fits and bounded TextMeshPro auto-sizing for longer exact totals such as `45 / 172` and `999 / 999`; pooled rows and disabled/fail-open paths restore their original typography.
+- Automated verification passes with zero build warnings/errors, 87 pure-domain tests, and 54 static/repository safety checks.
 - The ownership-lease change has not yet been independently tested in multiplayer, on dedicated servers, with workbench extensions, or across broader load/unload topologies.
 
 ## 0.4.0

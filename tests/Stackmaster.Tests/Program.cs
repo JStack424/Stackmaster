@@ -45,6 +45,7 @@ internal static class Program
             ResourceDisplayUsesUpgradeAndMultiCraftTotals,
             ResourceDisplayAlternativesRequireOneQualityTier,
             RequirementPresentationFormatsAggregateTotals,
+            RequirementPresentationRetainsLongExactTotals,
             RequirementPresentationUsesRedOnlyForTrueShortages,
             ResourcePlanAggregatesPlayerAndNearbyStacks,
             ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
@@ -686,6 +687,16 @@ internal static class Program
             "building and crafting rows share required / total available text");
         Equal("50 / 25", ResourceRequirementPresentation.Format(50, 25),
             "a true shortage still displays the exact aggregate total");
+    }
+
+    private static void RequirementPresentationRetainsLongExactTotals()
+    {
+        Equal("45 / 172", ResourceRequirementPresentation.Format(45, 172),
+            "five total digits remain present in the crafting requirement text");
+        Equal("999 / 999", ResourceRequirementPresentation.Format(999, 999),
+            "balanced three-digit values remain exact instead of being shortened");
+        Equal("2 / 17", ResourceRequirementPresentation.Format(2, 17),
+            "short values keep the normal readable required / available form after longer values");
     }
 
     private static void RequirementPresentationUsesRedOnlyForTrueShortages()

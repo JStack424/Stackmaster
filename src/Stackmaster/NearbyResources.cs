@@ -1587,6 +1587,112 @@ namespace Stackmaster
         }
     }
 
+    internal static class RequirementAmountTextFitter
+    {
+        // The vanilla amount label is deliberately narrow. Keep its normal typography for
+        // ordinary values, then let TextMeshPro fit longer exact totals inside the existing
+        // rect instead of silently truncating the final digits. Ten points is still legible at
+        // Valheim's supported UI scales and is low enough for realistic three-digit pairs.
+        private const float MinimumReadableFontSize = 10f;
+        private const float MinimumFontScale = 0.55f;
+        private static readonly Dictionary<int, LabelState> States = new Dictionary<int, LabelState>();
+
+        internal static void PrepareForVanilla(Transform elementRoot)
+        {
+            Restore(FindLabel(elementRoot));
+        }
+
+        internal static void Apply(TMP_Text label, string exactText)
+        {
+            if (label == null) return;
+
+            var id = label.GetInstanceID();
+            LabelState state;
+            if (!States.TryGetValue(id, out state) || !ReferenceEquals(state.Label, label))
+            {
+                state = new LabelState(label);
+                States[id] = state;
+            }
+            else
+            {
+                // SetupRequirement normally runs through our prefix first, but restoring here
+                // also makes direct/re-entrant calls deterministic.
+                state.Restore();
+            }
+
+            var normalSize = state.EnableAutoSizing && state.FontSizeMax > 0f
+                ? state.FontSizeMax
+                : state.FontSize;
+            if (float.IsNaN(normalSize) || float.IsInfinity(normalSize) || normalSize <= 0f)
+            {
+                normalSize = 16f;
+            }
+            var minimumSize = Math.Min(normalSize,
+                Math.Max(MinimumReadableFontSize, normalSize * MinimumFontScale));
+
+            label.text = exactText;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = minimumSize;
+            label.fontSizeMax = normalSize;
+            label.fontSize = normalSize;
+        }
+
+        internal static void Restore(TMP_Text label)
+        {
+            if (label == null) return;
+            var id = label.GetInstanceID();
+            LabelState state;
+            if (!States.TryGetValue(id, out state) || !ReferenceEquals(state.Label, label)) return;
+            state.Restore();
+            States.Remove(id);
+        }
+
+        internal static void RestoreAll()
+        {
+            foreach (var state in States.Values.ToArray())
+            {
+                if (state.Label != null) state.Restore();
+            }
+            States.Clear();
+        }
+
+        private static TMP_Text FindLabel(Transform elementRoot)
+        {
+            var amountTransform = elementRoot == null ? null : elementRoot.Find("res_amount");
+            return amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
+        }
+
+        private sealed class LabelState
+        {
+            internal LabelState(TMP_Text label)
+            {
+                Label = label;
+                FontSize = label.fontSize;
+                EnableAutoSizing = label.enableAutoSizing;
+                FontSizeMin = label.fontSizeMin;
+                FontSizeMax = label.fontSizeMax;
+                TextWrappingMode = label.textWrappingMode;
+            }
+
+            internal TMP_Text Label { get; }
+            internal float FontSize { get; }
+            internal bool EnableAutoSizing { get; }
+            internal float FontSizeMin { get; }
+            internal float FontSizeMax { get; }
+            internal TextWrappingModes TextWrappingMode { get; }
+
+            internal void Restore()
+            {
+                Label.enableAutoSizing = EnableAutoSizing;
+                Label.fontSizeMin = FontSizeMin;
+                Label.fontSizeMax = FontSizeMax;
+                Label.fontSize = FontSize;
+                Label.textWrappingMode = TextWrappingMode;
+            }
+        }
+    }
+
     internal static class NearbyCraftingHudPatch
     {
         private const float RefreshIntervalSeconds = 0.25f;
@@ -1614,6 +1720,15 @@ namespace Stackmaster
             _cachedScopeSignature = null;
             _nextRefreshTime = 0f;
             _cachedAvailability = Array.Empty<RuntimeRequirementAvailability>();
+            RequirementAmountTextFitter.RestoreAll();
+        }
+
+        // Restore the exact vanilla text settings before SetupRequirement reuses a pooled row.
+        // This prevents a prior long count from shrinking a later short recipe and makes the
+        // toggle-off/compatibility-failure path indistinguishable from vanilla.
+        internal static void Prefix([HarmonyArgument(0)] Transform elementRoot)
+        {
+            RequirementAmountTextFitter.PrepareForVanilla(elementRoot);
         }
 
         // InventoryGui.SetupRequirement is static in the supported Valheim build. A Harmony
@@ -1637,6 +1752,7 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
+                RequirementAmountTextFitter.PrepareForVanilla(elementRoot);
                 NearbyHudFailOpen.ReportOnce("crafting HUD", exception);
             }
         }
@@ -1696,7 +1812,9 @@ namespace Stackmaster
             var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
             if (amountLabel == null) return;
 
-            amountLabel.text = ResourceRequirementPresentation.Format(entry.Required, entry.Available);
+            RequirementAmountTextFitter.Apply(
+                amountLabel,
+                ResourceRequirementPresentation.Format(entry.Required, entry.Available));
             var noCraftCost = player.NoCostCheat() ||
                               (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoCraftCost));
             amountLabel.color = ResourceRequirementPresentation.ShouldUseShortageColor(

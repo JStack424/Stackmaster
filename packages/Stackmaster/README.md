@@ -38,6 +38,7 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Counts and consumes exact building, crafting, and upgrade costs from the player plus accessible vanilla chests in the active storage scope, regardless of current network ownership.
   - Shows selected build-piece costs as `required / total available`; satisfied combined stock stays white, while a true shortage flashes red.
   - Shows workbench, forge, cauldron, and equivalent crafting or upgrade costs in the same format, including selected upgrade quality and multi-craft totals.
+  - Adaptively fits longer exact crafting totals such as `45 / 172` and `999 / 999` inside the vanilla amount label instead of clipping the final digits; short totals retain the normal font size.
   - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
   - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
 - **Safety**
