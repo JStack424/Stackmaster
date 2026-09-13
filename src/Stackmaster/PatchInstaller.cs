@@ -27,6 +27,7 @@ namespace Stackmaster
                 }, typeof(InventoryProtectionClickPatch)),
                 Prefix(typeof(Container), "Interact", new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, typeof(ContainerInteractPatch)),
                 Postfix(typeof(Container), "GetHoverText", Type.EmptyTypes, typeof(ContainerHoverTextPatch)),
+                Postfix(typeof(Container), "RPC_RequestOpen", new[] { typeof(long), typeof(long) }, typeof(ContainerOpenRequestLeasePatch)),
                 Prefix(typeof(Container), "RPC_StackResponse", new[] { typeof(long), typeof(bool) }, typeof(ContainerStackResponsePatch)),
                 Prefix(typeof(Game), "Shutdown", new[] { typeof(bool) }, typeof(OwnershipLifecyclePatch)),
                 Prefix(typeof(ZNet), "Shutdown", new[] { typeof(bool) }, typeof(OwnershipLifecyclePatch)),

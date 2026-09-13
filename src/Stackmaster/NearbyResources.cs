@@ -135,12 +135,12 @@ namespace Stackmaster
             _selectedExtraAmount = extraAmount;
         }
 
-        internal static bool Complete()
+        internal static bool Complete(ResourceActionKind actionKind)
         {
             if (_removed == null) return true;
             if (_acknowledgedUnits == _expectedUnits)
             {
-                Clear();
+                Clear(actionKind == ResourceActionKind.Building);
                 return true;
             }
             if (_acknowledgedUnits == 0)
@@ -150,8 +150,9 @@ namespace Stackmaster
             else
             {
                 // Some vanilla cost calls ran, so the craft/placement output already exists.
-                // Keep the exact preplanned charge rather than restoring it and duplicating value.
-                Clear();
+                // Keep the exact preplanned charge rather than restoring it and duplicating value,
+                // but release ownership immediately because success was not fully confirmed.
+                Clear(false);
             }
             RuntimeContext.Disable("Vanilla did not confirm the complete nearby-resource cost.");
             return false;
@@ -184,11 +185,11 @@ namespace Stackmaster
             return restored;
         }
 
-        private static void Clear()
+        private static void Clear(bool retainSuccessfulBuildOwnership)
         {
             var reservations = _reservations;
             ResetState();
-            ReleaseReservations(reservations);
+            ReleaseReservations(reservations, retainSuccessfulBuildOwnership);
         }
 
         private static void ResetState()
@@ -202,7 +203,9 @@ namespace Stackmaster
             _acknowledgedUnits = 0;
         }
 
-        private static void ReleaseReservations(IEnumerable<ContainerReservation> reservations)
+        private static void ReleaseReservations(
+            IEnumerable<ContainerReservation> reservations,
+            bool retainSuccessfulBuildOwnership = false)
         {
             if (reservations == null) return;
             var held = reservations.ToArray();
@@ -221,9 +224,20 @@ namespace Stackmaster
                     }
                 }
             }
-            // Reservations and any rollback are finished before ownership is handed off.
-            OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
-                "nearby-resource transaction ended");
+
+            // The logical in-use reservation always ends synchronously. Only ownership that
+            // Stackmaster demonstrably acquired and this successful build actually consumed
+            // can enter or renew the sliding build lease; crafting and every failed/cancelled
+            // transaction still release immediately.
+            if (retainSuccessfulBuildOwnership)
+            {
+                OwnershipLeaseManager.RenewForSuccessfulBuild(held.Select(item => item.Handle));
+            }
+            else
+            {
+                OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                    "nearby-resource transaction ended");
+            }
         }
     }
 
@@ -1835,7 +1849,7 @@ namespace Stackmaster
 
         internal static void Postfix(ResourceActionKind __state)
         {
-            ResourceTransactionContext.Complete();
+            ResourceTransactionContext.Complete(ResourceActionKind.Crafting);
             ResourceActionContext.Restore(__state);
         }
 
@@ -1859,7 +1873,7 @@ namespace Stackmaster
 
         internal static void Postfix(ResourceActionKind __state)
         {
-            ResourceTransactionContext.Complete();
+            ResourceTransactionContext.Complete(ResourceActionKind.Building);
             ResourceActionContext.Restore(__state);
         }
 

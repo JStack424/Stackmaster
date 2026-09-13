@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1
+
+Local r2modman test candidate; not published.
+
+- Added a 30-second sliding Valheim ownership lease after a successful chest-backed building placement. Only exact chests Stackmaster demonstrably acquired and actually used are retained, and each successful build use renews that chest's lease.
+- Logical `in-use` reservations still end immediately after the atomic transaction; crafting behavior is unchanged and does not retain the new build lease.
+- A remote player's manual chest-open request immediately invalidates an idle retained build lease and continues through Valheim's normal request and ownership-transfer path. The local owner's own manual access remains available and does not invalidate the lease.
+- Lease expiry returns the exact tracked chest to Valheim owner `0` only while identity, local session, current owner, and successor owner-revision guards still prove it is the ownership Stackmaster acquired.
+- Cancellation, failure, rollback, partial or unused acquisition, disable, disconnect, logout, scene unload, shutdown, hot unload, compatibility disable, and exceptions preserve immediate guarded cleanup. Unrelated, merely inspected, already-local, or non-acquired chests are never retained or released.
+- Preserved exact nearby-resource accounting, minimum mutated-chest planning, connected-workbench/20 m fallback scope, chest auto-sort opt-outs, and the exact busy message `The required materials are currently in use`.
+- Automated verification passes with zero build warnings/errors, 86 pure-domain tests, and 52 static/repository safety checks.
+- The ownership-lease change has not yet been independently tested in multiplayer, on dedicated servers, with workbench extensions, or across broader load/unload topologies.
+
 ## 0.4.0
 
 Public release.

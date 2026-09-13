@@ -73,6 +73,14 @@ internal static class Program
             OwnershipReleaseRequiresExactOwnerRevision,
             OwnershipRevisionSuccessorWrapsExactly,
             OwnershipReleaseAlwaysReturnsToVanillaUnownedState,
+            OwnershipBuildLeaseRequiresDemonstrableAcquisition,
+            OwnershipBuildLeaseRequiresSuccessfulUse,
+            OwnershipBuildLeaseRenewsFromCurrentTime,
+            OwnershipBuildLeaseExpiryUsesBoundary,
+            OwnershipBuildLeaseYieldsToRemoteManualOpen,
+            OwnershipBuildLeaseDoesNotYieldToLocalManualOpen,
+            OwnershipBuildLeaseDoesNotYieldWhileLogicallyReserved,
+            OwnershipRetryLeaseDoesNotUseBuildPreemption,
             WorkbenchMeshIgnoresVerticalDistance,
             WorkbenchMeshUsesStrictBoundaries,
             TangentWorkbenchZonesDoNotConnect,
@@ -1002,6 +1010,66 @@ internal static class Program
         var decision = OwnershipLeasePolicy.Decide(true, true, true, true);
         True(decision.ShouldRelease, "an exact Stackmaster acquisition is released");
         Equal(0L, decision.TargetOwner, "release never restores a stale peer or assigns a topology-dependent server");
+    }
+
+    private static void OwnershipBuildLeaseRequiresDemonstrableAcquisition()
+    {
+        True(!OwnershipLeaseRetentionPolicy.ShouldRenewForSuccessfulBuild(false, true, true),
+            "a locally/manual-owned or merely inspected chest never becomes a Stackmaster build lease");
+    }
+
+    private static void OwnershipBuildLeaseRequiresSuccessfulUse()
+    {
+        True(!OwnershipLeaseRetentionPolicy.ShouldRenewForSuccessfulBuild(true, false, true),
+            "an acquired but unrelated chest is not retained");
+        True(!OwnershipLeaseRetentionPolicy.ShouldRenewForSuccessfulBuild(true, true, false),
+            "cancellation, failure, and rollback do not retain ownership");
+        True(OwnershipLeaseRetentionPolicy.ShouldRenewForSuccessfulBuild(true, true, true),
+            "an exact acquired chest used by a successful placement can be retained");
+    }
+
+    private static void OwnershipBuildLeaseRenewsFromCurrentTime()
+    {
+        Equal(142f, OwnershipLeaseRetentionPolicy.RenewedExpiry(112f, 30f),
+            "every successful placement renews the full sliding lease from now");
+    }
+
+    private static void OwnershipBuildLeaseExpiryUsesBoundary()
+    {
+        True(!OwnershipLeaseRetentionPolicy.IsExpired(141.999f, 142f),
+            "lease remains active immediately before expiry");
+        True(OwnershipLeaseRetentionPolicy.IsExpired(142f, 142f),
+            "lease expires exactly at its deadline");
+        True(OwnershipLeaseRetentionPolicy.IsExpired(143f, 142f),
+            "lease remains expired after its deadline");
+    }
+
+    private static void OwnershipBuildLeaseYieldsToRemoteManualOpen()
+    {
+        True(OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
+                OwnershipLeasePurpose.Building, 202L, 101L, false),
+            "an idle build lease yields when vanilla accepts a remote manual open");
+    }
+
+    private static void OwnershipBuildLeaseDoesNotYieldToLocalManualOpen()
+    {
+        True(!OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
+                OwnershipLeasePurpose.Building, 101L, 101L, false),
+            "the local owner can open a leased chest without invalidating its own lease");
+    }
+
+    private static void OwnershipBuildLeaseDoesNotYieldWhileLogicallyReserved()
+    {
+        True(!OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
+                OwnershipLeasePurpose.Building, 202L, 101L, true),
+            "an active atomic mutation remains protected rather than being preempted mid-transaction");
+    }
+
+    private static void OwnershipRetryLeaseDoesNotUseBuildPreemption()
+    {
+        True(!OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
+                OwnershipLeasePurpose.Retry, 202L, 101L, false),
+            "the build-only preemption policy does not broaden retry or crafting behavior");
     }
 
     private static void WorkbenchMeshIgnoresVerticalDistance()

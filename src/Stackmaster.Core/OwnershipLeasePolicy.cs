@@ -12,6 +12,36 @@ namespace Stackmaster.Core
         public long TargetOwner { get; }
     }
 
+    public enum OwnershipLeasePurpose
+    {
+        Retry,
+        Building
+    }
+
+    public static class OwnershipLeaseRetentionPolicy
+    {
+        public static bool ShouldRenewForSuccessfulBuild(
+            bool demonstrablyAcquiredByStackmaster,
+            bool usedByPlacement,
+            bool placementSucceeded)
+            => demonstrablyAcquiredByStackmaster && usedByPlacement && placementSucceeded;
+
+        public static float RenewedExpiry(float now, float leaseSeconds)
+            => now + leaseSeconds;
+
+        public static bool IsExpired(float now, float expiresAt)
+            => now >= expiresAt;
+
+        public static bool ShouldYieldToManualOpen(
+            OwnershipLeasePurpose purpose,
+            long requesterSession,
+            long acquiredSession,
+            bool logicallyReserved)
+            => purpose == OwnershipLeasePurpose.Building &&
+               requesterSession != acquiredSession &&
+               !logicallyReserved;
+    }
+
     public static class OwnershipLeasePolicy
     {
         public static ushort NextOwnerRevision(ushort current)

@@ -97,6 +97,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Container), "Interact", typeof(Humanoid), typeof(bool), typeof(bool));
             RequireMethod(failures, typeof(Container), "GetHoverText");
             RequireMethod(failures, typeof(Container), "StackAll");
+            RequireMethod(failures, typeof(Container), "RPC_RequestOpen", typeof(long), typeof(long));
             RequireMethod(failures, typeof(Container), "RPC_RequestStack", typeof(long), typeof(long));
             RequireMethod(failures, typeof(Container), "RPC_StackResponse", typeof(long), typeof(bool));
             RequireMethod(failures, typeof(Game), "Shutdown", typeof(bool));

@@ -208,14 +208,19 @@ namespace Stackmaster
 
     internal sealed class OwnershipLease
     {
-        internal OwnershipLease(AcquiredContainerOwnership acquisition, float expiresAt)
+        internal OwnershipLease(
+            AcquiredContainerOwnership acquisition,
+            float expiresAt,
+            OwnershipLeasePurpose purpose)
         {
             Acquisition = acquisition;
             ExpiresAt = expiresAt;
+            Purpose = purpose;
         }
 
         internal AcquiredContainerOwnership Acquisition { get; }
         internal float ExpiresAt { get; set; }
+        internal OwnershipLeasePurpose Purpose { get; set; }
     }
 
     internal sealed class PendingOwnershipCleanup
@@ -233,6 +238,7 @@ namespace Stackmaster
     internal static class OwnershipLeaseManager
     {
         internal const float RetryLeaseSeconds = 10f;
+        internal const float BuildingLeaseSeconds = 30f;
         private static readonly Dictionary<string, OwnershipLease> Leases =
             new Dictionary<string, OwnershipLease>(StringComparer.Ordinal);
         private static readonly Dictionary<string, PendingOwnershipCleanup> Pending =
@@ -241,11 +247,56 @@ namespace Stackmaster
         internal static void HoldForRetry(OwnershipBatch batch)
         {
             if (batch == null) return;
-            var expiresAt = Time.realtimeSinceStartup + RetryLeaseSeconds;
+            var expiresAt = OwnershipLeaseRetentionPolicy.RenewedExpiry(
+                Time.realtimeSinceStartup,
+                RetryLeaseSeconds);
             foreach (var acquisition in batch.AcquiredOwnerships)
             {
-                Leases[acquisition.Id] = new OwnershipLease(acquisition, expiresAt);
+                Leases[acquisition.Id] = new OwnershipLease(
+                    acquisition,
+                    expiresAt,
+                    OwnershipLeasePurpose.Retry);
             }
+        }
+
+        internal static void RenewForSuccessfulBuild(IEnumerable<ContainerHandle> usedHandles)
+        {
+            if (usedHandles == null) return;
+            var now = Time.realtimeSinceStartup;
+            foreach (var usedHandle in usedHandles
+                .Where(handle => handle != null)
+                .GroupBy(handle => handle.Id, StringComparer.Ordinal)
+                .Select(group => group.First()))
+            {
+                OwnershipLease lease;
+                var demonstrablyAcquired = Leases.TryGetValue(usedHandle.Id, out lease) &&
+                    LeaseStillMatchesExactAcquisition(lease, usedHandle);
+                if (!OwnershipLeaseRetentionPolicy.ShouldRenewForSuccessfulBuild(
+                        demonstrablyAcquired,
+                        usedByPlacement: true,
+                        placementSucceeded: true))
+                {
+                    continue;
+                }
+
+                lease.Purpose = OwnershipLeasePurpose.Building;
+                lease.ExpiresAt = OwnershipLeaseRetentionPolicy.RenewedExpiry(now, BuildingLeaseSeconds);
+            }
+        }
+
+        private static bool LeaseStillMatchesExactAcquisition(
+            OwnershipLease lease,
+            ContainerHandle usedHandle)
+        {
+            if (lease == null || usedHandle == null || ZDOMan.instance == null) return false;
+            var acquisition = lease.Acquisition;
+            var zdo = ResolveZdo(acquisition.Handle);
+            return zdo != null &&
+                   IdentityMatches(acquisition.Handle, zdo) &&
+                   IdentityMatches(usedHandle, zdo) &&
+                   ZDOMan.GetSessionID() == acquisition.AcquiredSession &&
+                   zdo.GetOwner() == acquisition.AcquiredSession &&
+                   zdo.OwnerRevision == acquisition.AcquiredOwnerRevision;
         }
 
         internal static void WatchPotentialAcquisition(ContainerHandle handle)
@@ -270,6 +321,45 @@ namespace Stackmaster
             }
         }
 
+        internal static void ObserveRemoteManualOpen(Container container, long requesterSession)
+        {
+            if (container == null) return;
+            var currentView = container.GetComponent<ZNetView>();
+            var currentZdo = currentView != null && currentView.IsValid() ? currentView.GetZDO() : null;
+            var lease = Leases.Values.FirstOrDefault(item =>
+                ReferenceEquals(item.Acquisition.Handle.Container, container) ||
+                (currentZdo != null && IdentityMatches(item.Acquisition.Handle, currentZdo)));
+            if (lease == null ||
+                !OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
+                    lease.Purpose,
+                    requesterSession,
+                    lease.Acquisition.AcquiredSession,
+                    logicallyReserved: false))
+            {
+                return;
+            }
+
+            var zdo = ResolveZdo(lease.Acquisition.Handle);
+            if (zdo == null) return;
+            if (!IdentityMatches(lease.Acquisition.Handle, zdo))
+            {
+                Leases.Remove(lease.Acquisition.Id);
+                return;
+            }
+            if (zdo.GetOwner() != requesterSession) return;
+
+            // Vanilla has accepted this remote manual open and transferred directly to its
+            // requester. Forget the lease immediately after that transfer; never set owner 0
+            // around RPC_RequestOpen or manufacture an open response on vanilla's behalf.
+            Leases.Remove(lease.Acquisition.Id);
+            if (RuntimeContext.Plugin != null)
+            {
+                RuntimeContext.Plugin.Log.LogDebug(
+                    "Yielded Stackmaster build lease for " + lease.Acquisition.Id +
+                    " to a remote vanilla open request.");
+            }
+        }
+
         internal static void Update()
         {
             var now = Time.realtimeSinceStartup;
@@ -277,7 +367,8 @@ namespace Stackmaster
             {
                 ObservePending(pending);
             }
-            foreach (var lease in Leases.Values.Where(item => item.ExpiresAt <= now).ToArray())
+            foreach (var lease in Leases.Values.Where(item =>
+                OwnershipLeaseRetentionPolicy.IsExpired(now, item.ExpiresAt)).ToArray())
             {
                 var container = lease.Acquisition.Handle.Container;
                 if (container != null && StorageAction.IsLocalOpenTarget(container))
@@ -327,6 +418,12 @@ namespace Stackmaster
                 // not touch it; vanilla remains authoritative.
                 Pending.Remove(handle.Id);
             }
+        }
+
+        private static bool IdentityMatches(ContainerHandle handle, ZDO zdo)
+        {
+            return handle != null && zdo != null &&
+                   string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal);
         }
 
         internal static ZDO ResolveZdo(ContainerHandle handle)
@@ -395,9 +492,14 @@ namespace Stackmaster
             {
                 // Retain the exact cleanup record on a transient failure. Update retries it;
                 // stale identity/revision guards still prevent touching unrelated ownership.
+                OwnershipLease existing;
+                var purpose = Leases.TryGetValue(acquisition.Id, out existing)
+                    ? existing.Purpose
+                    : OwnershipLeasePurpose.Retry;
                 Leases[acquisition.Id] = new OwnershipLease(
                     acquisition,
-                    Time.realtimeSinceStartup + 1f);
+                    Time.realtimeSinceStartup + 1f,
+                    purpose);
             }
         }
 
@@ -614,6 +716,31 @@ namespace Stackmaster
             // Runs independently of the plugin component's enabled/compatibility state. It is
             // also retained under the session-lifetime Harmony id during hot unload.
             OwnershipLeaseManager.Update();
+        }
+    }
+
+    [HarmonyPatch(typeof(Container), "RPC_RequestOpen", typeof(long), typeof(long))]
+    internal static class ContainerOpenRequestLeasePatch
+    {
+        private static void Postfix(
+            Container __instance,
+            [HarmonyArgument(0)] long requesterSession)
+        {
+            // Vanilla's owner-side busy/access checks and transfer run first. An accepted remote
+            // open already owns the chest at this point, so Stackmaster can invalidate its lease
+            // without blocking the request or manufacturing a response.
+            try
+            {
+                OwnershipLeaseManager.ObserveRemoteManualOpen(__instance, requesterSession);
+            }
+            catch (Exception exception)
+            {
+                if (RuntimeContext.Plugin != null)
+                {
+                    RuntimeContext.Plugin.Log.LogError(
+                        "Failed to observe a remote manual chest open; guarded lease expiry remains active: " + exception);
+                }
+            }
         }
     }
 

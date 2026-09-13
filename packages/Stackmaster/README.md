@@ -10,7 +10,7 @@ Stackmaster is built to preserve the vanilla experience. It adds no gameplay adv
 
 Convenience stays deliberate. Auto-deposit works only when you look at or interact with a chest and press `Left Alt + E`; simply walking near your base never empties your backpack.
 
-> **Testing status:** Stackmaster 0.4.0's core connected-workbench storage behavior has been live-tested in Valheim. The 0.4.0 multiplayer behavior has not yet been independently verified, so back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
+> **Testing status:** Stackmaster 0.4.1 is a local r2modman test candidate. The new multiplayer ownership-lease behavior has automated coverage but has not yet been independently tested in Valheim. Back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
 
 ## Features
 
@@ -45,7 +45,8 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Requests ownership only for required chests, then rechecks active-scope membership, access, ownership, chest use, serialized revision, stack identity, and quantity before removal.
   - Withdraws exact quantities and rolls back completed steps if a later removal fails.
   - Cancels before consuming anything and shows `The required materials are currently in use` when a required chest is busy.
-  - Returns ownership acquired by Stackmaster after the action or bounded retry window, including cancellation and disconnect cleanup.
+  - Keeps only ownership demonstrably acquired and used by a successful build on a 30-second sliding lease, yielding immediately when another player manually opens that chest.
+  - Ends every logical in-use reservation immediately; crafting, cancellation, failure, rollback, disable, disconnect, logout, unload, and shutdown still release tracked ownership immediately.
   - Never mutates inaccessible, unknown, unsupported, or actively used containers.
   - Shows compact totals, shortages, meaningful skips, and incomplete-search notices.
   - Disables all item-changing behavior if its runtime compatibility checks fail.
@@ -59,7 +60,7 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 
-Version 0.4.0 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 0.4.1 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
@@ -81,9 +82,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 0.4.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 0.4.1 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
 
-Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. The retry window lasts 10 seconds. Cleanup then returns only ownership demonstrably acquired by Stackmaster to Valheim's unowned state, retrying later if an immediate release cannot be proven safe.
+Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so the first remote-owned action prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. Prepared ownership has a 10-second retry window. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Logical in-use reservations are never retained. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Crafting and every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition release only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards.
 
 Plugin GUID: `com.jstack424.stackmaster`
 

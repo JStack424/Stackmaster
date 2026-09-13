@@ -407,6 +407,32 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("container.SetInUse(false)", release)
         self.assertIn("Leases[acquisition.Id] = new OwnershipLease", ownership)
 
+    def test_build_ownership_lease_is_sliding_scoped_and_preemptible(self):
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+
+        self.assertIn("BuildingLeaseSeconds = 30f", ownership)
+        self.assertIn("OwnershipLeasePurpose.Building", ownership)
+        self.assertIn("RenewForSuccessfulBuild", ownership)
+        self.assertIn("LeaseStillMatchesExactAcquisition", ownership)
+        self.assertIn("IdentityMatches(usedHandle, zdo)", ownership)
+        self.assertIn("zdo.OwnerRevision == acquisition.AcquiredOwnerRevision", ownership)
+        self.assertIn("lease.ExpiresAt = OwnershipLeaseRetentionPolicy.RenewedExpiry(now, BuildingLeaseSeconds)", ownership)
+        self.assertIn("Clear(actionKind == ResourceActionKind.Building)", nearby)
+        self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Crafting)", nearby)
+        self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Building)", nearby)
+        self.assertIn("if (retainSuccessfulBuildOwnership)", nearby)
+        self.assertIn("OwnershipLeaseManager.RenewForSuccessfulBuild(held.Select(item => item.Handle))", nearby)
+        self.assertLess(nearby.index("container.SetInUse(false)"), nearby.index("if (retainSuccessfulBuildOwnership)"))
+        self.assertIn("ObserveRemoteManualOpen", ownership)
+        self.assertIn("requesterSession != acquiredSession", (ROOT / "src" / "Stackmaster.Core" / "OwnershipLeasePolicy.cs").read_text(encoding="utf-8"))
+        self.assertIn("Leases.Remove(lease.Acquisition.Id)", ownership)
+        self.assertIn("never set owner 0", ownership)
+        self.assertIn('Postfix(typeof(Container), "RPC_RequestOpen"', installer)
+        self.assertIn('RequireMethod(failures, typeof(Container), "RPC_RequestOpen", typeof(long), typeof(long))', gate)
+
     def test_all_terminal_paths_release_only_exact_stackmaster_acquisitions(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         storage = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
@@ -420,7 +446,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         transaction_release = nearby.index("OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle)")
         reservation_clear = nearby.rfind("container.SetInUse(false)", 0, transaction_release)
         self.assertLess(reservation_clear, transaction_release)
-        rollback = nearby[nearby.index("internal static bool Rollback()") : nearby.index("private static void Clear()")]
+        rollback = nearby[nearby.index("internal static bool Rollback()") : nearby.index("private static void Clear(bool retainSuccessfulBuildOwnership)")]
         self.assertLess(rollback.index("NearbyResourceService.Rollback"), rollback.index("ReleaseReservations"))
         self.assertIn('OwnershipLeaseManager.ReleaseBatch(ownership, "storage action ended")', storage)
         self.assertLess(storage.index('OwnershipLeaseManager.ReleaseBatch(ownership, "storage action ended")'),
@@ -560,7 +586,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("after == before + entry.Quantity", nearby)
         self.assertIn("AddItemAtMethod.Invoke", nearby)
         self.assertIn("ResourceTransactionContext.AcknowledgeVanillaRemoval(amount)", nearby)
-        self.assertGreaterEqual(nearby.count("ResourceTransactionContext.Complete()"), 2)
+        self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Crafting)", nearby)
+        self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Building)", nearby)
         self.assertIn("RuntimeContext.Disable", nearby)
         self.assertIn('Transactional(typeof(InventoryGui), "DoCrafting"', installer)
         self.assertIn('Transactional(typeof(Player), "UpdatePlacement"', installer)
@@ -618,7 +645,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         transaction_start = nearby.index("ResourceTransactionContext.Begin(removed")
         removal_start = nearby.index("ExecuteWithRollback(player", transaction_start)
         self.assertLess(transaction_start, removal_start)
-        rollback_context = nearby[nearby.index("internal static bool Rollback()") : nearby.index("private static void Clear()")]
+        rollback_context = nearby[nearby.index("internal static bool Rollback()") : nearby.index("private static void Clear(bool retainSuccessfulBuildOwnership)")]
         self.assertLess(rollback_context.index("NearbyResourceService.Rollback"), rollback_context.index("ReleaseReservations"))
         self.assertIn("var actualRemoved = before - after", nearby)
         self.assertIn("clone.m_stack = actualRemoved", nearby)
