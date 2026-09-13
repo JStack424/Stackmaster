@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- Added an **Auto-sort chest** checkbox beneath supported opened vanilla chests.
+- Each chest defaults to enabled and remembers its choice locally per player, world, and stable chest identity. The preference is never written to shared ZDO/world state and cannot affect another player.
+- Enabled chests sort on both UI open and UI close, so removing items no longer requires reopening the chest to restore order.
+- Disabling one chest takes effect immediately without disabling player-inventory sorting or changing deposit, replenishment, nearby build/craft, or manual organization behavior.
+- Chest sorting fails safely when stable identity, local preference storage, ownership, or inventory access is unavailable.
+- Automated verification passes with zero build warnings/errors, 64 pure-domain tests, and 50 static/repository safety checks.
+
 ## 0.2.2
 
 - Updated the README for clarity and readability. No gameplay changes.

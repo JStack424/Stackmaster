@@ -15,6 +15,7 @@ namespace Stackmaster
         {
             Plugin = plugin;
             Compatibility = compatibility;
+            ChestSortPreferences.Initialize();
         }
 
         internal static void Disable(string reason)
@@ -42,11 +43,21 @@ namespace Stackmaster
             finally
             {
                 Compatibility = new CompatibilityResult(false, reason);
+                try
+                {
+                    InventoryIntegration.OnCompatibilityDisabled();
+                    ChestSortPreferences.Shutdown();
+                }
+                catch (Exception exception)
+                {
+                    Plugin?.Log.LogError("Local chest-sort UI cleanup failed safely: " + exception);
+                }
             }
         }
 
         internal static void Shutdown()
         {
+            ChestSortPreferences.Shutdown();
             Plugin = null;
             Compatibility = new CompatibilityResult(false, "shut down");
         }

@@ -17,7 +17,7 @@ namespace Stackmaster
             var patches = new List<PatchSpec>
             {
                 Postfix(typeof(InventoryGui), "Awake", Type.EmptyTypes, typeof(InventoryGuiAwakePatch)),
-                Postfix(typeof(InventoryGui), "Hide", Type.EmptyTypes, typeof(InventoryGuiHidePatch)),
+                Both(typeof(InventoryGui), "Hide", Type.EmptyTypes, typeof(InventoryGuiHidePatch)),
                 Postfix(typeof(InventoryGui), "Show", new[] { typeof(Container), typeof(int) }, typeof(InventoryGuiShowPatch)),
                 Prefix(typeof(InventoryGui), "Update", Type.EmptyTypes, typeof(InventoryGuiStorageActionPatch)),
                 Postfix(typeof(InventoryGrid), "UpdateInventory", new[] { typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData) }, typeof(InventoryGridUpdateInventoryPatch)),

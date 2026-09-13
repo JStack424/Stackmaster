@@ -9,6 +9,9 @@ internal static class Program
     {
         var tests = new Action[]
         {
+            ChestSortDefaultsToEnabled,
+            ChestSortKeyScopesPlayerWorldAndChest,
+            ChestSortRejectsUnsafeIdentityAndStoredValues,
             EmptyInventorySortsWithoutPlacements,
             SortKeepsFixedSlotsAndMergesMovableStacks,
             SortNeverUsesEmptyQuickBarSlots,
@@ -89,6 +92,42 @@ internal static class Program
 
         Console.WriteLine(tests.Length + " tests, " + failures + " failures");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void ChestSortDefaultsToEnabled()
+    {
+        bool enabled;
+        True(ChestSortPreferencePolicy.TryInterpretStoredValue(false, 0, out enabled), "missing preference is valid");
+        True(enabled, "missing preference defaults to enabled");
+        True(ChestSortPreferencePolicy.TryInterpretStoredValue(true, 0, out enabled), "disabled preference is valid");
+        True(!enabled, "stored zero disables only the keyed chest");
+    }
+
+    private static void ChestSortKeyScopesPlayerWorldAndChest()
+    {
+        string first;
+        string otherPlayer;
+        string otherWorld;
+        string otherChest;
+        True(ChestSortPreferencePolicy.TryCreateKey(11, 22, "33:44", out first), "base key is stable");
+        True(ChestSortPreferencePolicy.TryCreateKey(12, 22, "33:44", out otherPlayer), "other player key");
+        True(ChestSortPreferencePolicy.TryCreateKey(11, 23, "33:44", out otherWorld), "other world key");
+        True(ChestSortPreferencePolicy.TryCreateKey(11, 22, "33:45", out otherChest), "other chest key");
+        True(first != otherPlayer, "player identity scopes the preference");
+        True(first != otherWorld, "world identity scopes the preference");
+        True(first != otherChest, "ZDO identity scopes the preference");
+        True(first.StartsWith(ChestSortPreferencePolicy.KeyPrefix + "/", StringComparison.Ordinal), "versioned local key prefix");
+    }
+
+    private static void ChestSortRejectsUnsafeIdentityAndStoredValues()
+    {
+        string key;
+        bool enabled;
+        True(!ChestSortPreferencePolicy.TryCreateKey(0, 22, "33:44", out key), "missing player identity is rejected");
+        True(!ChestSortPreferencePolicy.TryCreateKey(11, 0, "33:44", out key), "missing world identity is rejected");
+        True(!ChestSortPreferencePolicy.TryCreateKey(11, 22, "  ", out key), "missing chest identity is rejected");
+        True(!ChestSortPreferencePolicy.TryInterpretStoredValue(true, 2, out enabled), "unknown stored value fails closed");
+        True(!enabled, "unknown stored value never enables sorting");
     }
 
     private static void EmptyInventorySortsWithoutPlacements()

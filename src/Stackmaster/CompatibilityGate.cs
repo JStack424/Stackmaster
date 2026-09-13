@@ -83,6 +83,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
             RequireMethod(failures, typeof(Container), "CheckForChanges");
             RequireMethod(failures, typeof(Container), "GetInventory");
+            RequireMethod(failures, typeof(ZDOID), "IsNone");
             RequireMethod(failures, typeof(ZDO), "GetByteArray", typeof(int), typeof(byte[]));
             RequireMethod(failures, typeof(ZDO), "get_DataRevision");
             RequireMethod(failures, typeof(ZDO), "get_OwnerRevision");
@@ -124,6 +125,13 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Piece.Requirement), "GetAmount", typeof(int));
             RequireMethod(failures, typeof(Recipe), "GetAmount", typeof(int), typeof(int).MakeByRefType(), typeof(ItemDrop.ItemData).MakeByRefType(), typeof(int));
             RequireMethod(failures, typeof(Player), "GetHoverObject");
+            RequireMethod(failures, typeof(Player), "GetPlayerID");
+            RequireMethod(failures, typeof(ZNet), "GetWorldUID");
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "HasKey", typeof(string));
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "GetInt", typeof(string), typeof(int));
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "SetInt", typeof(string), typeof(int));
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "DeleteKey", typeof(string));
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "Save");
             RequireMethod(failures, typeof(Player), "HaveRequirementItems", typeof(Recipe), typeof(bool), typeof(int), typeof(int));
             RequireMethod(failures, typeof(Player), "HaveRequirements", typeof(Piece), typeof(Player.RequirementMode));
             RequireMethod(failures, typeof(Player), "GetFirstRequiredItem", typeof(Inventory), typeof(Recipe), typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int));
@@ -137,6 +145,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNetView), "InvokeRPC", typeof(string), typeof(object[]));
             RequireMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool));
             RequireField(failures, typeof(InventoryGui), "m_pvp");
+            RequireField(failures, typeof(InventoryGui), "m_container");
             RequireField(failures, typeof(InventoryGui), "m_currentContainer");
             RequireField(failures, typeof(InventoryGui), "m_craftTimer");
             RequireField(failures, typeof(InventoryGui), "m_craftRecipe");

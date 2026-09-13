@@ -16,7 +16,9 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 
 - **Inventory sorting**
   - Sorts movable backpack slots alphabetically whenever the inventory opens.
-  - Sorts an opened vanilla container at the same time.
+  - Adds an **Auto-sort chest** checkbox beneath each supported opened vanilla chest.
+  - Sorts an enabled chest when its UI opens and again when it closes, so removing items does not require a reopen to restore order.
+  - Remembers disabled chests locally per player, world, and chest without writing preferences to shared world state or affecting other players.
   - Keeps the whole quick bar, equipped items, and protected stacks fixed.
 - **Auto-deposit**
   - Runs only when you press `Left Alt + E` while targeting or interacting with a vanilla chest.
@@ -45,26 +47,26 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 
 ## Controls
 
-- **Open inventory:** Sort movable player slots and any opened vanilla container when Auto-sort is enabled.
+- **Open inventory:** Sort movable player slots when the player-inventory Auto-sort checkbox is enabled. An opened vanilla chest follows its own **Auto-sort chest** checkbox on both open and close.
 - **Left Alt-click an unprotected stackable item:** Set protection and an optional replenishment target. Press Enter to accept the prefilled legal full-stack amount, type a lower legal amount, or enter `0` for protection only.
 - **Left Alt-click an unprotected non-stackable item:** Protect it immediately.
 - **Left Alt-click a protected item:** Unprotect it.
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 
-Version 0.2.2 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 0.3.0 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
 Stackmaster has exactly five settings:
 
-1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory.
+1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory. Chest auto-sort is controlled separately in each chest UI and is not a sixth global setting.
 2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and shared by all nearby-storage features.
 3. **Storage-action keybind** — Left Alt + E by default.
 4. **Enable building from nearby chests** — on by default and independently switchable.
 5. **Enable crafting from nearby chests** — on by default and independently switchable.
 
-All settings are available through the normal r2modman/BepInEx configuration editor after the first launch.
+All five global settings are available through the normal r2modman/BepInEx configuration editor after the first launch. Per-chest auto-sort choices are local-only preferences scoped to the current player, world, and stable chest identity; a missing or unreadable identity safely skips chest sorting.
 
 ## Installation
 
@@ -74,7 +76,7 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 0.2.2 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 0.3.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
 
 Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so a remote-owned action intentionally takes two attempts: the first prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. The retry window lasts 10 seconds. Cleanup then returns only ownership demonstrably acquired by Stackmaster to Valheim's unowned state, retrying later if an immediate release cannot be proven safe.
 

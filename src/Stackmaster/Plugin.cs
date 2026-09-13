@@ -28,7 +28,7 @@ namespace Stackmaster
         {
             Instance = this;
             AutoSortEnabled = Config.Bind("General", "Auto-sort enabled", true,
-                "Sort movable player and opened-container inventory slots once when the inventory opens.");
+                "Sort movable player inventory slots once when the inventory opens. Opened chests use their own local checkbox.");
             NearbyStorageRadius = Config.Bind("General", "Nearby-storage radius", 20f,
                 new ConfigDescription("Player-centered vanilla-container search radius in metres.",
                     new AcceptableValueRange<float>(1f, 50f)));

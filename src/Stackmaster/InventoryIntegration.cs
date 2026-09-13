@@ -16,6 +16,8 @@ namespace Stackmaster
     {
         private const string ToggleName = "StackmasterAutoSortToggle";
         private const string ToggleAnchorName = "StackmasterAutoSortAnchor";
+        private const string ChestToggleName = "StackmasterChestAutoSortToggle";
+        private const string ChestToggleAnchorName = "StackmasterChestAutoSortAnchor";
         private const string ProtectionOverlayName = "StackmasterProtectionOverlay";
         private static readonly FieldInfo GridElementsField = AccessTools.Field(typeof(InventoryGrid), "m_elements");
         private static readonly Dictionary<InventoryElement, ProtectionOverlay> ProtectionOverlays = new Dictionary<InventoryElement, ProtectionOverlay>();
@@ -23,10 +25,16 @@ namespace Stackmaster
         private static GameObject _toggleAnchor;
         private static GameObject _toggleCheckmark;
         private static Toggle _toggle;
+        private static GameObject _chestToggleAnchor;
+        private static GameObject _chestToggleCheckmark;
+        private static Toggle _chestToggle;
+        private static string _boundChestPreferenceKey;
+        private static Container _boundChest;
         private static Inventory _observedPlayerInventory;
         private static readonly Action InventoryChangedHandler = OnObservedInventoryChanged;
         private static bool _overlayRefreshPending;
         private static bool _sortedThisOpen;
+        private static bool _sortingChestOnClose;
         private static bool _overlaysDisabled;
         private static bool _overlayFailureLogged;
 
@@ -134,6 +142,150 @@ namespace Stackmaster
             RuntimeContext.Plugin.AutoSortEnabled.SettingChanged += OnAutoSortSettingChanged;
         }
 
+        internal static void EnsureChestToggle(InventoryGui gui)
+        {
+            if (_chestToggle != null || gui == null || gui.m_container == null)
+            {
+                return;
+            }
+
+            _chestToggleAnchor = new GameObject(
+                ChestToggleAnchorName,
+                typeof(RectTransform),
+                typeof(LayoutElement),
+                typeof(Toggle));
+            _chestToggleAnchor.transform.SetParent(gui.m_container, false);
+            _chestToggleAnchor.transform.SetAsLastSibling();
+            var anchorRect = (RectTransform)_chestToggleAnchor.transform;
+            anchorRect.anchorMin = new Vector2(0f, 0f);
+            anchorRect.anchorMax = new Vector2(0f, 0f);
+            anchorRect.pivot = new Vector2(0f, 0f);
+            anchorRect.anchoredPosition = new Vector2(12f, -24f);
+            anchorRect.sizeDelta = new Vector2(210f, 28f);
+            _chestToggleAnchor.GetComponent<LayoutElement>().ignoreLayout = true;
+
+            var hitArea = CreateImage(_chestToggleAnchor.transform, "HitArea", Color.clear);
+            var hitRect = hitArea.rectTransform;
+            hitRect.anchorMin = Vector2.zero;
+            hitRect.anchorMax = Vector2.one;
+            hitRect.offsetMin = Vector2.zero;
+            hitRect.offsetMax = Vector2.zero;
+            hitArea.raycastTarget = true;
+
+            var box = CreateImage(_chestToggleAnchor.transform, "Box", new Color(0.055f, 0.09f, 0.105f, 0.94f));
+            var boxRect = box.rectTransform;
+            boxRect.anchorMin = new Vector2(0f, 0.5f);
+            boxRect.anchorMax = new Vector2(0f, 0.5f);
+            boxRect.pivot = new Vector2(0f, 0.5f);
+            boxRect.anchoredPosition = Vector2.zero;
+            boxRect.sizeDelta = new Vector2(20f, 20f);
+            var boxOutline = box.gameObject.AddComponent<Outline>();
+            boxOutline.effectColor = new Color(0.22f, 0.78f, 0.84f, 0.9f);
+            boxOutline.effectDistance = new Vector2(1f, -1f);
+
+            _chestToggleCheckmark = new GameObject("CheckedX", typeof(RectTransform));
+            _chestToggleCheckmark.transform.SetParent(_chestToggleAnchor.transform, false);
+            var checkRect = (RectTransform)_chestToggleCheckmark.transform;
+            checkRect.anchorMin = new Vector2(0f, 0.5f);
+            checkRect.anchorMax = new Vector2(0f, 0.5f);
+            checkRect.pivot = new Vector2(0f, 0.5f);
+            checkRect.anchoredPosition = Vector2.zero;
+            checkRect.sizeDelta = new Vector2(20f, 20f);
+            CreateCheckedXStroke(checkRect, "ForwardStroke", 45f);
+            CreateCheckedXStroke(checkRect, "BackStroke", -45f);
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelObject.transform.SetParent(_chestToggleAnchor.transform, false);
+            var label = labelObject.GetComponent<TextMeshProUGUI>();
+            CopyTextStyle(gui, label);
+            label.text = "Auto-sort chest";
+            label.fontSize = Mathf.Max(14f, label.fontSize);
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.color = Color.white;
+            label.raycastTarget = false;
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0f, 0f);
+            labelRect.anchorMax = new Vector2(1f, 1f);
+            labelRect.offsetMin = new Vector2(28f, 0f);
+            labelRect.offsetMax = Vector2.zero;
+
+            _chestToggle = _chestToggleAnchor.GetComponent<Toggle>();
+            _chestToggle.gameObject.name = ChestToggleName;
+            _chestToggle.group = null;
+            _chestToggle.interactable = true;
+            _chestToggle.transition = Selectable.Transition.ColorTint;
+            _chestToggle.targetGraphic = hitArea;
+            _chestToggle.graphic = null;
+            var colors = _chestToggle.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.82f, 1f, 1f, 1f);
+            colors.pressedColor = new Color(0.62f, 0.9f, 0.92f, 1f);
+            colors.selectedColor = Color.white;
+            colors.disabledColor = new Color(1f, 1f, 1f, 0.35f);
+            colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0.08f;
+            _chestToggle.colors = colors;
+            _chestToggle.SetIsOnWithoutNotify(true);
+            _chestToggleCheckmark.SetActive(true);
+            _chestToggle.onValueChanged.AddListener(OnChestToggleChanged);
+            _chestToggleAnchor.SetActive(false);
+        }
+
+        internal static void BindChestToggle(Container container)
+        {
+            _boundChest = null;
+            _boundChestPreferenceKey = null;
+            if (_chestToggleAnchor == null || _chestToggle == null)
+            {
+                return;
+            }
+
+            _chestToggleAnchor.SetActive(false);
+            string key;
+            bool enabled;
+            if (!ChestSortPreferences.TryGet(container, out key, out enabled))
+            {
+                return;
+            }
+
+            _boundChest = container;
+            _boundChestPreferenceKey = key;
+            _chestToggle.interactable = true;
+            _chestToggle.SetIsOnWithoutNotify(enabled);
+            _chestToggleCheckmark.SetActive(enabled);
+            _chestToggleAnchor.SetActive(true);
+        }
+
+        private static void OnChestToggleChanged(bool enabled)
+        {
+            if (_chestToggleCheckmark != null)
+            {
+                _chestToggleCheckmark.SetActive(enabled);
+            }
+            if (_boundChest == null || string.IsNullOrEmpty(_boundChestPreferenceKey))
+            {
+                return;
+            }
+
+            if (!ChestSortPreferences.TrySet(_boundChestPreferenceKey, enabled))
+            {
+                _chestToggle.SetIsOnWithoutNotify(false);
+                _chestToggleCheckmark.SetActive(false);
+                _chestToggle.interactable = false;
+            }
+        }
+
+        private static void UnbindChestToggle()
+        {
+            _boundChest = null;
+            _boundChestPreferenceKey = null;
+            if (_chestToggleAnchor != null)
+            {
+                _chestToggleAnchor.SetActive(false);
+            }
+        }
+
         private static void CopyTextStyle(InventoryGui gui, TMP_Text target)
         {
             var template = gui.m_pvp != null ? gui.m_pvp.GetComponentInChildren<TMP_Text>(true) : null;
@@ -238,10 +390,20 @@ namespace Stackmaster
             }
         }
 
+        internal static void OnCompatibilityDisabled()
+        {
+            OnInventoryHidden();
+            if (_toggleAnchor != null)
+            {
+                _toggleAnchor.SetActive(false);
+            }
+        }
+
         internal static void Shutdown()
         {
             _overlayRefreshPending = false;
             UnbindPlayerInventory();
+            UnbindChestToggle();
             if (RuntimeContext.Plugin != null && RuntimeContext.Plugin.AutoSortEnabled != null)
             {
                 RuntimeContext.Plugin.AutoSortEnabled.SettingChanged -= OnAutoSortSettingChanged;
@@ -259,11 +421,27 @@ namespace Stackmaster
                 _toggle = null;
             }
             _toggleCheckmark = null;
+            if (_chestToggleAnchor != null)
+            {
+                Object.Destroy(_chestToggleAnchor);
+                _chestToggleAnchor = null;
+                _chestToggleCheckmark = null;
+                _chestToggle = null;
+            }
+            else if (_chestToggle != null)
+            {
+                Object.Destroy(_chestToggle.gameObject);
+                _chestToggle = null;
+            }
+            _chestToggleCheckmark = null;
+            _boundChestPreferenceKey = null;
+            _boundChest = null;
 
             DestroyProtectionOverlays();
             _overlaysDisabled = false;
             _overlayFailureLogged = false;
             _sortedThisOpen = false;
+            _sortingChestOnClose = false;
         }
 
         private static void OnAutoSortSettingChanged(object sender, EventArgs args)
@@ -343,29 +521,24 @@ namespace Stackmaster
             }
             _sortedThisOpen = true;
 
-            if (!RuntimeContext.Plugin.AutoSortEnabled.Value)
-            {
-                return;
-            }
-
             var player = Player.m_localPlayer;
-            if (player == null)
-            {
-                return;
-            }
-
-            ProtectionState protection;
-            if (!RuntimeContext.TryLoadProtection(player, out protection))
-            {
-                return;
-            }
             string failure;
-            if (!SortExecutor.Sort(player.GetInventory(), true, player, protection, out failure))
+            if (RuntimeContext.Plugin.AutoSortEnabled.Value && player != null)
             {
-                RuntimeContext.Plugin.Log.LogWarning("Player auto-sort skipped safely: " + failure);
+                ProtectionState protection;
+                if (RuntimeContext.TryLoadProtection(player, out protection) &&
+                    !SortExecutor.Sort(player.GetInventory(), true, player, protection, out failure))
+                {
+                    RuntimeContext.Plugin.Log.LogWarning("Player auto-sort skipped safely: " + failure);
+                }
             }
 
-            if (container != null && container.GetType() == typeof(Container) && container.IsOwner() && container.GetInventory() != null)
+            string preferenceKey;
+            bool chestAutoSortEnabled;
+            if (container != null && container.GetType() == typeof(Container) && container.IsOwner() &&
+                container.GetInventory() != null &&
+                ChestSortPreferences.TryGet(container, out preferenceKey, out chestAutoSortEnabled) &&
+                chestAutoSortEnabled)
             {
                 if (!SortExecutor.Sort(container.GetInventory(), false, null, null, out failure))
                 {
@@ -374,11 +547,48 @@ namespace Stackmaster
             }
         }
 
+        internal static void SortClosingChest()
+        {
+            if (_sortingChestOnClose || _boundChest == null)
+            {
+                return;
+            }
+
+            _sortingChestOnClose = true;
+            try
+            {
+                var container = _boundChest;
+                string preferenceKey;
+                bool enabled;
+                if (container == null || container.GetType() != typeof(Container) || !container.IsOwner() ||
+                    container.GetInventory() == null ||
+                    !ChestSortPreferences.TryGet(container, out preferenceKey, out enabled) || !enabled)
+                {
+                    return;
+                }
+
+                string failure;
+                if (!SortExecutor.Sort(container.GetInventory(), false, null, null, out failure))
+                {
+                    RuntimeContext.Plugin.Log.LogWarning("Closing-container auto-sort skipped safely: " + failure);
+                }
+            }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogWarning("Closing-container auto-sort skipped safely: " + exception);
+            }
+            finally
+            {
+                _sortingChestOnClose = false;
+            }
+        }
+
         internal static void OnInventoryHidden()
         {
             _sortedThisOpen = false;
             _overlayRefreshPending = false;
             UnbindPlayerInventory();
+            UnbindChestToggle();
             HideProtectionOverlays();
         }
 
@@ -554,12 +764,19 @@ namespace Stackmaster
         {
             if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
+            InventoryIntegration.EnsureChestToggle(__instance);
         }
     }
 
     [HarmonyPatch(typeof(InventoryGui), "Hide")]
     internal static class InventoryGuiHidePatch
     {
+        private static void Prefix()
+        {
+            if (!RuntimeContext.Compatibility.IsCompatible) return;
+            InventoryIntegration.SortClosingChest();
+        }
+
         private static void Postfix()
         {
             if (!RuntimeContext.Compatibility.IsCompatible) return;
@@ -584,7 +801,9 @@ namespace Stackmaster
         {
             if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
+            InventoryIntegration.EnsureChestToggle(__instance);
             InventoryIntegration.BindPlayerInventory(Player.m_localPlayer);
+            InventoryIntegration.BindChestToggle(container);
             InventoryIntegration.SortOpenedInventories(container);
             InventoryIntegration.RequestProtectionOverlayRefresh();
         }

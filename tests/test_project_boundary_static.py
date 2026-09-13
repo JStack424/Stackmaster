@@ -152,6 +152,63 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(unsubscribe, subscribe)
         self.assertIn("Object.Destroy(_toggleAnchor)", integration)
 
+    def test_chest_auto_sort_is_local_scoped_and_not_a_sixth_setting(self):
+        integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        preferences = (PLUGIN_DIR / "ChestSortPreferences.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "ChestSortPreferencePolicy.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn('label.text = "Auto-sort chest"', integration)
+        self.assertIn("_chestToggleAnchor.transform.SetParent(gui.m_container, false)", integration)
+        self.assertIn("_chestToggle.SetIsOnWithoutNotify(enabled)", integration)
+        self.assertIn("ChestSortPreferences.TrySet(_boundChestPreferenceKey, enabled)", integration)
+        self.assertIn("Player.m_localPlayer.GetPlayerID()", preferences)
+        self.assertIn("ZNet.instance.GetWorldUID()", preferences)
+        self.assertIn("zdo.m_uid.IsNone()", preferences)
+        self.assertIn("zdo.m_uid.ToString()", preferences)
+        self.assertIn("PlayerPrefs.HasKey(key)", preferences)
+        self.assertIn("PlayerPrefs.SetInt(key, 0)", preferences)
+        self.assertIn("PlayerPrefs.DeleteKey(key)", preferences)
+        self.assertIn("PlayerPrefs.Save()", preferences)
+        self.assertNotIn("m_customData", preferences)
+        self.assertNotIn("SetOwner", preferences)
+        self.assertNotIn("ZDO.Set", preferences)
+        self.assertIn('KeyPrefix = "com.jstack424.stackmaster/chest-auto-sort/v1"', policy)
+        self.assertIn("if (!hasStoredValue)", policy)
+        self.assertIn("enabled = true", policy)
+        self.assertIn('RequireMethod(failures, typeof(Player), "GetPlayerID")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZNet), "GetWorldUID")', gate)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_container")', gate)
+
+    def test_enabled_chest_sorts_on_open_and_close_without_sorting_player_on_close(self):
+        integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        hide_patch = integration[integration.index("internal static class InventoryGuiHidePatch"):]
+        self.assertIn("private static void Prefix()", hide_patch)
+        self.assertIn("InventoryIntegration.SortClosingChest();", hide_patch)
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        self.assertIn('Both(typeof(InventoryGui), "Hide", Type.EmptyTypes, typeof(InventoryGuiHidePatch))', installer)
+        close_start = integration.index("internal static void SortClosingChest()")
+        close_end = integration.index("internal static void OnInventoryHidden()", close_start)
+        close_body = integration[close_start:close_end]
+        self.assertIn("_sortingChestOnClose", close_body)
+        self.assertIn("_boundChest", close_body)
+        self.assertIn("container.GetType() != typeof(Container)", close_body)
+        self.assertIn("!container.IsOwner()", close_body)
+        self.assertIn("ChestSortPreferences.TryGet(container", close_body)
+        self.assertIn("!enabled", close_body)
+        self.assertIn("SortExecutor.Sort(container.GetInventory(), false, null, null", close_body)
+        self.assertNotIn("player.GetInventory()", close_body)
+        self.assertNotIn("Player.m_localPlayer", close_body)
+        self.assertIn("catch (Exception exception)", close_body)
+        self.assertIn("finally", close_body)
+        self.assertIn("UnbindChestToggle();", integration[integration.index("internal static void OnInventoryHidden()"):
+                                                         integration.index("private static void HideProtectionOverlays")])
+        open_start = integration.index("internal static void SortOpenedInventories(Container container)")
+        open_end = close_start
+        open_body = integration[open_start:open_end]
+        self.assertIn("ChestSortPreferences.TryGet(container", open_body)
+        self.assertIn("chestAutoSortEnabled", open_body)
+        self.assertIn("SortExecutor.Sort(container.GetInventory(), false, null, null", open_body)
+
     def test_explicit_target_and_ordinary_base_are_inspected_before_budget_can_stop_search(self):
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
         target_inspection = discovery.index("handles.Add(Inspect(player, target, catalog, targetDistance, true, targetDiagnostic, resourceReadOnly))")

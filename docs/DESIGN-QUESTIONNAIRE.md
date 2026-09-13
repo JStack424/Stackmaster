@@ -39,6 +39,15 @@ This is the running, finite decision list for the first Valheim quality-of-life 
 - [x] **17. Public package identity** — Choose the mod name, plugin GUID, Thunderstore team/package identity, license, source/homepage plan, icon direction, and public wording.
 - [x] **18. Test plan and definition of done** — Agree on solo, host, guest, dedicated-server, conflict, update, packaging, and r2modman tests required before v0.1 is publishable.
 
+## Post-release approved amendment — chest-specific auto-sort (September 13, 2026)
+
+- Every supported opened vanilla chest has an `Auto-sort chest` checkbox along its bottom edge, visually and behaviorally matching the player-inventory control.
+- The player-inventory Auto-sort setting and each chest preference are independent. Disabling a chest never disables player sorting.
+- Each chest defaults to enabled and sorts both when its UI opens and immediately before its UI closes. Close-time sorting touches only the chest being closed and never newly sorts the player inventory.
+- A disabled chest preference is local to the exact player, world, and stable chest ZDO identity. It is never stored in shared ZDO/world state or applied to another player.
+- Missing stable identity, unreadable or malformed local data, failed local persistence, unavailable ownership, or unavailable inventory access skips chest sorting safely without blocking vanilla open/close behavior.
+- This amendment does not change manual transfers, deposit/replenishment, nearby build/craft, protection, access rules, ownership behavior, or the five global settings.
+
 ## Settled answers
 
 ### 1. Ideal gameplay flow
