@@ -75,6 +75,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "Update");
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
+            RequireMethod(failures, typeof(InventoryGui), "OnDropOutside");
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
             RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
             RequireMethod(failures, typeof(InventoryGui), "get_instance");
@@ -116,6 +117,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(TextViewer), "IsVisible");
             RequireMethod(failures, typeof(GameCamera), "InFreeFly");
             RequireMethod(failures, typeof(Inventory), "MoveItemToThis", typeof(Inventory), typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int));
+            RequireMethod(failures, typeof(Inventory), "ContainsItem", typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Inventory), "GetAllItems");
             RequireMethod(failures, typeof(Inventory), "GetItemAt", typeof(int), typeof(int));
             RequireMethod(failures, typeof(Inventory), "CountItems", typeof(string), typeof(int), typeof(bool));
@@ -162,6 +164,7 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_multiCrafting");
             RequireField(failures, typeof(InventoryGui), "m_multiCraftAmount");
             RequireField(failures, typeof(InventoryGui), "m_dragItem");
+            RequireField(failures, typeof(InventoryGui), "m_dragInventory");
             RequireField(failures, typeof(InventoryGui), "m_trophiesPanel");
             RequireField(failures, typeof(InventoryGui), "m_achievementsPanel");
             RequireField(failures, typeof(InventoryGui), "m_skillsDialog");

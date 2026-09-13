@@ -33,7 +33,9 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 - **Auto-replenish**
   - Refills protected stacks, including ammo and consumables, to optional target quantities during the same storage action.
   - Sets, changes, or removes protection and replenishment targets directly with `Left Alt-click`.
-  - Keeps protected stacks fixed while sorting and follows one compatible stack when it moves or survives a merge.
+  - Keeps protected stacks fixed while sorting and follows one compatible stack when it moves or survives a merge inside the player inventory.
+  - Clears a stack's protection and target after that whole stack is manually transferred to a chest or dropped into the world; partial moves keep the protected remainder.
+  - Prunes older orphaned targets before a storage hotkey action, so an item you no longer carry does not keep reporting `target item missing`.
 - **Build and craft from nearby chests**
   - Counts and consumes exact building, crafting, and upgrade costs from the player plus accessible vanilla chests in the active storage scope, regardless of current network ownership.
   - Shows selected build-piece costs as `required / total available`; satisfied combined stock stays white, while a true shortage flashes red.

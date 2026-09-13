@@ -34,10 +34,18 @@ namespace Stackmaster
             Player player,
             ProtectionState protection,
             CompatibilityCatalog catalog,
-            string inventoryId = "player")
+            string inventoryId = "player",
+            bool pruneUnresolvedProtection = false)
         {
             var inventory = player.GetInventory();
-            return CaptureInventory(inventoryId, inventory, catalog, true, player, protection);
+            return CaptureInventory(
+                inventoryId,
+                inventory,
+                catalog,
+                true,
+                player,
+                protection,
+                pruneUnresolvedProtection);
         }
 
         internal static InventorySnapshot CaptureInventory(
@@ -46,13 +54,14 @@ namespace Stackmaster
             CompatibilityCatalog catalog,
             bool isPlayer = false,
             Player player = null,
-            ProtectionState protection = null)
+            ProtectionState protection = null,
+            bool pruneUnresolvedProtection = false)
         {
             if (inventory == null) throw new ArgumentNullException(nameof(inventory));
             if (catalog == null) throw new ArgumentNullException(nameof(catalog));
 
             var protectionResolution = isPlayer && player != null && protection != null
-                ? ResolveProtection(player, protection)
+                ? ResolveProtection(player, protection, pruneUnresolvedProtection)
                 : null;
             var width = inventory.GetWidth();
             var items = inventory.GetAllItems()
@@ -76,7 +85,10 @@ namespace Stackmaster
             return new InventorySnapshot(inventoryId, width * height, items, reservedSlots);
         }
 
-        internal static ProtectionResolution ResolveProtection(Player player, ProtectionState protection)
+        internal static ProtectionResolution ResolveProtection(
+            Player player,
+            ProtectionState protection,
+            bool pruneUnresolved = false)
         {
             if (player == null) throw new ArgumentNullException(nameof(player));
             if (protection == null) throw new ArgumentNullException(nameof(protection));
@@ -87,7 +99,7 @@ namespace Stackmaster
                     new Slot(item.m_gridPos.x, item.m_gridPos.y),
                     PersistentItemKey(item)))
                 .ToArray();
-            var resolution = protection.Reconcile(candidates);
+            var resolution = protection.Reconcile(candidates, pruneUnresolved);
             if (resolution.Changed)
             {
                 RuntimeContext.SaveProtection(player, protection);

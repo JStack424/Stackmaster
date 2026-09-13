@@ -40,6 +40,14 @@ internal static class Program
             DuplicateChoiceIsDeterministic,
             MergeSurvivorKeepsOneRecord,
             NoMatchingItemProtectsNothingUnrelated,
+            FullChestTransferClearsProtection,
+            FullWorldDropClearsProtection,
+            PartialChestTransferKeepsProtection,
+            PartialWorldDropKeepsProtection,
+            InternalMoveKeepsProtection,
+            TransientDragKeepsProtection,
+            HotkeyPrunesLegacyOrphanedTarget,
+            HotkeyPruningPreservesValidMovedTarget,
             ResourceAvailabilityCountsPlayerNearbyAndQuality,
             ResourceDisplayAggregatesDuplicateRequirements,
             ResourceDisplayUsesUpgradeAndMultiCraftTotals,
@@ -596,6 +604,101 @@ internal static class Program
         Equal(0, resolution.Assignments.Count, "no unrelated stack is protected");
         Equal(1, state.Records.Count, "identified record stays dormant for its item");
         True(!resolution.Changed, "dormant record does not churn persistence");
+    }
+
+    private static void FullChestTransferClearsProtection()
+    {
+        True(ProtectionExitPolicy.ShouldClear(
+            wasProtected: true,
+            destinationWasExternal: true,
+            sourceStillContainsProtectedItem: false),
+            "a confirmed full transfer from player inventory clears protection");
+    }
+
+    private static void FullWorldDropClearsProtection()
+    {
+        True(ProtectionExitPolicy.ShouldClear(
+            wasProtected: true,
+            destinationWasExternal: true,
+            sourceStillContainsProtectedItem: false),
+            "a confirmed full world drop clears protection");
+    }
+
+    private static void PartialChestTransferKeepsProtection()
+    {
+        True(!ProtectionExitPolicy.ShouldClear(
+            wasProtected: true,
+            destinationWasExternal: true,
+            sourceStillContainsProtectedItem: true),
+            "a protected remainder after a partial chest transfer keeps protection");
+    }
+
+    private static void PartialWorldDropKeepsProtection()
+    {
+        True(!ProtectionExitPolicy.ShouldClear(
+            wasProtected: true,
+            destinationWasExternal: true,
+            sourceStillContainsProtectedItem: true),
+            "a protected remainder after a partial world drop keeps protection");
+    }
+
+    private static void InternalMoveKeepsProtection()
+    {
+        True(!ProtectionExitPolicy.ShouldClear(
+            wasProtected: true,
+            destinationWasExternal: false,
+            sourceStillContainsProtectedItem: false),
+            "an internal move or merge never uses external-exit cleanup");
+    }
+
+    private static void TransientDragKeepsProtection()
+    {
+        True(!ProtectionExitPolicy.ShouldClear(
+            wasProtected: true,
+            destinationWasExternal: true,
+            sourceStillContainsProtectedItem: true),
+            "starting or failing an external drag leaves the item and its protection intact");
+        True(!ProtectionExitPolicy.ShouldClear(
+            wasProtected: false,
+            destinationWasExternal: true,
+            sourceStillContainsProtectedItem: false),
+            "unprotected items never mutate protection state");
+    }
+
+    private static void HotkeyPrunesLegacyOrphanedTarget()
+    {
+        var state = new ProtectionState(new[]
+        {
+            new ProtectionRecord(new Slot(2, 0), 7, "obsolete-food")
+        });
+
+        var resolution = state.Reconcile(new[]
+        {
+            new ProtectionCandidate(new Slot(2, 0), "wood"),
+            new ProtectionCandidate(new Slot(0, 2), "stone")
+        }, pruneUnresolved: true);
+
+        Equal(0, resolution.Assignments.Count, "orphan has no runtime assignment");
+        Equal(0, state.Records.Count, "hotkey maintenance removes the orphaned target record");
+        True(resolution.Changed, "orphan pruning requests persistence");
+    }
+
+    private static void HotkeyPruningPreservesValidMovedTarget()
+    {
+        var state = new ProtectionState(new[]
+        {
+            new ProtectionRecord(new Slot(3, 2), 12, "food")
+        });
+
+        var resolution = state.Reconcile(new[]
+        {
+            new ProtectionCandidate(new Slot(3, 2), "stone"),
+            new ProtectionCandidate(new Slot(1, 0), "food")
+        }, pruneUnresolved: true);
+
+        True(resolution.TryGet(new Slot(1, 0), out var record), "valid moved target is rebound before pruning");
+        Equal(12, record.TargetQuantity, "valid moved target quantity survives pruning");
+        Equal(1, state.Records.Count, "valid target record remains persisted");
     }
 
     private static void ResourceAvailabilityCountsPlayerNearbyAndQuality()

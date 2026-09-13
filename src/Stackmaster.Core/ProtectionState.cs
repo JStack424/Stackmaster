@@ -126,7 +126,7 @@ namespace Stackmaster.Core
             return _records.Remove(record);
         }
 
-        public ProtectionResolution Reconcile(IEnumerable<ProtectionCandidate> candidates)
+        public ProtectionResolution Reconcile(IEnumerable<ProtectionCandidate> candidates, bool pruneUnresolved = false)
         {
             if (candidates == null) throw new ArgumentNullException(nameof(candidates));
 
@@ -231,6 +231,20 @@ namespace Stackmaster.Core
             // item; this is the only safe migration from the former exact-slot model.
             var migrated = survivors.Where(record => !string.IsNullOrEmpty(record.TargetItemKey)).ToArray();
             changed |= migrated.Length != survivors.Length;
+
+            // Ordinary inventory reconciliation keeps an identified record dormant so a
+            // transient cursor drag can complete safely. A deliberate maintenance boundary
+            // (currently the storage hotkey) may instead prune records that cannot resolve any
+            // compatible player-inventory item. This self-heals orphaned targets from older
+            // builds without changing item-following during normal inventory interaction.
+            if (pruneUnresolved)
+            {
+                var assigned = new HashSet<ProtectionRecord>(assignments.Values);
+                var resolvedOnly = migrated.Where(assigned.Contains).ToArray();
+                changed |= resolvedOnly.Length != migrated.Length;
+                migrated = resolvedOnly;
+            }
+
             if (changed)
             {
                 _records.Clear();

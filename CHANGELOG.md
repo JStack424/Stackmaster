@@ -11,7 +11,9 @@ Local r2modman test candidate; not published.
 - Cancellation, failure, rollback, partial or unused acquisition, disable, disconnect, logout, scene unload, shutdown, hot unload, compatibility disable, and exceptions preserve immediate guarded cleanup. Unrelated, merely inspected, already-local, or non-acquired chests are never retained or released.
 - Preserved exact nearby-resource accounting, minimum mutated-chest planning, connected-workbench/20 m fallback scope, chest auto-sort opt-outs, and the exact busy message `The required materials are currently in use`.
 - Crafting and upgrade requirement labels now keep every digit visible by using the normal vanilla font size when it fits and bounded TextMeshPro auto-sizing for longer exact totals such as `45 / 172` and `999 / 999`; pooled rows and disabled/fail-open paths restore their original typography.
-- Automated verification passes with zero build warnings/errors, 87 pure-domain tests, and 54 static/repository safety checks.
+- Manually transferring a whole protected/targeted stack into a chest or dropping it into the world now clears that stack's protection immediately. Partial external moves retain the protected remainder, while moves and merges wholly inside the player inventory keep existing item-following behavior.
+- Storage hotkey planning now prunes older orphaned target records that cannot resolve any compatible player-inventory item, preventing stale `target item missing` shortage notices without disturbing valid moved targets.
+- Automated verification passes with zero build warnings/errors, 95 pure-domain tests, and 55 static/repository safety checks.
 - The ownership-lease change has not yet been independently tested in multiplayer, on dedicated servers, with workbench extensions, or across broader load/unload topologies.
 
 ## 0.4.0

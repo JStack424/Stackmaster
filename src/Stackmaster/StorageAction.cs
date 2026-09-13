@@ -175,7 +175,11 @@ namespace Stackmaster
                     return;
                 }
                 var catalog = new CompatibilityCatalog();
-                var playerSnapshot = InventorySnapshots.CapturePlayer(player, protection, catalog);
+                var playerSnapshot = InventorySnapshots.CapturePlayer(
+                    player,
+                    protection,
+                    catalog,
+                    pruneUnresolvedProtection: true);
                 var scope = StorageScopeProvider.Resolve(player);
                 var discovery = ContainerDiscovery.Discover(
                     player,
@@ -305,7 +309,11 @@ namespace Stackmaster
                 // Re-capture and re-plan from the synchronized inventories so no pre-RPC object
                 // reference is ever used for mutation.
                 var freshCatalog = new CompatibilityCatalog();
-                var freshPlayer = InventorySnapshots.CapturePlayer(player, freshProtection, freshCatalog);
+                var freshPlayer = InventorySnapshots.CapturePlayer(
+                    player,
+                    freshProtection,
+                    freshCatalog,
+                    pruneUnresolvedProtection: true);
                 var freshScope = StorageScopeProvider.Resolve(player);
                 var freshDiscovery = ContainerDiscovery.Discover(player, target, freshCatalog, freshScope);
                 var freshTarget = freshDiscovery.Containers.FirstOrDefault(handle => handle.Container == target);
@@ -388,7 +396,7 @@ namespace Stackmaster
 
             var shortageNames = new List<string>();
             var inventory = player.GetInventory();
-            var resolution = InventorySnapshots.ResolveProtection(player, protection);
+            var resolution = InventorySnapshots.ResolveProtection(player, protection, pruneUnresolved: true);
             foreach (var assignment in resolution.Assignments.Where(value => value.Value.TargetQuantity.HasValue)
                 .OrderBy(value => value.Key.Row).ThenBy(value => value.Key.Column))
             {

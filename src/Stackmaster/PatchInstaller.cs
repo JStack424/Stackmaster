@@ -25,6 +25,11 @@ namespace Stackmaster
                 {
                     typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier)
                 }, typeof(InventoryProtectionClickPatch)),
+                Both(typeof(InventoryGui), "OnSelectedItem", new[]
+                {
+                    typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier)
+                }, typeof(ManualProtectionExitSelectionPatch)),
+                Both(typeof(InventoryGui), "OnDropOutside", Type.EmptyTypes, typeof(ManualProtectionExitDropOutsidePatch)),
                 Prefix(typeof(Container), "Interact", new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, typeof(ContainerInteractPatch)),
                 Postfix(typeof(Container), "GetHoverText", Type.EmptyTypes, typeof(ContainerHoverTextPatch)),
                 Postfix(typeof(Container), "RPC_RequestOpen", new[] { typeof(long), typeof(long) }, typeof(ContainerOpenRequestLeasePatch)),
