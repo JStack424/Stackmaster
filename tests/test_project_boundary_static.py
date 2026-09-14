@@ -403,9 +403,15 @@ class ProjectBoundaryTests(unittest.TestCase):
             "Chat.instance.HasFocus()",
         ):
             self.assertIn(guard, action)
-        self.assertIn("modifier != InventoryGrid.Modifier.Select", protection)
-        self.assertIn("grid.GetInventory() != player.GetInventory()", protection)
-        self.assertIn("if (item == null)", protection)
+        self.assertIn("plugin.StorageActionShortcut.Value.Modifiers.ToArray()", protection)
+        self.assertIn("modifiers.Length > 0 && modifiers.All(Input.GetKey)", protection)
+        self.assertIn("ReferenceEquals(grid.GetInventory(), player.GetInventory())", protection)
+        self.assertIn("item != null", protection)
+        self.assertIn('HarmonyPatch(typeof(InventoryGui), "OnRightClickItem"', protection)
+        self.assertIn('Prefix(typeof(InventoryGui), "OnRightClickItem"',
+                      (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8"))
+        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "OnRightClickItem"',
+                      (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8"))
 
     def test_open_container_shortcut_uses_open_target_without_closing_inventory(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
@@ -451,19 +457,31 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("(!allowOpenContainerUi && InventoryGui.IsVisible())", action)
         self.assertNotIn("InventoryIntegration.RefreshProtectionOverlays", action)
 
-    def test_target_prompt_prefills_and_selects_full_legal_stack_size(self):
+    def test_protection_clicks_split_instant_toggle_from_target_prompt(self):
         protection = (PLUGIN_DIR / "ProtectionInteraction.cs").read_text(encoding="utf-8")
-        self.assertIn("if (item.m_shared.m_maxStackSize <= 1)", protection)
-        self.assertIn("_text = _maxStack.ToString(CultureInfo.InvariantCulture)", protection)
+        core = (ROOT / "src" / "Stackmaster.Core" / "ProtectionInteractionPolicy.cs").read_text(encoding="utf-8")
+        left_start = protection.index("internal static void HandleLeftClick")
+        right_start = protection.index("internal static void HandleRightClick")
+        left_body = protection[left_start:right_start]
+        self.assertIn("ProtectionInteractionPolicy.ApplyLeftClick", left_body)
+        self.assertNotIn("RequestText", left_body)
+        self.assertIn("ProtectionInteractionPolicy.Route", protection[right_start:])
+        self.assertIn("ProtectionClickRoute.SuppressWithoutChange", protection[right_start:])
+        right_body = protection[right_start:protection.index("private static bool ConfiguredModifiersHeld", right_start)]
+        self.assertNotIn("Unprotect", right_body)
+        self.assertIn("protectedRecord?.TargetQuantity ?? _maxStack", protection)
         self.assertIn("Math.Max(4, defaultTargetText.Length)", protection)
         request = protection.index("TextInput.instance.RequestText")
         select = protection.index("SelectPrefilledTarget(TextInput.instance", request)
         self.assertLess(request, select)
         self.assertIn("inputField.selectionAnchorPosition = 0", protection)
         self.assertIn("inputField.selectionFocusPosition = textLength", protection)
-        self.assertIn("target < 0 || target > _maxStack", protection)
-        self.assertIn("if (target == 0)", protection)
-        self.assertIn("state.Protect(_slot, target, _itemKey)", protection)
+        self.assertIn("target >= 1", protection)
+        self.assertIn("target <= _maxStack", protection)
+        self.assertIn("ProtectionInteractionPolicy.TryApplyTarget", protection)
+        self.assertIn("state.Protect(slot, null, itemKey)", core)
+        self.assertIn("state.Unprotect(existingRecord)", core)
+        self.assertIn("state.Protect(slot, target, itemKey)", core)
 
     def test_ownership_flow_recaptures_after_network_refresh(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")

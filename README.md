@@ -10,7 +10,7 @@ Stackmaster is built to preserve the vanilla experience. It adds no gameplay adv
 
 Convenience stays deliberate. Auto-deposit works only when you look at or interact with a chest and press `Left Alt + E`; simply walking near your base never empties your backpack.
 
-> **Testing status:** Stackmaster 1.1.0 is a local test candidate and has not been published. It adds atomic expedition-kit withdrawal from the build menu while preserving all 1.0.0 behavior. Automated coverage includes kit planning, inventory-slot and carry-weight simulation, rollback, the independent storage-total and crafting/building permission combinations, and the 30-second ownership-lease safeguards. Live testing of the new kit action is pending; back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
+> **Testing status:** Stackmaster 1.1.0 is a local test candidate and has not been published. It adds atomic expedition-kit withdrawal from the build menu and splits protected-item controls into an instant modifier-left-click protection toggle and a modifier-right-click restocking-target dialog. Automated coverage includes the new click routing and state transitions, kit planning, inventory-slot and carry-weight simulation, rollback, the independent storage-total and crafting/building permission combinations, and the 30-second ownership-lease safeguards. Live testing of the new controls and kit action is pending; back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
 
 ## Features
 
@@ -32,7 +32,8 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Leaves unmatched items and overflow safely in the player inventory.
 - **Auto-replenish**
   - Refills protected stacks, including ammo and consumables, to optional target quantities during the same storage action.
-  - Sets, changes, or removes protection and replenishment targets directly with `Left Alt-click`.
+  - Uses the configured storage-action modifier for two distinct inventory controls: left-click instantly protects or fully unprotects an item, while right-click opens target entry for stackable items.
+  - A left-click protection toggle never opens a dialog; unlocking also clears any replenishment target. Canceling the right-click dialog preserves the prior state, and non-stackable items remain protection-only.
   - Keeps protected stacks fixed while sorting and follows one compatible stack when it moves or survives a merge inside the player inventory.
   - Clears a stack's protection and target after that whole stack is manually transferred to a chest or dropped into the world; partial moves keep the protected remainder.
   - Prunes older orphaned targets before a storage hotkey action, so an item you no longer carry does not keep reporting `target item missing`.
@@ -64,9 +65,11 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 ## Controls
 
 - **Open inventory:** Sort movable player slots when the player-inventory Auto-sort checkbox is enabled. An opened vanilla chest follows its own **Auto-sort chest** checkbox on both open and close.
-- **Left Alt-click an unprotected stackable item:** Set protection and an optional replenishment target. Press Enter to accept the prefilled legal full-stack amount, type a lower legal amount, or enter `0` for protection only.
-- **Left Alt-click an unprotected non-stackable item:** Protect it immediately.
-- **Left Alt-click a protected item:** Unprotect it.
+- **Left Alt + left-click an unprotected item:** Protect it immediately with no restocking target and no dialog.
+- **Left Alt + left-click any protected item:** Fully unprotect it and clear any restocking target immediately.
+- **Left Alt + right-click a stackable item:** Open the restocking quantity dialog. Confirming protects the item and adds or edits its target; canceling preserves its exact prior protection and target state.
+- **Left Alt + right-click a non-stackable item:** Leave its protection state unchanged; non-stackable items cannot have restocking targets.
+- **Ordinary inventory clicks:** Keep Valheim's normal left- and right-click behavior.
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 - **Left Alt-click a build piece in the build menu:** Withdraw one complete expedition kit for that piece from eligible storage without closing the menu. If the configured storage-action shortcut uses different modifiers, use those modifiers instead.
@@ -79,7 +82,7 @@ Stackmaster has exactly six settings:
 
 1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory. Chest auto-sort is controlled separately in each chest UI and is not a seventh global setting.
 2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and used by all chest-powered features only while the player is outside every valid connected workbench mesh.
-3. **Storage-action keybind** — Left Alt + E by default. Its modifier keys also activate expedition-kit clicks in the build menu; the main E key is not required there.
+3. **Storage-action keybind** — Left Alt + E by default. Its modifier keys also activate protected-item left/right clicks in the player inventory and expedition-kit left-clicks in the build menu; the main E key is not required for either click action.
 4. **Allow building from storage** — on by default and independently controls building eligibility and consumption from storage.
 5. **Allow crafting from storage** — on by default and independently controls crafting/upgrade eligibility and consumption from storage.
 6. **Show storage amounts in craft and build menus** — on by default; independently shows player-plus-eligible-storage totals in both requirement UIs without granting permission to consume those stored items.

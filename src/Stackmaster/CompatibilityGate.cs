@@ -75,6 +75,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "Update");
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
+            RequireMethod(failures, typeof(InventoryGui), "OnRightClickItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i));
             RequireMethod(failures, typeof(InventoryGui), "OnDropOutside");
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
             RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));

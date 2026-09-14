@@ -4,6 +4,10 @@
 
 Local test candidate; not published.
 
+- Replaced the former all-in-one protected-item modifier-click prompt with separate mouse controls using the configured storage-action modifier (Left Alt by default).
+- Modifier + left-click now toggles protection immediately with no dialog: an unprotected item becomes protection-only, while any protected item is fully unprotected and loses its target in one click.
+- Modifier + right-click now opens the restocking quantity dialog for stackable items. Confirming protects the item and adds or edits its target; canceling or entering an invalid quantity preserves the prior state exactly.
+- Non-stackable items remain protection-only: modifier + right-click is consumed without changing their state. All unmodified inventory clicks remain vanilla.
 - Added an expedition-kit shortcut to the active build-piece menu: hold the configured storage-action modifier (Left Alt by default) and click a piece to withdraw one complete copy of its recipe from eligible storage into the player inventory while keeping the menu open.
 - Every modified click requests a fresh full kit and intentionally ignores materials already carried by the player.
 - For each ingredient, withdraws from the eligible chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
@@ -12,7 +16,7 @@ Local test candidate; not published.
 - Cancels without moving anything on shortage, access or ownership changes, busy storage, stale contents, insufficient slots, or insufficient carry capacity. Late transfer failures roll back completed moves before guarded ownership cleanup.
 - Uses the existing configured shortcut modifier, connected-workbench/fallback storage scope, vanilla ownership handshake, and access/in-use protections without Jötunn, custom RPCs, server data, or networking.
 - Ordinary build-piece clicks, the existing 30-second chest-backed building lease, and all existing features remain unchanged.
-- Automated verification passes with zero compiler warnings/errors, 111/111 pure-domain tests, and 62/62 static/repository safety checks. Live in-game validation is pending.
+- Automated verification passes with zero compiler warnings/errors, 120/120 pure-domain tests, and 62/62 static/repository safety checks. Live in-game validation is pending.
 
 ## 1.0.0
 

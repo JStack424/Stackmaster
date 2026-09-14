@@ -25,6 +25,10 @@ namespace Stackmaster
                 {
                     typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier)
                 }, typeof(InventoryProtectionClickPatch)),
+                Prefix(typeof(InventoryGui), "OnRightClickItem", new[]
+                {
+                    typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i)
+                }, typeof(InventoryProtectionRightClickPatch)),
                 Both(typeof(InventoryGui), "OnSelectedItem", new[]
                 {
                     typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier)

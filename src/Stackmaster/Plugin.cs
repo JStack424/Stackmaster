@@ -35,7 +35,7 @@ namespace Stackmaster
                     new AcceptableValueRange<float>(1f, 50f)));
             StorageActionShortcut = Config.Bind("General", "Storage-action keybind",
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
-                "While targeting or viewing an eligible container: deposit matching items and replenish protected stack targets.");
+                "While targeting or viewing an eligible container: deposit and replenish. The shortcut modifiers also control protected-item inventory clicks and build-menu expedition-kit clicks.");
             BuildingFromNearbyChestsEnabled = ConfigMigration.BindRenamedDefaultEnabledBoolean(
                 Config,
                 "General",

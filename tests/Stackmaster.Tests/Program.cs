@@ -37,6 +37,15 @@ internal static class Program
             ProtectionStateRejectsMalformedRecords,
             ProtectionStateRejectsUnknownVersions,
             ProtectionStateValidatesTargets,
+            ProtectionLeftClickProtectsWithoutTargetOrDialog,
+            ProtectionLeftClickClearsProtectionAndTarget,
+            ProtectionRightClickOpensTargetDialogWithoutMutatingState,
+            ProtectionRightClickConfirmAddsTarget,
+            ProtectionRightClickConfirmEditsTarget,
+            ProtectionRightClickCancelPreservesExactState,
+            ProtectionRightClickNonStackableLeavesStateUnchanged,
+            ProtectionOrdinaryClicksRemainVanilla,
+            ProtectionConfiguredModifierRequiresEveryKey,
             ReplacementItemDoesNotInheritProtection,
             MatchingItemAtPreferredSlotWins,
             MovedMatchingStackInheritsProtection,
@@ -547,6 +556,130 @@ internal static class Program
         try { state.Protect(new Slot(0, 0), 0, "wood"); }
         catch (ArgumentOutOfRangeException) { nonPositiveThrew = true; }
         True(nonPositiveThrew, "non-positive target is rejected");
+    }
+
+    private static void ProtectionLeftClickProtectsWithoutTargetOrDialog()
+    {
+        var slot = new Slot(1, 2);
+        var state = new ProtectionState();
+        var route = ProtectionInteractionPolicy.Route(
+            true, true, true, true, false, ProtectionPointerButton.Left, new[] { true });
+
+        Equal(ProtectionClickRoute.ProtectOnly, route, "modified left click routes directly to protection-only");
+        True(route != ProtectionClickRoute.OpenTargetDialog, "modified left click never opens a target dialog");
+        ProtectionInteractionPolicy.ApplyLeftClick(state, null!, slot, "wood");
+        ProtectionRecord record;
+        True(state.TryGet(slot, out record), "modified left click protects the item");
+        Equal(null, record.TargetQuantity, "modified left click creates no restocking target");
+    }
+
+    private static void ProtectionLeftClickClearsProtectionAndTarget()
+    {
+        var slot = new Slot(2, 1);
+        var state = new ProtectionState(new[] { new ProtectionRecord(slot, 37, "arrow") });
+        ProtectionRecord existing;
+        True(state.TryGet(slot, out existing), "targeted item starts protected");
+        var route = ProtectionInteractionPolicy.Route(
+            true, true, true, true, true, ProtectionPointerButton.Left, new[] { true });
+
+        Equal(ProtectionClickRoute.Unprotect, route, "modified left click routes protected items to unprotect");
+        ProtectionInteractionPolicy.ApplyLeftClick(state, existing, slot, "arrow");
+        True(!state.IsProtected(slot), "modified left click removes protection and its target together");
+        Equal(0, state.Records.Count, "target record is fully removed");
+    }
+
+    private static void ProtectionRightClickOpensTargetDialogWithoutMutatingState()
+    {
+        var slot = new Slot(0, 2);
+        var state = new ProtectionState(new[] { new ProtectionRecord(slot, null, "food") });
+        var before = state.Serialize();
+        var route = ProtectionInteractionPolicy.Route(
+            true, true, true, true, true, ProtectionPointerButton.Right, new[] { true });
+
+        Equal(ProtectionClickRoute.OpenTargetDialog, route, "modified right click routes stackable items to target dialog");
+        Equal(before, state.Serialize(), "opening the right-click dialog does not alter protection or target state");
+    }
+
+    private static void ProtectionRightClickConfirmAddsTarget()
+    {
+        var slot = new Slot(0, 3);
+        var state = new ProtectionState(new[] { new ProtectionRecord(slot, null, "food") });
+        int target;
+        True(ProtectionInteractionPolicy.TryApplyTarget(state, slot, "food", 20, " 12 ", out target),
+            "right-click target confirmation accepts a legal quantity");
+        Equal(12, target, "confirmed target is parsed exactly");
+        ProtectionRecord record;
+        True(state.TryGet(slot, out record), "protected item remains protected after adding a target");
+        Equal(12, record.TargetQuantity, "right-click confirmation adds the requested target");
+    }
+
+    private static void ProtectionRightClickConfirmEditsTarget()
+    {
+        var slot = new Slot(3, 1);
+        var state = new ProtectionState(new[] { new ProtectionRecord(slot, 8, "arrow") });
+        int target;
+        True(ProtectionInteractionPolicy.TryApplyTarget(state, slot, "arrow", 100, "42", out target),
+            "right-click target confirmation edits an existing target");
+        ProtectionRecord record;
+        True(state.TryGet(slot, out record), "edited item remains protected");
+        Equal(42, record.TargetQuantity, "existing target is replaced rather than duplicated");
+        Equal(1, state.Records.Count, "editing a target keeps exactly one protection record");
+    }
+
+    private static void ProtectionRightClickCancelPreservesExactState()
+    {
+        var slot = new Slot(4, 2);
+        var state = new ProtectionState(new[] { new ProtectionRecord(slot, 19, "resin") });
+        var before = state.Serialize();
+        var route = ProtectionInteractionPolicy.Route(
+            true, true, true, true, true, ProtectionPointerButton.Right, new[] { true });
+
+        Equal(ProtectionClickRoute.OpenTargetDialog, route, "modified right click opens editing for an existing target");
+        // Cancel invokes no confirmation transition.
+        Equal(before, state.Serialize(), "cancel preserves the exact prior protection and target payload");
+
+        int ignored;
+        True(!ProtectionInteractionPolicy.TryApplyTarget(state, slot, "resin", 50, "0", out ignored),
+            "zero is not a valid restocking target in the dedicated target dialog");
+        Equal(before, state.Serialize(), "invalid confirmation also preserves exact prior state");
+    }
+
+    private static void ProtectionRightClickNonStackableLeavesStateUnchanged()
+    {
+        var slot = new Slot(1, 0);
+        var state = new ProtectionState(new[] { new ProtectionRecord(slot, null, "hammer") });
+        var before = state.Serialize();
+        var route = ProtectionInteractionPolicy.Route(
+            true, true, true, false, true, ProtectionPointerButton.Right, new[] { true });
+
+        Equal(ProtectionClickRoute.SuppressWithoutChange, route, "modified right click suppresses target editing for non-stackable items");
+        Equal(before, state.Serialize(), "non-stackable right click leaves protection state unchanged");
+    }
+
+    private static void ProtectionOrdinaryClicksRemainVanilla()
+    {
+        Equal(ProtectionClickRoute.Vanilla,
+            ProtectionInteractionPolicy.Route(true, true, true, true, false, ProtectionPointerButton.Left, new[] { false }),
+            "ordinary left click remains vanilla");
+        Equal(ProtectionClickRoute.Vanilla,
+            ProtectionInteractionPolicy.Route(true, true, true, true, true, ProtectionPointerButton.Right, new[] { false }),
+            "ordinary right click remains vanilla even for a protected item");
+        Equal(ProtectionClickRoute.Vanilla,
+            ProtectionInteractionPolicy.Route(true, false, true, true, false, ProtectionPointerButton.Right, new[] { true }),
+            "container-grid clicks remain vanilla");
+    }
+
+    private static void ProtectionConfiguredModifierRequiresEveryKey()
+    {
+        Equal(ProtectionClickRoute.ProtectOnly,
+            ProtectionInteractionPolicy.Route(true, true, true, true, false, ProtectionPointerButton.Left, new[] { true, true }),
+            "every configured modifier enables the protection route");
+        Equal(ProtectionClickRoute.Vanilla,
+            ProtectionInteractionPolicy.Route(true, true, true, true, false, ProtectionPointerButton.Left, new[] { true, false }),
+            "one missing configured modifier leaves the click vanilla");
+        Equal(ProtectionClickRoute.Vanilla,
+            ProtectionInteractionPolicy.Route(true, true, true, true, false, ProtectionPointerButton.Left, Array.Empty<bool>()),
+            "a shortcut without modifiers does not steal ordinary inventory clicks");
     }
 
     private static void ReplacementItemDoesNotInheritProtection()
