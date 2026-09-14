@@ -80,6 +80,7 @@ namespace Stackmaster
             RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
             RequireMethod(failures, typeof(InventoryGui), "get_instance");
             RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece));
+            RequireMethod(failures, typeof(BuildUi), "OnSelectPiece", typeof(Piece));
             RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
             RequireMethod(failures, typeof(Container), "CheckForChanges");
@@ -117,6 +118,9 @@ namespace Stackmaster
             RequireMethod(failures, typeof(TextViewer), "IsVisible");
             RequireMethod(failures, typeof(GameCamera), "InFreeFly");
             RequireMethod(failures, typeof(Inventory), "MoveItemToThis", typeof(Inventory), typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int));
+            RequireMethod(failures, typeof(Inventory), "GetWidth");
+            RequireMethod(failures, typeof(Inventory), "GetHeight");
+            RequireMethod(failures, typeof(Inventory), "GetTotalWeight");
             RequireMethod(failures, typeof(Inventory), "ContainsItem", typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Inventory), "GetAllItems");
             RequireMethod(failures, typeof(Inventory), "GetItemAt", typeof(int), typeof(int));
@@ -125,9 +129,11 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(string), typeof(int), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(Inventory), "AddItem", typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(ItemDrop.ItemData), "Clone");
+            RequireMethod(failures, typeof(ItemDrop.ItemData), "GetWeight", typeof(int));
             RequireMethod(failures, typeof(Piece.Requirement), "GetAmount", typeof(int));
             RequireMethod(failures, typeof(Recipe), "GetAmount", typeof(int), typeof(int).MakeByRefType(), typeof(ItemDrop.ItemData).MakeByRefType(), typeof(int));
             RequireMethod(failures, typeof(Player), "GetHoverObject");
+            RequireMethod(failures, typeof(Player), "GetMaxCarryWeight");
             RequireMethod(failures, typeof(Player), "GetPlayerID");
             RequireMethod(failures, typeof(ZNet), "GetWorldUID");
             RequireStaticMethod(failures, typeof(PlayerPrefs), "HasKey", typeof(string));

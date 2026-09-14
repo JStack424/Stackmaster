@@ -41,6 +41,7 @@ namespace Stackmaster
                 Postfix(typeof(Player), "HaveRequirementItems", new[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) }, typeof(NearbyRequirementPatches), "RecipePostfix"),
                 Postfix(typeof(Player), "HaveRequirements", new[] { typeof(Piece), typeof(Player.RequirementMode) }, typeof(NearbyRequirementPatches), "PiecePostfix"),
                 Postfix(typeof(Hud), "SetupPieceInfo", new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch)),
+                Prefix(typeof(BuildUi), "OnSelectPiece", new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch)),
                 Both(typeof(InventoryGui), "SetupRequirement", new[]
                 {
                     typeof(UnityEngine.Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int)

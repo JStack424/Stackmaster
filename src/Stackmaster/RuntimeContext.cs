@@ -38,6 +38,15 @@ namespace Stackmaster
 
             try
             {
+                ExpeditionKitAction.Shutdown();
+            }
+            catch (Exception exception)
+            {
+                Plugin?.Log.LogError("Expedition-kit shutdown failed safely: " + exception);
+            }
+
+            try
+            {
                 OwnershipCoordinator.Shutdown(reason);
             }
             catch (Exception exception)
@@ -65,6 +74,7 @@ namespace Stackmaster
 
         internal static void Shutdown()
         {
+            ExpeditionKitAction.Shutdown();
             ChestSortPreferences.Shutdown();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();

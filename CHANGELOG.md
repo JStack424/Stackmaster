@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0
+
+Local test candidate; not published.
+
+- Added an expedition-kit shortcut to the active build-piece menu: hold the configured storage-action modifier (Left Alt by default) and click a piece to withdraw one complete copy of its recipe from eligible storage into the player inventory while keeping the menu open.
+- Every modified click requests a fresh full kit and intentionally ignores materials already carried by the player.
+- For each ingredient, withdraws from the eligible chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
+- Preflights the complete kit against exact inventory slots and added carry weight before requesting any chest ownership.
+- Replans from fresh storage after asynchronous ownership acquisition, requires an identical plan, reserves and revalidates every required chest, then performs exact source-to-destination moves.
+- Cancels without moving anything on shortage, access or ownership changes, busy storage, stale contents, insufficient slots, or insufficient carry capacity. Late transfer failures roll back completed moves before guarded ownership cleanup.
+- Uses the existing configured shortcut modifier, connected-workbench/fallback storage scope, vanilla ownership handshake, and access/in-use protections without Jötunn, custom RPCs, server data, or networking.
+- Ordinary build-piece clicks, the existing 30-second chest-backed building lease, and all existing features remain unchanged.
+- Automated verification passes with zero compiler warnings/errors, 111/111 pure-domain tests, and 62/62 static/repository safety checks. Live in-game validation is pending.
+
 ## 1.0.0
 
 Public release, promoted from the live-tested 0.4.2 candidate without gameplay or configuration changes.

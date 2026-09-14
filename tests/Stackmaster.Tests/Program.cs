@@ -69,6 +69,18 @@ internal static class Program
             ResourcePlanDoesNotDoubleConsume,
             ResourcePlanHonorsExactQualityAndMultiplierTotals,
             ResourcePlanIsAllOrNothingAcrossDifferentMaterials,
+            ExpeditionClickRequiresEveryConfiguredModifier,
+            ExpeditionNormalClickIsUnchanged,
+            ExpeditionKitIgnoresCarriedMaterials,
+            ExpeditionRepeatedClicksPlanRepeatedFullKits,
+            ExpeditionKitUsesLargestStockFirst,
+            ExpeditionKitBreaksStockTiesDeterministically,
+            ExpeditionKitSplitsAcrossSources,
+            ExpeditionShortageHasNoMutationSteps,
+            ExpeditionCapacityFillsStacksThenEmptySlots,
+            ExpeditionCapacityRejectsSharedSlotOverbooking,
+            ExpeditionCapacityRejectsOverweightKit,
+            ExpeditionCapacityAcceptsExactWeightLimit,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
             ResourcePlanMinimizesDistinctContainers,
             ResourcePlanMinimizesAcrossDifferentMaterials,
@@ -1059,6 +1071,158 @@ internal static class Program
         Equal("Stone", plan.Shortages.Single().ItemName, "exact missing material is reported");
     }
 
+    private static void ExpeditionClickRequiresEveryConfiguredModifier()
+    {
+        True(ExpeditionClickPolicy.ShouldIntercept(true, true, true, new[] { true }),
+            "one held configured modifier intercepts the piece click");
+        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, true, new[] { true, false }),
+            "every configured modifier must be held");
+        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, true, Array.Empty<bool>()),
+            "a shortcut without a modifier never changes ordinary build-menu clicks");
+    }
+
+    private static void ExpeditionNormalClickIsUnchanged()
+    {
+        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, true, new[] { false }),
+            "an unmodified click remains vanilla");
+        True(!ExpeditionClickPolicy.ShouldIntercept(false, true, true, new[] { true }),
+            "an incompatible runtime remains vanilla");
+        True(!ExpeditionClickPolicy.ShouldIntercept(true, false, true, new[] { true }),
+            "a missing local player remains vanilla");
+        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, false, new[] { true }),
+            "a missing clicked piece remains vanilla");
+    }
+
+    private static void ExpeditionKitIgnoresCarriedMaterials()
+    {
+        var plan = ExpeditionPlan(
+            new[] { new ResourceRequirement("Wood", 10) },
+            Resource("player", "carried", "Wood", 1, 99, 0, 0),
+            Resource("chest", "stored", "Wood", 1, 10, 1, 0));
+        True(plan.IsSatisfiable, "storage alone contains a full kit");
+        Equal(10, plan.PlannedUnits, "the full recipe is withdrawn despite carried stock");
+        True(plan.Steps.All(step => step.InventoryId != "player"), "player stock is never a kit source");
+    }
+
+    private static void ExpeditionRepeatedClicksPlanRepeatedFullKits()
+    {
+        var requirements = new[] { new ResourceRequirement("Wood", 10), new ResourceRequirement("Stone", 5) };
+        var stacks = new[]
+        {
+            Resource("chest", "wood", "Wood", 1, 30, 1, 0),
+            Resource("chest", "stone", "Stone", 1, 15, 1, 1)
+        };
+        var first = ExpeditionPlan(requirements, stacks);
+        var second = ExpeditionPlan(requirements, stacks);
+        Equal(15, first.PlannedUnits, "first click plans one complete kit");
+        Equal(15, second.PlannedUnits, "next click independently plans one complete additional kit");
+        Equal(30, first.PlannedUnits + second.PlannedUnits, "two clicks add exactly two kits");
+    }
+
+    private static void ExpeditionKitUsesLargestStockFirst()
+    {
+        var plan = ExpeditionPlan(
+            new[] { new ResourceRequirement("Wood", 12) },
+            Resource("split-largest", "l1", "Wood", 1, 6, 9, 0),
+            Resource("single", "s", "Wood", 1, 10, 1, 0),
+            Resource("split-largest", "l2", "Wood", 1, 5, 9, 1),
+            Resource("smaller", "m", "Wood", 1, 9, 2, 0));
+        SequenceEqual(new[] { "split-largest", "split-largest", "single" }, plan.Steps.Select(step => step.InventoryId),
+            "largest aggregate chest stock is consumed before smaller sources regardless of distance order");
+        SequenceEqual(new[] { 6, 5, 1 }, plan.Steps.Select(step => step.Quantity),
+            "all stacks in the largest-stock chest precede the exact remainder from the next source");
+    }
+
+    private static void ExpeditionKitBreaksStockTiesDeterministically()
+    {
+        var forward = ExpeditionPlan(
+            new[] { new ResourceRequirement("Stone", 7) },
+            Resource("z-chest", "z", "Stone", 1, 7, 1, 0),
+            Resource("a-chest", "a", "Stone", 1, 7, 2, 0));
+        var reverse = ExpeditionPlan(
+            new[] { new ResourceRequirement("Stone", 7) },
+            Resource("a-chest", "a", "Stone", 1, 7, 2, 0),
+            Resource("z-chest", "z", "Stone", 1, 7, 1, 0));
+        Equal("a-chest", forward.Steps.Single().InventoryId, "stable id breaks equal-stock ties");
+        Equal("a-chest", reverse.Steps.Single().InventoryId, "enumeration order cannot change the tie result");
+    }
+
+    private static void ExpeditionKitSplitsAcrossSources()
+    {
+        var plan = ExpeditionPlan(
+            new[] { new ResourceRequirement("FineWood", 25) },
+            Resource("large", "a", "FineWood", 1, 12, 1, 0),
+            Resource("medium", "b", "FineWood", 1, 8, 2, 0),
+            Resource("small", "c", "FineWood", 1, 5, 3, 0));
+        True(plan.IsSatisfiable, "split chest stock satisfies the complete kit");
+        SequenceEqual(new[] { "large", "medium", "small" }, plan.Steps.Select(step => step.InventoryId),
+            "split sources retain largest-stock-first ordering");
+        Equal(25, plan.PlannedUnits, "all split source quantities are exact");
+    }
+
+    private static void ExpeditionShortageHasNoMutationSteps()
+    {
+        var plan = ExpeditionPlan(
+            new[] { new ResourceRequirement("Wood", 10), new ResourceRequirement("Stone", 10) },
+            Resource("chest", "wood", "Wood", 1, 10, 1, 0),
+            Resource("chest", "stone", "Stone", 1, 9, 1, 1));
+        True(!plan.IsSatisfiable, "one short ingredient rejects the kit");
+        Equal(0, plan.Steps.Count, "atomic shortage exposes no executable chest steps");
+    }
+
+    private static void ExpeditionCapacityFillsStacksThenEmptySlots()
+    {
+        var player = Player(3, Item("existing", "wood", "Wood", 7, 10, 0));
+        var plan = new ExpeditionCapacityPlanner().Plan(
+            player,
+            new[] { new ExpeditionCargoStack("source", "wood", 15, 10, 15) },
+            10,
+            100);
+        True(plan.IsFeasible, "partial stacks plus empty slots fit the kit");
+        SequenceEqual(new[] { 0, 1, 2 }, plan.Steps.Select(step => step.DestinationSlot),
+            "compatible partial stack is filled before deterministic empty slots");
+        SequenceEqual(new[] { 3, 10, 2 }, plan.Steps.Select(step => step.Quantity),
+            "the cargo is split exactly by destination capacity");
+    }
+
+    private static void ExpeditionCapacityRejectsSharedSlotOverbooking()
+    {
+        var player = Player(1);
+        var plan = new ExpeditionCapacityPlanner().Plan(
+            player,
+            new[]
+            {
+                new ExpeditionCargoStack("wood", "wood", 10, 10, 10),
+                new ExpeditionCargoStack("stone", "stone", 10, 10, 10)
+            },
+            0,
+            100);
+        True(!plan.FitsSlots, "different materials cannot both claim the same empty slot");
+        Equal(0, plan.Steps.Count, "slot failure exposes no executable destination steps");
+    }
+
+    private static void ExpeditionCapacityRejectsOverweightKit()
+    {
+        var plan = new ExpeditionCapacityPlanner().Plan(
+            Player(2),
+            new[] { new ExpeditionCargoStack("wood", "wood", 10, 50, 10.01) },
+            90,
+            100);
+        True(!plan.FitsWeight, "the entire added kit must fit the current carry limit");
+        Equal(0, plan.Steps.Count, "weight failure exposes no executable destination steps");
+    }
+
+    private static void ExpeditionCapacityAcceptsExactWeightLimit()
+    {
+        var plan = new ExpeditionCapacityPlanner().Plan(
+            Player(2),
+            new[] { new ExpeditionCargoStack("wood", "wood", 10, 50, 10) },
+            90,
+            100);
+        True(plan.IsFeasible, "an exact carry-weight boundary is accepted");
+        Equal(10, plan.Steps.Sum(step => step.Quantity), "the full exact-boundary kit is planned");
+    }
+
     private static void ResourcePlanUsesPlayerThenDeterministicContainerOrder()
     {
         var plan = ResourcePlan(
@@ -1471,6 +1635,11 @@ internal static class Program
 
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
         => new ResourceWithdrawalPlanner().Plan(requirements, stacks);
+
+    private static ResourceWithdrawalPlan ExpeditionPlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
+        => new ExpeditionKitWithdrawalPlanner().Plan(
+            requirements,
+            stacks.Where(stack => !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal)));
 
     private static ResourceStack Resource(
         string inventoryId,

@@ -682,7 +682,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static List<ResourceRequirement> PieceRequirements(Piece piece)
+        internal static List<ResourceRequirement> PieceRequirements(Piece piece)
         {
             return (piece.m_resources ?? Array.Empty<Piece.Requirement>())
                 .Where(requirement => requirement != null && requirement.m_resItem != null && requirement.m_amount > 0)
@@ -711,6 +711,11 @@ namespace Stackmaster
         {
             if (station != null) return station.m_upgrader == requirement.m_upgraderResource;
             return !requirement.m_upgraderResource;
+        }
+
+        internal static NearbyResourceCapture CaptureForExpedition(Player player, bool matchWorldLevel, bool fresh)
+        {
+            return Capture(player, matchWorldLevel, fresh);
         }
 
         private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)
@@ -780,7 +785,7 @@ namespace Stackmaster
             }
         }
 
-        private static bool TryResolveRequiredContainers(
+        internal static bool TryResolveRequiredContainers(
             Player player,
             ResourceWithdrawalPlan plan,
             NearbyResourceCapture capture,
@@ -964,13 +969,24 @@ namespace Stackmaster
             out IReadOnlyList<ContainerReservation> reservations,
             out string failure)
         {
+            return TryReserveContainers(player, transactionScope, requiredHandles, true, out reservations, out failure);
+        }
+
+        internal static bool TryReserveContainers(
+            Player player,
+            StorageScope transactionScope,
+            IEnumerable<ContainerHandle> requiredHandles,
+            bool releaseMatchingOwnershipOnFailure,
+            out IReadOnlyList<ContainerReservation> reservations,
+            out string failure)
+        {
             var held = new List<ContainerReservation>();
             failure = null;
             foreach (var handle in requiredHandles)
             {
                 if (!ValidateReadOnlyHandle(player, transactionScope, handle, out failure))
                 {
-                    ReleaseReservations(held);
+                    ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
                     reservations = Array.Empty<ContainerReservation>();
                     return false;
                 }
@@ -979,14 +995,14 @@ namespace Stackmaster
                     handle.NetworkView.GetZDO().OwnerRevision != handle.ResourceOwnerRevision)
                 {
                     failure = "required container ownership changed before reservation";
-                    ReleaseReservations(held);
+                    ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
                     reservations = Array.Empty<ContainerReservation>();
                     return false;
                 }
                 if (handle.Container.IsInUse() || (handle.Container.m_wagon != null && handle.Container.m_wagon.InUse()))
                 {
                     failure = NearbyResourceOwnership.InUseMessage;
-                    ReleaseReservations(held);
+                    ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
                     reservations = Array.Empty<ContainerReservation>();
                     return false;
                 }
@@ -1000,7 +1016,7 @@ namespace Stackmaster
                     if (!handle.Container.IsInUse() || !reservation.CaptureRevisionBaseline())
                     {
                         failure = "required container could not be reserved";
-                        ReleaseReservations(held);
+                        ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
                         reservations = Array.Empty<ContainerReservation>();
                         return false;
                     }
@@ -1008,7 +1024,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     failure = "required container reservation failed: " + exception.GetType().Name;
-                    ReleaseReservations(held);
+                    ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
                     reservations = Array.Empty<ContainerReservation>();
                     return false;
                 }
@@ -1017,7 +1033,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool RevalidateReservedContainers(
+        internal static bool RevalidateReservedContainers(
             Player player,
             StorageScope transactionScope,
             IEnumerable<ContainerReservation> reservations,
@@ -1044,7 +1060,9 @@ namespace Stackmaster
             return true;
         }
 
-        private static void ReleaseReservations(IEnumerable<ContainerReservation> reservations)
+        internal static void ReleaseReservations(
+            IEnumerable<ContainerReservation> reservations,
+            bool releaseMatchingOwnership = true)
         {
             if (reservations == null) return;
             var held = reservations.ToArray();
@@ -1065,11 +1083,14 @@ namespace Stackmaster
                     }
                 }
             }
-            OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
-                "pre-transaction reservation ended");
+            if (releaseMatchingOwnership)
+            {
+                OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                    "pre-transaction reservation ended");
+            }
         }
 
-        private static bool RevalidateContainers(
+        internal static bool RevalidateContainers(
             Player player,
             ResourceWithdrawalPlan plan,
             NearbyResourceCapture capture,
@@ -1107,7 +1128,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool RevalidateStacks(
+        internal static bool RevalidateStacks(
             ResourceWithdrawalPlan plan,
             NearbyResourceCapture capture,
             bool matchWorldLevel,
@@ -1205,7 +1226,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool ReservationMatches(Player player, StorageScope transactionScope, ContainerReservation reservation)
+        internal static bool ReservationMatches(Player player, StorageScope transactionScope, ContainerReservation reservation)
         {
             if (reservation == null || reservation.Handle == null || reservation.Container == null) return false;
             var handle = reservation.Handle;

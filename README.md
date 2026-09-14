@@ -2,7 +2,7 @@
 
 > Turn a messy Viking inventory into a tidy, adventure-ready loadout.
 
-Stackmaster by **JStack424** combines automatic inventory sorting, deliberate nearby-storage depositing, protected-stack replenishment, storage-aware requirement totals, and optional nearby-chest material use for building and crafting in one Valheim workflow.
+Stackmaster by **JStack424** combines automatic inventory sorting, deliberate nearby-storage depositing, protected-stack replenishment, storage-aware requirement totals, expedition-kit withdrawal, and optional nearby-chest material use for building and crafting in one Valheim workflow.
 
 ## Vanilla-plus by design
 
@@ -10,7 +10,7 @@ Stackmaster is built to preserve the vanilla experience. It adds no gameplay adv
 
 Convenience stays deliberate. Auto-deposit works only when you look at or interact with a chest and press `Left Alt + E`; simply walking near your base never empties your backpack.
 
-> **Testing status:** Stackmaster 1.0.0 promotes the live-tested 0.4.2 candidate without gameplay changes. Automated coverage includes the independent storage-total and crafting/building permission combinations and the 30-second ownership-lease safeguards. Broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete; back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
+> **Testing status:** Stackmaster 1.1.0 is a local test candidate and has not been published. It adds atomic expedition-kit withdrawal from the build menu while preserving all 1.0.0 behavior. Automated coverage includes kit planning, inventory-slot and carry-weight simulation, rollback, the independent storage-total and crafting/building permission combinations, and the 30-second ownership-lease safeguards. Live testing of the new kit action is pending; back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
 
 ## Features
 
@@ -44,6 +44,12 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Adaptively fits longer exact crafting and building totals such as `45 / 172` and `999 / 999` inside the vanilla amount label instead of clipping the final digits; short totals retain the normal font size.
   - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
   - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
+- **Expedition kits from the build menu**
+  - Hold the configured storage-action modifier (Left Alt by default) and click a build piece to move one complete copy of that piece's recipe from eligible storage into your inventory.
+  - Keeps the build menu open and leaves ordinary clicks unchanged.
+  - Treats every modified click as one full additional kit; materials you already carry never reduce the requested quantities.
+  - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
+  - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity.
 - **Safety**
   - Reads nearby build and craft totals without claiming chest ownership.
   - Requests ownership only for required chests, then rechecks active-scope membership, access, ownership, chest use, serialized revision, stack identity, and quantity before removal.
@@ -63,8 +69,9 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 - **Left Alt-click a protected item:** Unprotect it.
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
+- **Left Alt-click a build piece in the build menu:** Withdraw one complete expedition kit for that piece from eligible storage without closing the menu. If the configured storage-action shortcut uses different modifiers, use those modifiers instead.
 
-Version 1.0.0 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 1.1.0 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
@@ -72,7 +79,7 @@ Stackmaster has exactly six settings:
 
 1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory. Chest auto-sort is controlled separately in each chest UI and is not a seventh global setting.
 2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and used by all chest-powered features only while the player is outside every valid connected workbench mesh.
-3. **Storage-action keybind** — Left Alt + E by default.
+3. **Storage-action keybind** — Left Alt + E by default. Its modifier keys also activate expedition-kit clicks in the build menu; the main E key is not required there.
 4. **Allow building from storage** — on by default and independently controls building eligibility and consumption from storage.
 5. **Allow crafting from storage** — on by default and independently controls crafting/upgrade eligibility and consumption from storage.
 6. **Show storage amounts in craft and build menus** — on by default; independently shows player-plus-eligible-storage totals in both requirement UIs without granting permission to consume those stored items.
@@ -87,9 +94,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 1.0.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 1.1.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
 
-Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so the first remote-owned action prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. Prepared ownership has a 10-second retry window. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Logical in-use reservations are never retained. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Crafting and every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition release only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards.
+Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous. Ordinary remote-owned build/craft actions prepare ownership and prompt a retry; only the second normal vanilla action may consume resources, within a 10-second prepared-ownership window. An expedition-kit click instead waits within its own client-side coroutine, captures storage again after ownership arrives, and proceeds only if the complete plan is identical. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Expedition-kit withdrawals release their reservations and exact acquired ownership immediately and never create or renew that lease. Logical in-use reservations are never retained. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Crafting and every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition release only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards.
 
 Plugin GUID: `com.jstack424.stackmaster`
 

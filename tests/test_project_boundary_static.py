@@ -156,6 +156,70 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
+    def test_expedition_kit_intercepts_only_modified_build_ui_piece_clicks(self):
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionKit.cs").read_text(encoding="utf-8")
+        self.assertIn('Prefix(typeof(BuildUi), "OnSelectPiece", new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch))', installer)
+        self.assertIn("plugin.StorageActionShortcut.Value.Modifiers", action)
+        self.assertIn("modifiers.Select(Input.GetKey)", action)
+        self.assertIn("ExpeditionClickPolicy.ShouldIntercept", action)
+        self.assertIn("return true;", action[action.index("internal static class ExpeditionKitClickPatch"):action.index("internal sealed class ExpeditionInventoryBackup")])
+        self.assertIn("return !intercepting;", action)
+        self.assertIn("PendingPieces.Enqueue(piece)", action)
+        self.assertIn("return states.Length > 0 && states.All(state => state)", core)
+        click_patch = action[action.index("internal static class ExpeditionKitClickPatch"):action.index("internal sealed class ExpeditionInventoryBackup")]
+        self.assertNotIn("Hud.CloseBuildUi()", click_patch)
+        self.assertNotIn("SetSelectedPiece(piece)", click_patch)
+
+    def test_expedition_kit_is_storage_only_largest_stock_first_and_exact_per_click(self):
+        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionKit.cs").read_text(encoding="utf-8")
+        self.assertIn('!string.Equals(stack.InventoryId, "player", StringComparison.Ordinal)', action)
+        self.assertIn(".OrderByDescending(group => group.Total)", core)
+        self.assertIn(".ThenBy(group => group.InventoryId, StringComparer.Ordinal)", core)
+        self.assertIn("A kit is indivisible", core)
+        self.assertIn("Array.Empty<ResourceWithdrawalStep>()", core)
+        self.assertIn("Every modified click is one independent complete-kit request", action)
+
+    def test_expedition_kit_preflights_capacity_and_weight_before_ownership(self):
+        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+        begin = action[action.index("internal static void Begin"):action.index("internal static void Shutdown")]
+        self.assertLess(begin.index("TryPlanCapacity"), begin.index("StartCoroutine"))
+        self.assertIn("playerInventory.GetTotalWeight()", action)
+        self.assertIn("player.GetMaxCarryWeight()", action)
+        self.assertIn("runtime.Item.GetWeight(step.Quantity)", action)
+        self.assertIn("ExpeditionCapacityPlanner", action)
+        self.assertIn("ExpectedDestinationQuantity", action)
+
+    def test_expedition_kit_reserves_revalidates_rolls_back_and_preserves_build_leases(self):
+        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        self.assertIn("RevalidateContainers(player, plan, capture", action)
+        self.assertIn("TryReserveContainers(", action)
+        self.assertIn("RevalidateReservedContainers", action)
+        self.assertIn("RevalidateStacks", action)
+        self.assertIn("MoveItemToThis", action)
+        self.assertIn("RollbackCompleted", action)
+        self.assertIn("RestoreBackups", action)
+        self.assertIn("RuntimeContext.Disable", action)
+        self.assertIn("ReleaseReservations(reservations, false)", action)
+        self.assertIn("OwnershipLeaseManager.ReleaseBatch(ownership", action)
+        self.assertIn("if (releaseMatchingOwnership)", nearby)
+        self.assertNotIn("ClaimOwnership()", action)
+
+    def test_expedition_kit_runtime_surface_is_compatibility_gated(self):
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        for signature in (
+            'RequireMethod(failures, typeof(BuildUi), "OnSelectPiece", typeof(Piece))',
+            'RequireMethod(failures, typeof(Inventory), "GetWidth")',
+            'RequireMethod(failures, typeof(Inventory), "GetHeight")',
+            'RequireMethod(failures, typeof(Inventory), "GetTotalWeight")',
+            'RequireMethod(failures, typeof(ItemDrop.ItemData), "GetWeight", typeof(int))',
+            'RequireMethod(failures, typeof(Player), "GetMaxCarryWeight")',
+        ):
+            self.assertIn(signature, gate)
+
     def test_player_snapshot_reserves_the_entire_quick_bar_row(self):
         snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
         self.assertIn("Enumerable.Range(0, width)", snapshots)

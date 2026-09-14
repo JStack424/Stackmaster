@@ -1,6 +1,6 @@
 {
   "name": "Stackmaster",
-  "version_number": "1.0.0",
+  "version_number": "1.1.0",
   "website_url": "https://github.com/JStack424/Stackmaster",
   "description": "Turn a messy Viking inventory into a tidy, adventure-ready loadout.",
   "dependencies": [
