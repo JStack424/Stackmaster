@@ -64,6 +64,7 @@ namespace Stackmaster
 
         internal ContainerHandle Handle { get; }
         internal Container Container => Handle.Container;
+        internal long LocalSession { get; private set; }
         internal uint DataRevision { get; private set; }
         internal ushort OwnerRevision { get; private set; }
 
@@ -71,7 +72,8 @@ namespace Stackmaster
         {
             var view = Handle.NetworkView;
             var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
-            if (zdo == null) return false;
+            if (zdo == null || ZDOMan.instance == null) return false;
+            LocalSession = ZDOMan.GetSessionID();
             DataRevision = zdo.DataRevision;
             OwnerRevision = zdo.OwnerRevision;
             return true;
@@ -85,6 +87,18 @@ namespace Stackmaster
             DataRevision = zdo.DataRevision;
             return true;
         }
+    }
+
+    internal sealed class PendingReservationRelease
+    {
+        internal PendingReservationRelease(ContainerReservation reservation, bool releaseMatchingOwnership)
+        {
+            Reservation = reservation;
+            ReleaseMatchingOwnership = releaseMatchingOwnership;
+        }
+
+        internal ContainerReservation Reservation { get; }
+        internal bool ReleaseMatchingOwnership { get; set; }
     }
 
     internal static class ResourceTransactionContext
@@ -301,6 +315,9 @@ namespace Stackmaster
     {
         private const string PlayerInventoryId = "player";
         private static readonly ResourceWithdrawalPlanner Planner = new ResourceWithdrawalPlanner();
+        private static readonly Dictionary<string, PendingReservationRelease> PendingReservationReleases =
+            new Dictionary<string, PendingReservationRelease>(StringComparer.Ordinal);
+        private static float _nextReservationReleaseRetryAt;
         private static readonly MethodInfo AddItemAtMethod = AccessTools.DeclaredMethod(
             typeof(Inventory),
             "AddItem",
@@ -310,6 +327,8 @@ namespace Stackmaster
         private static string _cachedScopeSignature;
         private static bool _cachedMatchWorldLevel;
         private static NearbyResourceCapture _cachedCapture;
+
+        internal static bool HasPendingReservationReleases => PendingReservationReleases.Count > 0;
 
         internal static void ResetCaches()
         {
@@ -1007,13 +1026,20 @@ namespace Stackmaster
                     return false;
                 }
                 var reservation = new ContainerReservation(handle);
+                if (!reservation.CaptureRevisionBaseline())
+                {
+                    failure = "required container reservation baseline could not be captured";
+                    ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
+                    reservations = Array.Empty<ContainerReservation>();
+                    return false;
+                }
                 // Add it before SetInUse so cleanup still releases a reservation if a patched
-                // effects path throws after setting the ZDO flag.
+                // effects path throws after setting the local in-use flag.
                 held.Add(reservation);
                 try
                 {
                     handle.Container.SetInUse(true);
-                    if (!handle.Container.IsInUse() || !reservation.CaptureRevisionBaseline())
+                    if (!handle.Container.IsInUse() || !reservation.AdvanceDataRevisionAfterMutation())
                     {
                         failure = "required container could not be reserved";
                         ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
@@ -1060,33 +1086,108 @@ namespace Stackmaster
             return true;
         }
 
-        internal static void ReleaseReservations(
+        internal static bool ReleaseReservations(
             IEnumerable<ContainerReservation> reservations,
             bool releaseMatchingOwnership = true)
         {
-            if (reservations == null) return;
+            if (reservations == null) return true;
+            var allReleased = true;
             var held = reservations.ToArray();
             foreach (var reservation in held.Reverse())
             {
-                try
+                var released = false;
+                for (var attempt = 0; attempt < 2 && !released; attempt++)
                 {
-                    if (reservation.Container != null && reservation.Container.IsOwner())
-                    {
-                        reservation.Container.SetInUse(false);
-                    }
+                    released = TryClearReservation(reservation);
                 }
-                catch (Exception exception)
+                if (released)
                 {
-                    if (RuntimeContext.Plugin != null)
+                    PendingReservationReleases.Remove(reservation.Handle.Id);
+                }
+                else
+                {
+                    PendingReservationRelease pending;
+                    if (PendingReservationReleases.TryGetValue(reservation.Handle.Id, out pending))
                     {
-                        RuntimeContext.Plugin.Log.LogError("Failed to release a pre-transaction container reservation: " + exception);
+                        pending.ReleaseMatchingOwnership |= releaseMatchingOwnership;
                     }
+                    else
+                    {
+                        PendingReservationReleases[reservation.Handle.Id] =
+                            new PendingReservationRelease(reservation, releaseMatchingOwnership);
+                    }
+                    _nextReservationReleaseRetryAt = Time.realtimeSinceStartup + 1f;
+                    allReleased = false;
                 }
             }
             if (releaseMatchingOwnership)
             {
-                OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
-                    "pre-transaction reservation ended");
+                try
+                {
+                    OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                        "pre-transaction reservation ended");
+                }
+                catch (Exception exception)
+                {
+                    allReleased = false;
+                    RuntimeContext.Plugin?.Log.LogError("Failed to hand reserved storage to ownership cleanup: " + exception);
+                }
+            }
+            return allReleased;
+        }
+
+        internal static void UpdatePendingReservationReleases()
+        {
+            if (PendingReservationReleases.Count == 0 || Time.realtimeSinceStartup < _nextReservationReleaseRetryAt) return;
+            _nextReservationReleaseRetryAt = Time.realtimeSinceStartup + 1f;
+            foreach (var pair in PendingReservationReleases.ToArray())
+            {
+                var pending = pair.Value;
+                if (!TryClearReservation(pending.Reservation)) continue;
+                PendingReservationReleases.Remove(pair.Key);
+                if (pending.ReleaseMatchingOwnership)
+                {
+                    try
+                    {
+                        OwnershipLeaseManager.ReleaseMatching(
+                            new[] { pending.Reservation.Handle },
+                            "deferred reservation cleanup completed");
+                    }
+                    catch (Exception exception)
+                    {
+                        RuntimeContext.Plugin?.Log.LogError("Failed to resume ownership cleanup after reservation release: " + exception);
+                    }
+                }
+            }
+        }
+
+        private static bool TryClearReservation(ContainerReservation reservation)
+        {
+            try
+            {
+                var handle = reservation != null ? reservation.Handle : null;
+                var container = handle != null ? handle.Container : null;
+                if (container == null) return true;
+                if (ZDOMan.instance == null || ZDOMan.GetSessionID() != reservation.LocalSession) return true;
+                var view = handle.NetworkView;
+                var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+                if (zdo == null) return false;
+                if (!string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
+                    zdo.OwnerRevision != reservation.OwnerRevision)
+                {
+                    // The exact reservation identity/owner generation is gone. Never clear a
+                    // later owner's legitimate in-use state.
+                    return true;
+                }
+                if (!view.IsOwner() || !container.IsOwner()) return false;
+                if (!container.IsInUse()) return true;
+                container.SetInUse(false);
+                return !container.IsInUse();
+            }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogError("Failed to release a pre-transaction container reservation: " + exception);
+                return false;
             }
         }
 

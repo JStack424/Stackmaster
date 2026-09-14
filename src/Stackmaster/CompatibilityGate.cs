@@ -124,6 +124,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Inventory), "ContainsItem", typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Inventory), "GetAllItems");
             RequireMethod(failures, typeof(Inventory), "GetItemAt", typeof(int), typeof(int));
+            RequireMethod(failures, typeof(Inventory), "RemoveAll");
             RequireMethod(failures, typeof(Inventory), "CountItems", typeof(string), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(ItemDrop.ItemData), typeof(int));
             RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(string), typeof(int), typeof(int), typeof(bool));

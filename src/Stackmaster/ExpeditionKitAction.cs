@@ -68,6 +68,23 @@ namespace Stackmaster
         internal ItemDrop.ItemData[] Items { get; }
     }
 
+    internal sealed class ExpeditionSnapshotRestoreTarget
+    {
+        internal ExpeditionSnapshotRestoreTarget(
+            Inventory inventory,
+            List<ItemDrop.ItemData> items,
+            int totalUnits)
+        {
+            Inventory = inventory;
+            Items = items;
+            TotalUnits = totalUnits;
+        }
+
+        internal Inventory Inventory { get; }
+        internal List<ItemDrop.ItemData> Items { get; }
+        internal int TotalUnits { get; }
+    }
+
     internal sealed class CompletedExpeditionMove
     {
         internal CompletedExpeditionMove(
@@ -106,7 +123,8 @@ namespace Stackmaster
             typeof(Inventory),
             "AddItem",
             new[] { typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool) });
-        private static readonly Queue<Piece> PendingPieces = new Queue<Piece>();
+        private static readonly FieldInfo InventoryItemsField = AccessTools.Field(typeof(Inventory), "m_inventory");
+        private static readonly Queue<Tuple<Player, Piece>> PendingRequests = new Queue<Tuple<Player, Piece>>();
         private static bool _running;
         private static int _generation;
 
@@ -119,18 +137,31 @@ namespace Stackmaster
 
             // Every recognized click represents another complete kit. Serialize queued clicks so
             // each gets a fresh storage, capacity, ownership, and transaction decision.
-            PendingPieces.Enqueue(piece);
-            StartNext(player);
+            PendingRequests.Enqueue(Tuple.Create(player, piece));
+            StartNext();
         }
 
-        private static void StartNext(Player player)
+        private static void StartNext()
         {
-            if (_running || PendingPieces.Count == 0 || !RuntimeContext.Compatibility.IsCompatible)
+            if (_running || !RuntimeContext.Compatibility.IsCompatible)
             {
                 return;
             }
 
-            var piece = PendingPieces.Dequeue();
+            Tuple<Player, Piece> request = null;
+            while (PendingRequests.Count > 0)
+            {
+                var candidate = PendingRequests.Dequeue();
+                if (ReferenceEquals(candidate.Item1, Player.m_localPlayer))
+                {
+                    request = candidate;
+                    break;
+                }
+            }
+            if (request == null) return;
+
+            var player = request.Item1;
+            var piece = request.Item2;
             var generation = _generation;
             _running = true;
             try
@@ -143,7 +174,7 @@ namespace Stackmaster
                 if (!TryPrepare(player, piece, out requirements, out capture, out plan, out handles, out failure))
                 {
                     ShowFailure(failure);
-                    Complete(player, generation);
+                    Complete(generation);
                     return;
                 }
 
@@ -151,14 +182,14 @@ namespace Stackmaster
                 if (!TryPlanCapacity(player, capture, plan, out ignoredCapacity, out failure))
                 {
                     ShowFailure(failure);
-                    Complete(player, generation);
+                    Complete(generation);
                     return;
                 }
 
                 if (handles.Any(handle => OwnershipLeaseManager.HasPotentialAcquisition(handle.Id)))
                 {
                     ShowFailure("a previous ownership transition is still pending");
-                    Complete(player, generation);
+                    Complete(generation);
                     return;
                 }
 
@@ -168,7 +199,7 @@ namespace Stackmaster
                 if (unowned.Length == 0)
                 {
                     Finish(player, piece, plan, null);
-                    Complete(player, generation);
+                    Complete(generation);
                     return;
                 }
 
@@ -179,11 +210,11 @@ namespace Stackmaster
             {
                 RuntimeContext.Plugin?.Log.LogError("Expedition-kit action stopped safely: " + exception);
                 RuntimeContext.ShowCenter("Stackmaster stopped safely; no expedition kit was added.");
-                Complete(player, generation);
+                Complete(generation);
             }
         }
 
-        private static void Complete(Player player, int generation)
+        private static void Complete(int generation)
         {
             if (generation != _generation)
             {
@@ -191,10 +222,7 @@ namespace Stackmaster
             }
 
             _running = false;
-            if (player == Player.m_localPlayer)
-            {
-                StartNext(player);
-            }
+            StartNext();
         }
 
         internal static void Shutdown()
@@ -202,7 +230,7 @@ namespace Stackmaster
             // Invalidate any yielded ownership action before it can mutate, and discard clicks that
             // have not started. OwnershipCoordinator shutdown remains responsible for exact cleanup.
             _generation++;
-            PendingPieces.Clear();
+            PendingRequests.Clear();
             _running = false;
         }
 
@@ -222,7 +250,7 @@ namespace Stackmaster
             {
                 RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership setup failed safely: " + exception);
                 RuntimeContext.ShowCenter("Stackmaster could not safely acquire the expedition kit; nothing was moved.");
-                Complete(player, generation);
+                Complete(generation);
                 yield break;
             }
 
@@ -231,6 +259,7 @@ namespace Stackmaster
                 var refreshFailed = false;
                 var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
                 while (generation == _generation &&
+                       ReferenceEquals(player, Player.m_localPlayer) &&
                        !ownership.IsComplete &&
                        Time.realtimeSinceStartup < deadline)
                 {
@@ -250,7 +279,9 @@ namespace Stackmaster
 
                 try
                 {
-                    if (generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
+                    if (generation != _generation ||
+                        !RuntimeContext.Compatibility.IsCompatible ||
+                        !ReferenceEquals(player, Player.m_localPlayer))
                     {
                         yield break;
                     }
@@ -290,6 +321,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership timeout cleanup failed: " + exception);
+                    DisableAfterFatalFailure("Stackmaster could not finish expedition-kit ownership timeout cleanup.");
                 }
 
                 try
@@ -299,6 +331,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership release failed safely: " + exception);
+                    DisableAfterFatalFailure("Stackmaster could not hand expedition-kit ownership to cleanup.");
                 }
                 finally
                 {
@@ -309,10 +342,11 @@ namespace Stackmaster
                     catch (Exception exception)
                     {
                         RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership teardown failed safely: " + exception);
+                        DisableAfterFatalFailure("Stackmaster could not finish expedition-kit ownership teardown.");
                     }
                     finally
                     {
-                        Complete(player, generation);
+                        Complete(generation);
                     }
                 }
             }
@@ -386,16 +420,42 @@ namespace Stackmaster
                     return;
                 }
 
-                NearbyResourceService.ResetCaches();
-                NearbyBuildHudPatch.ResetCache();
-                RuntimeContext.ShowTopLeft("Stackmaster: expedition kit added (" +
-                    plan.RequiredUnits.ToString(CultureInfo.InvariantCulture) + " items).");
+                try
+                {
+                    NearbyResourceService.ResetCaches();
+                    NearbyBuildHudPatch.ResetCache();
+                }
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit cache refresh failed after commit: " + exception);
+                }
+                try
+                {
+                    RuntimeContext.ShowTopLeft("Stackmaster: expedition kit added (" +
+                        plan.RequiredUnits.ToString(CultureInfo.InvariantCulture) + " items).");
+                }
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit success notification failed after commit: " + exception);
+                }
             }
             finally
             {
                 // Reservation cleanup never touches a pre-existing successful-build lease. The
                 // outer ownership batch releases only ownership acquired by this kit click.
-                NearbyResourceService.ReleaseReservations(reservations, false);
+                var reservationsReleased = false;
+                try
+                {
+                    reservationsReleased = NearbyResourceService.ReleaseReservations(reservations, false);
+                }
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit reservation cleanup threw: " + exception);
+                }
+                if (!reservationsReleased)
+                {
+                    DisableAfterFatalFailure("Stackmaster could not fully release an expedition-kit reservation.");
+                }
             }
         }
 
@@ -509,8 +569,10 @@ namespace Stackmaster
             var completed = new List<CompletedExpeditionMove>();
             var sourceMoved = new Dictionary<string, int>(StringComparer.Ordinal);
 
-            foreach (var step in capacity.Steps)
+            try
             {
+                foreach (var step in capacity.Steps)
+                {
                 RuntimeResourceStack runtime;
                 if (!capture.RuntimeStacks.TryGetValue(step.SourceStackId, out runtime) || runtime.Container == null)
                 {
@@ -564,8 +626,11 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    moved = false;
                     RuntimeContext.Plugin?.Log.LogError("Expedition-kit transfer primitive threw: " + exception);
+                    // A throwing game primitive may still have mutated either inventory. Let the
+                    // transaction-wide handler restore every pre-transaction snapshot regardless
+                    // of whether the observed counts happen to look exact.
+                    throw;
                 }
                 var sourceAfter = TotalUnits(runtime.Inventory);
                 var playerAfter = TotalUnits(playerInventory);
@@ -617,13 +682,42 @@ namespace Stackmaster
                 return false;
             }
 
-            var expectedUnits = withdrawal.RequiredUnits;
-            if (completed.Sum(move => move.Quantity) != expectedUnits)
-            {
-                failure = "expedition transfer did not complete the exact kit";
-                return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
+                var expectedUnits = withdrawal.RequiredUnits;
+                if (completed.Sum(move => move.Quantity) != expectedUnits)
+                {
+                    failure = "expedition transfer did not complete the exact kit";
+                    return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
+                }
+                return true;
             }
-            return true;
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogError("Expedition-kit transaction threw after mutation began: " + exception);
+                // The current move may have mutated before throwing and therefore may not yet be
+                // represented in completed. Restore every inventory from its pre-transaction image.
+                var restored = false;
+                try
+                {
+                    restored = RestoreBackups(backups, reservations);
+                }
+                catch (Exception rollbackException)
+                {
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit emergency snapshot rollback threw: " + rollbackException);
+                }
+                if (restored)
+                {
+                    failure = "an expedition transfer exception required full rollback; inventories were restored and Stackmaster was disabled";
+                    RuntimeContext.Disable("Expedition-kit transfer exception; inventories were restored.");
+                }
+                else
+                {
+                    failure = "an expedition transfer exception required full rollback; rollback could not restore every item";
+                    RuntimeContext.Disable("Expedition-kit rollback could not restore every inventory.");
+                }
+                NearbyResourceService.ResetCaches();
+                NearbyBuildHudPatch.ResetCache();
+                return false;
+            }
         }
 
         private static bool RollbackOrDisable(
@@ -635,8 +729,26 @@ namespace Stackmaster
             string reason,
             out string failure)
         {
-            var restored = RollbackCompleted(player, scope, completed);
-            if (!restored) restored = RestoreBackups(backups, reservations);
+            var restored = false;
+            try
+            {
+                restored = RollbackCompleted(player, scope, completed);
+            }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogError("Expedition-kit reverse rollback threw; restoring snapshots: " + exception);
+            }
+            if (!restored)
+            {
+                try
+                {
+                    restored = RestoreBackups(backups, reservations);
+                }
+                catch (Exception exception)
+                {
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot rollback threw: " + exception);
+                }
+            }
             failure = restored
                 ? reason + "; all transfers were rolled back"
                 : reason + "; rollback could not restore every item";
@@ -668,13 +780,8 @@ namespace Stackmaster
                 {
                     return false;
                 }
-                var playerBefore = TotalUnits(playerInventory);
-                if (!playerInventory.RemoveItem(destination, move.Quantity) ||
-                    TotalUnits(playerInventory) != playerBefore - move.Quantity)
-                {
-                    return false;
-                }
-
+                // Restore the chest first. If any later step fails, the full snapshots still
+                // contain every unit and can replace both inventories without a loss window.
                 var sourceBefore = TotalUnits(move.Source.Inventory);
                 move.SourceClone.m_stack = move.Quantity;
                 move.SourceClone.m_gridPos = move.SourcePosition;
@@ -688,7 +795,14 @@ namespace Stackmaster
                         move.SourcePosition.y,
                         true
                     });
-                if (!restored || TotalUnits(move.Source.Inventory) != sourceBefore + move.Quantity ||
+                if (!restored || TotalUnits(move.Source.Inventory) != sourceBefore + move.Quantity)
+                {
+                    return false;
+                }
+
+                var playerBefore = TotalUnits(playerInventory);
+                if (!playerInventory.RemoveItem(destination, move.Quantity) ||
+                    TotalUnits(playerInventory) != playerBefore - move.Quantity ||
                     !move.Reservation.AdvanceDataRevisionAfterMutation() ||
                     !NearbyResourceService.ReservationMatches(player, scope, move.Reservation))
                 {
@@ -702,46 +816,101 @@ namespace Stackmaster
             IEnumerable<ExpeditionInventoryBackup> backups,
             IEnumerable<ContainerReservation> reservations)
         {
-            if (AddItemAtMethod == null) return false;
+            if (InventoryItemsField == null) return false;
+            ExpeditionSnapshotRestoreTarget[] prepared;
             try
             {
-                foreach (var backup in backups)
-                {
-                    backup.Inventory.RemoveAll();
-                    foreach (var original in backup.Items)
-                    {
-                        var clone = original.Clone();
-                        if (!(bool)AddItemAtMethod.Invoke(
-                                backup.Inventory,
-                                new object[]
-                                {
-                                    clone,
-                                    clone.m_stack,
-                                    clone.m_gridPos.x,
-                                    clone.m_gridPos.y,
-                                    true
-                                }))
-                        {
-                            return false;
-                        }
-                    }
-                    if (TotalUnits(backup.Inventory) != backup.Items.Sum(item => item.m_stack)) return false;
-                }
-                foreach (var reservation in reservations)
-                {
-                    if (!reservation.AdvanceDataRevisionAfterMutation()) return false;
-                }
-                return true;
+                // Clone every complete target list before touching any live inventory. Snapshot
+                // rollback then replaces each backing list directly instead of invoking game move/add
+                // primitives that can throw after partially mutating one side of the transaction.
+                prepared = backups.Select(backup => new ExpeditionSnapshotRestoreTarget(
+                    backup.Inventory,
+                    backup.Items.Select(item => item.Clone()).ToList(),
+                    backup.Items.Sum(item => item.m_stack))).ToArray();
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit full rollback failed: " + exception);
+                RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot preparation failed: " + exception);
                 return false;
             }
+
+            try
+            {
+                // Prove the reflected field is writable for every participant before replacing
+                // any list. This keeps a compatibility/reflection failure on the no-mutation side.
+                foreach (var target in prepared)
+                {
+                    var current = InventoryItemsField.GetValue(target.Inventory);
+                    InventoryItemsField.SetValue(target.Inventory, current);
+                    if (current == null || !ReferenceEquals(InventoryItemsField.GetValue(target.Inventory), current))
+                    {
+                        return false;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot field preflight failed: " + exception);
+                return false;
+            }
+
+            var allRestored = true;
+            foreach (var target in prepared)
+            {
+                try
+                {
+                    InventoryItemsField.SetValue(target.Inventory, target.Items);
+                }
+                catch (Exception exception)
+                {
+                    allRestored = false;
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot list replacement failed: " + exception);
+                }
+            }
+            foreach (var target in prepared)
+            {
+                try
+                {
+                    allRestored &= ReferenceEquals(InventoryItemsField.GetValue(target.Inventory), target.Items) &&
+                        TotalUnits(target.Inventory) == target.TotalUnits;
+                    target.Inventory.m_onChanged?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    allRestored = false;
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit restored-inventory notification failed: " + exception);
+                }
+            }
+
+            foreach (var reservation in reservations)
+            {
+                try
+                {
+                    allRestored &= reservation.AdvanceDataRevisionAfterMutation();
+                }
+                catch (Exception exception)
+                {
+                    allRestored = false;
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit rollback revision update failed: " + exception);
+                }
+            }
+            return allRestored;
         }
 
         private static int TotalUnits(Inventory inventory)
             => inventory.GetAllItems().Sum(item => item.m_stack);
+
+        private static void DisableAfterFatalFailure(string reason)
+        {
+            try
+            {
+                RuntimeContext.Disable(reason);
+            }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogError("Stackmaster fatal-disable fallback failed: " + exception);
+            }
+        }
 
         private static void ShowFailure(string failure)
         {

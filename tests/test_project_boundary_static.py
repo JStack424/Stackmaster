@@ -166,7 +166,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ExpeditionClickPolicy.ShouldIntercept", action)
         self.assertIn("return true;", action[action.index("internal static class ExpeditionKitClickPatch"):action.index("internal sealed class ExpeditionInventoryBackup")])
         self.assertIn("return !intercepting;", action)
-        self.assertIn("PendingPieces.Enqueue(piece)", action)
+        self.assertIn("PendingRequests.Enqueue(Tuple.Create(player, piece))", action)
+        self.assertIn("ReferenceEquals(candidate.Item1, Player.m_localPlayer)", action)
+        self.assertIn("!ReferenceEquals(player, Player.m_localPlayer)", action)
         self.assertIn("return states.Length > 0 && states.All(state => state)", core)
         click_patch = action[action.index("internal static class ExpeditionKitClickPatch"):action.index("internal sealed class ExpeditionInventoryBackup")]
         self.assertNotIn("Hud.CloseBuildUi()", click_patch)
@@ -195,6 +197,7 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_expedition_kit_reserves_revalidates_rolls_back_and_preserves_build_leases(self):
         action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         self.assertIn("RevalidateContainers(player, plan, capture", action)
         self.assertIn("TryReserveContainers(", action)
         self.assertIn("RevalidateReservedContainers", action)
@@ -202,6 +205,21 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("MoveItemToThis", action)
         self.assertIn("RollbackCompleted", action)
         self.assertIn("RestoreBackups", action)
+        self.assertIn('catch (Exception exception)\n            {\n                RuntimeContext.Plugin?.Log.LogError("Expedition-kit transaction threw after mutation began:', action)
+        transfer_catch = action[action.index('RuntimeContext.Plugin?.Log.LogError("Expedition-kit transfer primitive threw:'):]
+        self.assertIn("throw;", transfer_catch[:500])
+        self.assertIn("backup.Items.Select(item => item.Clone()).ToList()", action)
+        self.assertIn("InventoryItemsField.SetValue(target.Inventory, current)", action)
+        self.assertIn("InventoryItemsField.SetValue(target.Inventory, target.Items)", action)
+        self.assertIn("Expedition-kit cache refresh failed after commit", action)
+        self.assertIn("reservationsReleased = NearbyResourceService.ReleaseReservations", action)
+        self.assertIn("for (var attempt = 0; attempt < 2 && !released; attempt++)", nearby)
+        self.assertIn("PendingReservationReleases", nearby)
+        self.assertIn("UpdatePendingReservationReleases", nearby)
+        self.assertIn("NearbyResourceService.UpdatePendingReservationReleases();", ownership)
+        rollback = action[action.index("private static bool RollbackCompleted"):action.index("private static bool RestoreBackups")]
+        self.assertLess(rollback.index("var sourceBefore = TotalUnits(move.Source.Inventory)"),
+                        rollback.index("var playerBefore = TotalUnits(playerInventory)"))
         self.assertIn("RuntimeContext.Disable", action)
         self.assertIn("ReleaseReservations(reservations, false)", action)
         self.assertIn("OwnershipLeaseManager.ReleaseBatch(ownership", action)
@@ -215,6 +233,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             'RequireMethod(failures, typeof(Inventory), "GetWidth")',
             'RequireMethod(failures, typeof(Inventory), "GetHeight")',
             'RequireMethod(failures, typeof(Inventory), "GetTotalWeight")',
+            'RequireMethod(failures, typeof(Inventory), "RemoveAll")',
             'RequireMethod(failures, typeof(ItemDrop.ItemData), "GetWeight", typeof(int))',
             'RequireMethod(failures, typeof(Player), "GetMaxCarryWeight")',
         ):
@@ -567,6 +586,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("private void OnDisable()", plugin)
         self.assertIn('RuntimeContext.Disable("plugin disabled")', plugin)
         self.assertIn("OwnershipCoordinator.HasUnresolvedCleanup", plugin)
+        self.assertIn("NearbyResourceService.HasPendingReservationReleases", plugin)
         self.assertIn('PluginGuid + ".ownership-cleanup-safety"', plugin)
         self.assertIn("OwnershipSafetyUpdatePatch", plugin)
         self.assertIn("shutdownRelease", ownership)

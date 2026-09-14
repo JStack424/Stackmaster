@@ -114,11 +114,11 @@ namespace Stackmaster
             RuntimeContext.Disable("plugin unloading");
             try
             {
-                if (OwnershipCoordinator.HasUnresolvedCleanup)
+                if (OwnershipCoordinator.HasUnresolvedCleanup || NearbyResourceService.HasPendingReservationReleases)
                 {
-                    // Preserve both halves of late cleanup under a session-lifetime Harmony id:
-                    // suppress the generated response and observe its delayed ZDO owner update.
-                    // Ordinary gameplay patches are still removed below.
+                    // Preserve delayed ownership and reservation cleanup under a session-lifetime Harmony id:
+                    // suppress generated responses, observe delayed owner updates, and retry any
+                    // exact local in-use release. Ordinary gameplay patches are still removed below.
                     var safetyHarmony = new Harmony(PluginGuid + ".ownership-cleanup-safety");
                     var responseTarget = AccessTools.DeclaredMethod(typeof(Container), "RPC_StackResponse",
                         new[] { typeof(long), typeof(bool) });

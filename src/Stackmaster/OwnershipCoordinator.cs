@@ -715,6 +715,7 @@ namespace Stackmaster
         {
             // Runs independently of the plugin component's enabled/compatibility state. It is
             // also retained under the session-lifetime Harmony id during hot unload.
+            NearbyResourceService.UpdatePendingReservationReleases();
             OwnershipLeaseManager.Update();
         }
     }
