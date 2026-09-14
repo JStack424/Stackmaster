@@ -10,7 +10,7 @@ Stackmaster is built to preserve the vanilla experience. It adds no gameplay adv
 
 Convenience stays deliberate. Auto-deposit works only when you look at or interact with a chest and press `Left Alt + E`; simply walking near your base never empties your backpack.
 
-> **Testing status:** Stackmaster 0.4.2 is a local r2modman test candidate. Its independent storage-total and crafting/building permission combinations, along with the 0.4.1 multiplayer ownership-lease changes, have automated coverage but have not yet been independently tested in Valheim. Back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
+> **Testing status:** Stackmaster 1.0.0 promotes the live-tested 0.4.2 candidate without gameplay changes. Automated coverage includes the independent storage-total and crafting/building permission combinations and the 30-second ownership-lease safeguards. Broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete; back up valuable characters and worlds and report any item loss, duplication, crash, corrupt item data, blocked chest, or synchronization disagreement.
 
 ## Features
 
@@ -64,7 +64,7 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
 - **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
 - **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
 
-Version 0.4.2 supports keyboard and mouse. Controller-specific controls are not included yet.
+Version 1.0.0 supports keyboard and mouse. Controller-specific controls are not included yet.
 
 ## Configuration
 
@@ -87,7 +87,7 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-Stackmaster 0.4.2 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
+Stackmaster 1.0.0 is built and fail-closed for Valheim API 1.0.12 / Steam build 25253764, Unity 6000.0.75f1, BepInEx runtime 5.4.23.5, and Harmony 2.9.0.0. It supports vanilla containers only. A mismatched or unsafe runtime disables Stackmaster before its inventory hooks can change items.
 
 Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, briefly reserves them for the synchronous transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous, so the first remote-owned action prepares ownership and prompts a retry; only the second, normal vanilla action may consume resources. Prepared ownership has a 10-second retry window. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Logical in-use reservations are never retained. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Crafting and every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition release only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards.
 

@@ -21,7 +21,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
-VERSION = "0.4.2"
+VERSION = "1.0.0"
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
 EXPECTED = (
     "manifest.json",

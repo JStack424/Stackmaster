@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0
+
+Public release, promoted from the live-tested 0.4.2 candidate without gameplay or configuration changes.
+
+- Added independent, default-on controls for storage-backed crafting, storage-backed building, and aggregate storage totals in crafting, upgrade, and building requirement rows.
+- Preserved explicit legacy building/crafting opt-outs through one-time migration to the renamed settings.
+- Added adaptive exact requirement totals for longer values such as `45 / 172`, with affordability and flashing tied to the resources the active action is actually allowed to consume.
+- Added a guarded 30-second sliding ownership lease for successful chest-backed building, with immediate remote manual-access preemption and immediate cleanup across every non-success lifecycle path.
+- Fixed full-stack chest transfers and world drops leaving stale protected-item targets; partial transfers and internal player-inventory moves continue to retain protection.
+- Pruned orphaned target records before storage actions so removed items no longer produce stale `target item missing` shortages.
+- Final verification passes with zero compiler warnings/errors, 99/99 pure-domain tests, and 57/57 static/repository safety checks.
+- In-game validation of the release candidate passed. Broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete.
+
 ## 0.4.2
 
 Local r2modman test candidate; not published.
