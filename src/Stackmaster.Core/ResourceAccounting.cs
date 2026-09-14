@@ -86,6 +86,34 @@ namespace Stackmaster.Core
             => !noCost && !isSatisfied && flashSignal > 0f;
     }
 
+    /// <summary>Pure policy that keeps storage totals independent from storage-backed action permission.</summary>
+    public sealed class RequirementUiDecision
+    {
+        internal RequirementUiDecision(bool shouldApply, bool shouldOverrideText, bool isSatisfied)
+        {
+            ShouldApply = shouldApply;
+            ShouldOverrideText = shouldOverrideText;
+            IsSatisfied = isSatisfied;
+        }
+
+        public bool ShouldApply { get; }
+        public bool ShouldOverrideText { get; }
+        public bool IsSatisfied { get; }
+    }
+
+    public static class RequirementUiPolicy
+    {
+        public static RequirementUiDecision Resolve(
+            bool showStorageAmounts,
+            bool allowStorageUse,
+            bool aggregateSatisfied,
+            bool playerSatisfied)
+            => new RequirementUiDecision(
+                showStorageAmounts || allowStorageUse,
+                showStorageAmounts,
+                allowStorageUse ? aggregateSatisfied : playerSatisfied);
+    }
+
     /// <summary>One rendered requirement line with stock from the complete eligible capture.</summary>
     public sealed class ResourceDisplayRequirement
     {

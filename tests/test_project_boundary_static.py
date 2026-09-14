@@ -51,13 +51,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("VerifyReferencesWereNotCopied", self.project)
         self.assertNotIn("Stackmaster.Core.csproj", self.project)
 
-    def test_exactly_five_user_settings_are_bound(self):
-        self.assertEqual(5, self.gameplay.count("Config.Bind("))
+    def test_exactly_six_user_settings_are_bound(self):
+        self.assertEqual(6, self.gameplay.count("Config.Bind("))
         self.assertIn('"Auto-sort enabled"', self.gameplay)
         self.assertIn('"Nearby-storage radius"', self.gameplay)
         self.assertIn('"Storage-action keybind"', self.gameplay)
-        self.assertIn('"Enable building from nearby chests", true', self.gameplay)
-        self.assertIn('"Enable crafting from nearby chests", true', self.gameplay)
+        self.assertIn('"Allow building from storage", true', self.gameplay)
+        self.assertIn('"Allow crafting from storage", true', self.gameplay)
+        self.assertIn('"Show storage amounts in craft and build menus", true', self.gameplay)
 
     def test_all_chest_features_share_the_workbench_mesh_or_fallback_scope(self):
         scope = (PLUGIN_DIR / "StorageScope.cs").read_text(encoding="utf-8")
@@ -209,7 +210,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(unsubscribe, subscribe)
         self.assertIn("Object.Destroy(_toggleAnchor)", integration)
 
-    def test_chest_auto_sort_is_local_scoped_and_not_a_sixth_setting(self):
+    def test_chest_auto_sort_is_local_scoped_and_not_a_seventh_setting(self):
         integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
         preferences = (PLUGIN_DIR / "ChestSortPreferences.cs").read_text(encoding="utf-8")
         policy = (ROOT / "src" / "Stackmaster.Core" / "ChestSortPreferencePolicy.cs").read_text(encoding="utf-8")
@@ -768,6 +769,35 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("nothing was consumed", nearby)
         self.assertNotIn("ClaimOwnership()", nearby)
 
+    def test_requirement_display_and_consumption_settings_are_independent(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        requirement_patches = nearby[
+            nearby.index("internal static class NearbyRequirementPatches"):
+            nearby.index("internal static class NearbyBuildHudPatch")
+        ]
+        action_patches = nearby[nearby.index("internal static class NearbyFirstRequiredItemPatch"):]
+        build_hud = nearby[
+            nearby.index("internal static class NearbyBuildHudPatch"):
+            nearby.index("internal static class RequirementAmountTextFitter")
+        ]
+        craft_hud = nearby[
+            nearby.index("internal static class NearbyCraftingHudPatch"):
+            nearby.index("internal static class NearbyFirstRequiredItemPatch")
+        ]
+
+        self.assertNotIn("ShowStorageAmountsInRequirementMenus", requirement_patches)
+        self.assertNotIn("ShowStorageAmountsInRequirementMenus", action_patches)
+        self.assertIn("CraftingFromNearbyChestsEnabled.Value", requirement_patches)
+        self.assertIn("BuildingFromNearbyChestsEnabled.Value", requirement_patches)
+        self.assertIn("CraftingFromNearbyChestsEnabled.Value", action_patches)
+        self.assertIn("BuildingFromNearbyChestsEnabled.Value", action_patches)
+        self.assertIn("ShowStorageAmountsInRequirementMenus.Value", build_hud)
+        self.assertIn("ShowStorageAmountsInRequirementMenus.Value", craft_hud)
+        self.assertIn("entry.AggregateSatisfied", build_hud)
+        self.assertIn("entry.PlayerSatisfied", build_hud)
+        self.assertIn("entry.AggregateSatisfied", craft_hud)
+        self.assertIn("entry.PlayerSatisfied", craft_hud)
+
     def test_build_hud_uses_aggregate_nearby_totals_and_matching_availability_color(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
@@ -777,11 +807,17 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece))', gate)
         self.assertIn('RequireField(failures, typeof(Hud), "m_requirementItems")', gate)
         self.assertIn("internal static class NearbyBuildHudPatch", nearby)
-        self.assertIn("!RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value", nearby)
+        build = nearby[nearby.index("internal static class NearbyBuildHudPatch"):nearby.index("internal static class RequirementAmountTextFitter")]
+        self.assertIn("plugin.ShowStorageAmountsInRequirementMenus.Value", build)
+        self.assertIn("plugin.BuildingFromNearbyChestsEnabled.Value", build)
         self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks)", nearby)
-        self.assertIn("new RuntimeRequirementAvailability(entry.Required, entry.Available, entry.IsSatisfied)", nearby)
-        self.assertIn('requirementRoot.transform.Find("res_amount")', nearby)
-        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.Available)", nearby)
+        self.assertIn("capture.Stacks.Where(stack => string.Equals(stack.InventoryId, PlayerInventoryId", nearby)
+        self.assertIn('requirementRoot.transform.Find("res_amount")', build)
+        self.assertIn("RequirementUiPolicy.Resolve(", build)
+        self.assertIn("if (decision.ShouldOverrideText)", build)
+        self.assertIn("RequirementAmountTextFitter.PrepareForVanilla(", build)
+        self.assertIn("RequirementAmountTextFitter.Apply(", build)
+        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.TotalAvailable)", build)
         self.assertIn("ResourceRequirementPresentation.ShouldUseShortageColor(", nearby)
         self.assertIn("? Color.red", nearby)
         self.assertIn(": Color.white", nearby)
@@ -806,14 +842,18 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("___m_reqList", nearby)
         self.assertIn("var inventoryGui = InventoryGui.instance", nearby)
         self.assertIn("RequirementsField.GetValue(inventoryGui) as List<Piece.Requirement>", nearby)
-        self.assertIn("!RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value", nearby)
+        craft = nearby[nearby.index("internal static class NearbyCraftingHudPatch"):nearby.index("internal static class NearbyFirstRequiredItemPatch")]
+        self.assertIn("plugin.ShowStorageAmountsInRequirementMenus.Value", craft)
+        self.assertIn("plugin.CraftingFromNearbyChestsEnabled.Value", craft)
         self.assertIn("GetRecipeRequirementAvailability", nearby)
         self.assertIn("checked(requirement.GetAmount(qualityLevel) * craftMultiplier)", nearby)
         self.assertIn("alternatives: recipe.m_requireOnlyOneIngredient", nearby)
         self.assertIn("requireSingleQuality: recipe.m_requireOnlyOneIngredient", nearby)
-        self.assertIn('var amountTransform = elementRoot.Find("res_amount")', nearby)
-        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.Available)", nearby)
-        self.assertIn("ResourceRequirementPresentation.ShouldUseShortageColor(", nearby)
+        self.assertIn('var amountTransform = elementRoot.Find("res_amount")', craft)
+        self.assertIn("RequirementUiPolicy.Resolve(", craft)
+        self.assertIn("if (decision.ShouldOverrideText)", craft)
+        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.TotalAvailable)", craft)
+        self.assertIn("ResourceRequirementPresentation.ShouldUseShortageColor(", craft)
         self.assertIn("RefreshIntervalSeconds = 0.25f", nearby)
         self.assertIn("public static class ResourceDisplayAvailability", core)
         self.assertIn("public static class ResourceRequirementPresentation", core)
@@ -822,7 +862,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("GroupBy(requirement => new RequirementKey", core)
         self.assertIn("GroupBy(stack => stack.Quality)", core)
 
-    def test_crafting_requirement_text_uses_bounded_adaptive_fit_without_changing_exact_values(self):
+    def test_requirement_text_uses_bounded_adaptive_fit_without_changing_exact_values(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         section = nearby[
             nearby.index("internal static class RequirementAmountTextFitter"):
@@ -837,11 +877,11 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("label.fontSizeMax = normalSize", section)
         self.assertIn("label.fontSize = normalSize", section)
         self.assertIn("RequirementAmountTextFitter.Apply(", section)
-        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.Available)", section)
+        self.assertIn("ResourceRequirementPresentation.Format(entry.Required, entry.TotalAvailable)", section)
         self.assertNotIn("Substring(", section)
         self.assertNotIn("…", section)
 
-    def test_crafting_requirement_text_restores_vanilla_state_for_reused_rows_and_disable_paths(self):
+    def test_requirement_text_restores_vanilla_state_for_reused_rows_and_disable_paths(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
         section = nearby[

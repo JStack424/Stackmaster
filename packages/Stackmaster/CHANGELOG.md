@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.2
+
+Local r2modman test candidate; not published.
+
+- Split nearby-resource behavior into three independent, default-on settings: **Allow crafting from storage**, **Allow building from storage**, and **Show storage amounts in craft and build menus**.
+- Storage totals can now remain visible as exact `required / total available` values in crafting, upgrade, and building rows even when the corresponding action is restricted to player-held materials.
+- Requirement affordability and red/white flashing now follow actual action permission on both code paths: player-only stock when that action's storage permission is off, aggregate player-plus-eligible-storage stock when it is on.
+- Turning storage totals off preserves vanilla count text and typography while storage-backed crafting or building can remain enabled independently; turning both display and the relevant permission off leaves that requirement UI untouched.
+- Preserved the connected-workbench mesh / fallback scope, exact aggregate accounting, adaptive long requirement-count fit, independent crafting/building consumption paths, and all 0.4.1 ownership and protected-item cleanup behavior.
+- Automated tests cover all eight combinations of the three new booleans across both crafting and building UI decisions. Live in-game validation remains pending.
+
 ## 0.4.1
 
 Local r2modman test candidate; not published.

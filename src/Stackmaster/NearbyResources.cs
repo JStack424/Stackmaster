@@ -279,16 +279,22 @@ namespace Stackmaster
 
     internal sealed class RuntimeRequirementAvailability
     {
-        internal RuntimeRequirementAvailability(int required, int available, bool isSatisfied)
+        internal RuntimeRequirementAvailability(
+            int required,
+            int totalAvailable,
+            bool aggregateSatisfied,
+            bool playerSatisfied)
         {
             Required = required;
-            Available = available;
-            IsSatisfied = isSatisfied;
+            TotalAvailable = totalAvailable;
+            AggregateSatisfied = aggregateSatisfied;
+            PlayerSatisfied = playerSatisfied;
         }
 
         internal int Required { get; }
-        internal int Available { get; }
-        internal bool IsSatisfied { get; }
+        internal int TotalAvailable { get; }
+        internal bool AggregateSatisfied { get; }
+        internal bool PlayerSatisfied { get; }
     }
 
     internal static class NearbyResourceService
@@ -338,18 +344,26 @@ namespace Stackmaster
                     requirement.m_amount))
                 .ToList();
             var evaluated = ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks);
+            var playerEvaluated = ResourceDisplayAvailability.Evaluate(
+                validRequirements,
+                capture.Stacks.Where(stack => string.Equals(stack.InventoryId, PlayerInventoryId, StringComparison.Ordinal)));
             var next = 0;
             var result = new List<RuntimeRequirementAvailability>(requirements.Length);
             foreach (var requirement in requirements)
             {
                 if (requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0)
                 {
-                    result.Add(new RuntimeRequirementAvailability(0, 0, true));
+                    result.Add(new RuntimeRequirementAvailability(0, 0, true, true));
                     continue;
                 }
 
-                var entry = evaluated[next++];
-                result.Add(new RuntimeRequirementAvailability(entry.Required, entry.Available, entry.IsSatisfied));
+                var entry = evaluated[next];
+                var playerEntry = playerEvaluated[next++];
+                result.Add(new RuntimeRequirementAvailability(
+                    entry.Required,
+                    entry.Available,
+                    entry.IsSatisfied,
+                    playerEntry.IsSatisfied));
             }
             return result;
         }
@@ -380,6 +394,11 @@ namespace Stackmaster
                 capture.Stacks,
                 alternatives: recipe.m_requireOnlyOneIngredient,
                 requireSingleQuality: recipe.m_requireOnlyOneIngredient);
+            var playerEvaluated = ResourceDisplayAvailability.Evaluate(
+                validRequirements,
+                capture.Stacks.Where(stack => string.Equals(stack.InventoryId, PlayerInventoryId, StringComparison.Ordinal)),
+                alternatives: recipe.m_requireOnlyOneIngredient,
+                requireSingleQuality: recipe.m_requireOnlyOneIngredient);
             var next = 0;
             var result = new List<RuntimeRequirementAvailability>(requirements.Count);
             foreach (var requirement in requirements)
@@ -389,12 +408,17 @@ namespace Stackmaster
                     : checked(requirement.GetAmount(qualityLevel) * craftMultiplier);
                 if (required <= 0)
                 {
-                    result.Add(new RuntimeRequirementAvailability(0, 0, true));
+                    result.Add(new RuntimeRequirementAvailability(0, 0, true, true));
                     continue;
                 }
 
-                var entry = evaluated[next++];
-                result.Add(new RuntimeRequirementAvailability(entry.Required, entry.Available, entry.IsSatisfied));
+                var entry = evaluated[next];
+                var playerEntry = playerEvaluated[next++];
+                result.Add(new RuntimeRequirementAvailability(
+                    entry.Required,
+                    entry.Available,
+                    entry.IsSatisfied,
+                    playerEntry.IsSatisfied));
             }
             return result;
         }
@@ -1542,15 +1566,25 @@ namespace Stackmaster
 
         private static void Apply(Hud __instance, Piece piece)
         {
-            if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
-                !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
+            var requirementItems = __instance == null
+                ? Array.Empty<GameObject>()
+                : __instance.m_requirementItems ?? Array.Empty<GameObject>();
+            foreach (var requirementItem in requirementItems)
+            {
+                RequirementAmountTextFitter.PrepareForVanilla(
+                    requirementItem == null ? null : requirementItem.transform);
+            }
+
+            var plugin = RuntimeContext.Plugin;
+            if (!RuntimeContext.Compatibility.IsCompatible || plugin == null ||
+                (!plugin.ShowStorageAmountsInRequirementMenus.Value &&
+                 !plugin.BuildingFromNearbyChestsEnabled.Value) ||
                 __instance == null || piece == null || Player.m_localPlayer == null)
             {
                 return;
             }
 
             var requirements = piece.m_resources ?? Array.Empty<Piece.Requirement>();
-            var requirementItems = __instance.m_requirementItems ?? Array.Empty<GameObject>();
             var player = Player.m_localPlayer;
             var scopeSignature = StorageScopeProvider.Resolve(player).Signature;
             if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedPiece, piece) ||
@@ -1576,10 +1610,20 @@ namespace Stackmaster
                 var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
                 if (amountLabel == null) continue;
 
-                amountLabel.text = ResourceRequirementPresentation.Format(entry.Required, entry.Available);
+                var decision = RequirementUiPolicy.Resolve(
+                    plugin.ShowStorageAmountsInRequirementMenus.Value,
+                    plugin.BuildingFromNearbyChestsEnabled.Value,
+                    entry.AggregateSatisfied,
+                    entry.PlayerSatisfied);
+                if (decision.ShouldOverrideText)
+                {
+                    RequirementAmountTextFitter.Apply(
+                        amountLabel,
+                        ResourceRequirementPresentation.Format(entry.Required, entry.TotalAvailable));
+                }
                 amountLabel.color = ResourceRequirementPresentation.ShouldUseShortageColor(
                     noBuildCost,
-                    entry.IsSatisfied,
+                    decision.IsSatisfied,
                     Mathf.Sin(Time.time * 10f))
                     ? Color.red
                     : Color.white;
@@ -1768,8 +1812,10 @@ namespace Stackmaster
             List<Piece.Requirement> requirements,
             bool vanillaResult)
         {
-            if (!vanillaResult || !craft || !RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
-                !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value || inventoryGui == null ||
+            var plugin = RuntimeContext.Plugin;
+            if (!vanillaResult || !craft || !RuntimeContext.Compatibility.IsCompatible || plugin == null ||
+                (!plugin.ShowStorageAmountsInRequirementMenus.Value &&
+                 !plugin.CraftingFromNearbyChestsEnabled.Value) || inventoryGui == null ||
                 player == null || !ReferenceEquals(player, Player.m_localPlayer) || elementRoot == null ||
                 requirement == null || requirement.m_resItem == null || craftMultiplier <= 0 || requirements == null)
             {
@@ -1812,14 +1858,22 @@ namespace Stackmaster
             var amountLabel = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
             if (amountLabel == null) return;
 
-            RequirementAmountTextFitter.Apply(
-                amountLabel,
-                ResourceRequirementPresentation.Format(entry.Required, entry.Available));
+            var decision = RequirementUiPolicy.Resolve(
+                plugin.ShowStorageAmountsInRequirementMenus.Value,
+                plugin.CraftingFromNearbyChestsEnabled.Value,
+                entry.AggregateSatisfied,
+                entry.PlayerSatisfied);
+            if (decision.ShouldOverrideText)
+            {
+                RequirementAmountTextFitter.Apply(
+                    amountLabel,
+                    ResourceRequirementPresentation.Format(entry.Required, entry.TotalAvailable));
+            }
             var noCraftCost = player.NoCostCheat() ||
                               (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoCraftCost));
             amountLabel.color = ResourceRequirementPresentation.ShouldUseShortageColor(
                 noCraftCost,
-                entry.IsSatisfied,
+                decision.IsSatisfied,
                 Mathf.Sin(Time.time * 10f))
                 ? Color.red
                 : Color.white;

@@ -55,6 +55,8 @@ internal static class Program
             RequirementPresentationFormatsAggregateTotals,
             RequirementPresentationRetainsLongExactTotals,
             RequirementPresentationUsesRedOnlyForTrueShortages,
+            RequirementUiPolicyCoversEveryConfigurationCombination,
+            RequirementUiPolicyLeavesVanillaUntouchedOnlyWhenBothFeaturesAreOff,
             ResourcePlanAggregatesPlayerAndNearbyStacks,
             ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
@@ -812,6 +814,63 @@ internal static class Program
             "a true shortage keeps vanilla white during the opposite flash phase");
         True(!ResourceRequirementPresentation.ShouldUseShortageColor(true, false, 1f),
             "no-cost mode suppresses shortage flashing");
+    }
+
+    private static void RequirementUiPolicyCoversEveryConfigurationCombination()
+    {
+        foreach (var showStorageAmounts in new[] { false, true })
+        {
+            foreach (var allowCraftingFromStorage in new[] { false, true })
+            {
+                foreach (var allowBuildingFromStorage in new[] { false, true })
+                {
+                    var crafting = RequirementUiPolicy.Resolve(
+                        showStorageAmounts,
+                        allowCraftingFromStorage,
+                        aggregateSatisfied: true,
+                        playerSatisfied: false);
+                    var building = RequirementUiPolicy.Resolve(
+                        showStorageAmounts,
+                        allowBuildingFromStorage,
+                        aggregateSatisfied: true,
+                        playerSatisfied: false);
+
+                    Equal(showStorageAmounts, crafting.ShouldOverrideText,
+                        "craft text override follows only the independent totals setting");
+                    Equal(showStorageAmounts, building.ShouldOverrideText,
+                        "build text override follows only the independent totals setting");
+                    Equal(showStorageAmounts || allowCraftingFromStorage, crafting.ShouldApply,
+                        "craft UI runs only for visible totals or storage-backed affordability");
+                    Equal(showStorageAmounts || allowBuildingFromStorage, building.ShouldApply,
+                        "build UI runs only for visible totals or storage-backed affordability");
+                    Equal(allowCraftingFromStorage, crafting.IsSatisfied,
+                        "craft flashing follows craft consumption permission, not displayed aggregate stock");
+                    Equal(allowBuildingFromStorage, building.IsSatisfied,
+                        "build flashing follows build consumption permission, not displayed aggregate stock");
+                }
+            }
+        }
+    }
+
+    private static void RequirementUiPolicyLeavesVanillaUntouchedOnlyWhenBothFeaturesAreOff()
+    {
+        var vanilla = RequirementUiPolicy.Resolve(
+            showStorageAmounts: false,
+            allowStorageUse: false,
+            aggregateSatisfied: true,
+            playerSatisfied: false);
+        True(!vanilla.ShouldApply, "disabled totals plus disabled storage use leaves vanilla requirement UI untouched");
+        True(!vanilla.ShouldOverrideText, "disabled totals never replace vanilla count text");
+
+        var displayOnly = RequirementUiPolicy.Resolve(
+            showStorageAmounts: true,
+            allowStorageUse: false,
+            aggregateSatisfied: true,
+            playerSatisfied: false);
+        True(displayOnly.ShouldApply && displayOnly.ShouldOverrideText,
+            "display-only mode shows aggregate totals");
+        True(!displayOnly.IsSatisfied,
+            "display-only mode still flashes when player-held stock is insufficient");
     }
 
     private static void ResourcePlanAggregatesPlayerAndNearbyStacks()

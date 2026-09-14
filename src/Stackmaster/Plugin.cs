@@ -22,6 +22,7 @@ namespace Stackmaster
         internal ConfigEntry<KeyboardShortcut> StorageActionShortcut { get; private set; }
         internal ConfigEntry<bool> BuildingFromNearbyChestsEnabled { get; private set; }
         internal ConfigEntry<bool> CraftingFromNearbyChestsEnabled { get; private set; }
+        internal ConfigEntry<bool> ShowStorageAmountsInRequirementMenus { get; private set; }
         internal BepInEx.Logging.ManualLogSource Log => Logger;
 
         private void Awake()
@@ -35,10 +36,12 @@ namespace Stackmaster
             StorageActionShortcut = Config.Bind("General", "Storage-action keybind",
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
                 "While targeting or viewing an eligible container: deposit matching items and replenish protected stack targets.");
-            BuildingFromNearbyChestsEnabled = Config.Bind("General", "Enable building from nearby chests", true,
-                "Count and consume exact building costs from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
-            CraftingFromNearbyChestsEnabled = Config.Bind("General", "Enable crafting from nearby chests", true,
-                "Count and consume exact crafting costs from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
+            BuildingFromNearbyChestsEnabled = Config.Bind("General", "Allow building from storage", true,
+                "Allow exact building costs to be counted and consumed from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
+            CraftingFromNearbyChestsEnabled = Config.Bind("General", "Allow crafting from storage", true,
+                "Allow exact crafting and upgrade costs to be counted and consumed from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
+            ShowStorageAmountsInRequirementMenus = Config.Bind("General", "Show storage amounts in craft and build menus", true,
+                "Show required / total available counts from the player and eligible storage in crafting, upgrade, and building requirement rows. Affordability still follows the separate crafting and building permissions.");
 
             var compatibility = CompatibilityGate.Evaluate();
             RuntimeContext.Initialize(this, compatibility);
