@@ -77,7 +77,7 @@ Stackmaster has exactly six settings:
 5. **Allow crafting from storage** — on by default and independently controls crafting/upgrade eligibility and consumption from storage.
 6. **Show storage amounts in craft and build menus** — on by default; independently shows player-plus-eligible-storage totals in both requirement UIs without granting permission to consume those stored items.
 
-All six global settings are available through the normal r2modman/BepInEx configuration editor after the first launch. Per-chest auto-sort choices are local-only preferences scoped to the current player, world, and stable chest identity; a missing or unreadable identity safely skips chest sorting.
+All six global settings are available through the normal r2modman/BepInEx configuration editor after the first launch. Existing building/crafting opt-outs migrate automatically to the renamed permission settings, so an explicit `false` remains off and the obsolete keys disappear after launch. Per-chest auto-sort choices are local-only preferences scoped to the current player, world, and stable chest identity; a missing or unreadable identity safely skips chest sorting.
 
 ## Installation
 

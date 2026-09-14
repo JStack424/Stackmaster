@@ -51,14 +51,33 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("VerifyReferencesWereNotCopied", self.project)
         self.assertNotIn("Stackmaster.Core.csproj", self.project)
 
-    def test_exactly_six_user_settings_are_bound(self):
-        self.assertEqual(6, self.gameplay.count("Config.Bind("))
-        self.assertIn('"Auto-sort enabled"', self.gameplay)
-        self.assertIn('"Nearby-storage radius"', self.gameplay)
-        self.assertIn('"Storage-action keybind"', self.gameplay)
-        self.assertIn('"Allow building from storage", true', self.gameplay)
-        self.assertIn('"Allow crafting from storage", true', self.gameplay)
-        self.assertIn('"Show storage amounts in craft and build menus", true', self.gameplay)
+    def test_exactly_six_current_user_settings_are_bound(self):
+        migration_call = "ConfigMigration.BindRenamedDefaultEnabledBoolean("
+        self.assertEqual(4, self.plugin.count("Config.Bind("))
+        self.assertEqual(2, self.plugin.count(migration_call))
+        for key in (
+            "Auto-sort enabled",
+            "Nearby-storage radius",
+            "Storage-action keybind",
+            "Allow building from storage",
+            "Allow crafting from storage",
+            "Show storage amounts in craft and build menus",
+        ):
+            self.assertEqual(1, self.plugin.count(f'"{key}"'))
+
+    def test_renamed_storage_permissions_use_public_idempotent_bepinex_migration(self):
+        migration = (PLUGIN_DIR / "ConfigMigration.cs").read_text(encoding="utf-8")
+        self.assertIn('"Enable building from nearby chests"', self.plugin)
+        self.assertIn('"Enable crafting from nearby chests"', self.plugin)
+        self.assertIn("config.SaveOnConfigSet = false", migration)
+        self.assertIn("config.Bind(section, legacyKey, true", migration)
+        self.assertIn("config.Bind(section, currentKey, true", migration)
+        self.assertIn("current.Value = legacy.Value && current.Value", migration)
+        self.assertIn("config.Remove(legacy.Definition)", migration)
+        self.assertIn("config.Save()", migration)
+        self.assertIn("config.SaveOnConfigSet = originalSaveOnConfigSet", migration)
+        self.assertNotIn("OrphanedEntries", migration)
+        self.assertNotIn("Reflection", migration)
 
     def test_all_chest_features_share_the_workbench_mesh_or_fallback_scope(self):
         scope = (PLUGIN_DIR / "StorageScope.cs").read_text(encoding="utf-8")

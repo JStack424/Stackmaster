@@ -9,5 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Stackmaster.Core/Stackmaster.Core.csproj" />
+    <Reference Include="BepInEx"><HintPath>$(StackmasterReferencePath)/BepInEx.dll</HintPath></Reference>
+    <Compile Include="../../src/Stackmaster/ConfigMigration.cs" Link="ConfigMigration.cs" />
   </ItemGroup>
 </Project>

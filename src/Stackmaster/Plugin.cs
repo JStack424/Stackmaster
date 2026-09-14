@@ -36,9 +36,17 @@ namespace Stackmaster
             StorageActionShortcut = Config.Bind("General", "Storage-action keybind",
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
                 "While targeting or viewing an eligible container: deposit matching items and replenish protected stack targets.");
-            BuildingFromNearbyChestsEnabled = Config.Bind("General", "Allow building from storage", true,
+            BuildingFromNearbyChestsEnabled = ConfigMigration.BindRenamedDefaultEnabledBoolean(
+                Config,
+                "General",
+                "Enable building from nearby chests",
+                "Allow building from storage",
                 "Allow exact building costs to be counted and consumed from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
-            CraftingFromNearbyChestsEnabled = Config.Bind("General", "Allow crafting from storage", true,
+            CraftingFromNearbyChestsEnabled = ConfigMigration.BindRenamedDefaultEnabledBoolean(
+                Config,
+                "General",
+                "Enable crafting from nearby chests",
+                "Allow crafting from storage",
                 "Allow exact crafting and upgrade costs to be counted and consumed from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
             ShowStorageAmountsInRequirementMenus = Config.Bind("General", "Show storage amounts in craft and build menus", true,
                 "Show required / total available counts from the player and eligible storage in crafting, upgrade, and building requirement rows. Affordability still follows the separate crafting and building permissions.");

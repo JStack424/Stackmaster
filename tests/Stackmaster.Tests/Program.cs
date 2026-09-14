@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using BepInEx.Configuration;
+using Stackmaster;
 using Stackmaster.Core;
 
 internal static class Program
@@ -57,6 +60,8 @@ internal static class Program
             RequirementPresentationUsesRedOnlyForTrueShortages,
             RequirementUiPolicyCoversEveryConfigurationCombination,
             RequirementUiPolicyLeavesVanillaUntouchedOnlyWhenBothFeaturesAreOff,
+            RenamedStoragePermissionMigratesLegacyTrueFalseAndMissing,
+            RenamedStoragePermissionMigrationIsIdempotent,
             ResourcePlanAggregatesPlayerAndNearbyStacks,
             ResourcePlanRejectsFiftyWhenOnlyTwentyFiveExist,
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
@@ -871,6 +876,105 @@ internal static class Program
             "display-only mode shows aggregate totals");
         True(!displayOnly.IsSatisfied,
             "display-only mode still flashes when player-held stock is insufficient");
+    }
+
+    private static void RenamedStoragePermissionMigratesLegacyTrueFalseAndMissing()
+    {
+        var scenarios = new[]
+        {
+            new { Name = "legacy false", Contents = "[General]\nEnable building from nearby chests = false\n", Expected = false },
+            new { Name = "legacy true", Contents = "[General]\nEnable building from nearby chests = true\n", Expected = true },
+            new { Name = "missing legacy and current", Contents = string.Empty, Expected = true },
+            new { Name = "current false without legacy", Contents = "[General]\nAllow building from storage = false\n", Expected = false }
+        };
+
+        foreach (var scenario in scenarios)
+        {
+            var path = NewTemporaryConfigPath();
+            try
+            {
+                File.WriteAllText(path, scenario.Contents);
+                var config = new ConfigFile(path, true);
+                var migrated = ConfigMigration.BindRenamedDefaultEnabledBoolean(
+                    config,
+                    "General",
+                    "Enable building from nearby chests",
+                    "Allow building from storage",
+                    "Current building permission.");
+
+                Equal(scenario.Expected, migrated.Value, scenario.Name + " resolves to the exact intended value");
+                var saved = File.ReadAllText(path);
+                True(!saved.Contains("Enable building from nearby chests =", StringComparison.Ordinal),
+                    scenario.Name + " removes the obsolete option from the saved config");
+                True(saved.Contains("Allow building from storage = " + scenario.Expected, StringComparison.OrdinalIgnoreCase),
+                    scenario.Name + " persists the replacement option");
+                Equal(1, config.Keys.Count,
+                    scenario.Name + " exposes only the replacement option after migration");
+            }
+            finally
+            {
+                DeleteTemporaryConfigPath(path);
+            }
+        }
+    }
+
+    private static void RenamedStoragePermissionMigrationIsIdempotent()
+    {
+        var path = NewTemporaryConfigPath();
+        try
+        {
+            File.WriteAllText(path, "[General]\nEnable crafting from nearby chests = false\n");
+
+            for (var launch = 1; launch <= 2; launch++)
+            {
+                var config = new ConfigFile(path, true);
+                var migrated = ConfigMigration.BindRenamedDefaultEnabledBoolean(
+                    config,
+                    "General",
+                    "Enable crafting from nearby chests",
+                    "Allow crafting from storage",
+                    "Current crafting permission.");
+
+                True(!migrated.Value, "legacy false remains false on launch " + launch);
+                var saved = File.ReadAllText(path);
+                True(!saved.Contains("Enable crafting from nearby chests =", StringComparison.Ordinal),
+                    "legacy crafting key stays retired on launch " + launch);
+                Equal(1, CountOccurrences(saved, "Allow crafting from storage ="),
+                    "replacement crafting key is written exactly once on launch " + launch);
+            }
+        }
+        finally
+        {
+            DeleteTemporaryConfigPath(path);
+        }
+    }
+
+    private static string NewTemporaryConfigPath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Stackmaster.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, "com.jstack424.stackmaster.cfg");
+    }
+
+    private static void DeleteTemporaryConfigPath(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+        return count;
     }
 
     private static void ResourcePlanAggregatesPlayerAndNearbyStacks()

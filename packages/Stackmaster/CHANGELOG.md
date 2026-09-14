@@ -5,6 +5,7 @@
 Local r2modman test candidate; not published.
 
 - Split nearby-resource behavior into three independent, default-on settings: **Allow crafting from storage**, **Allow building from storage**, and **Show storage amounts in craft and build menus**.
+- Existing `Enable building from nearby chests` and `Enable crafting from nearby chests` choices migrate once to the renamed permissions; explicit opt-outs remain off, and obsolete keys are removed from the saved configuration.
 - Storage totals can now remain visible as exact `required / total available` values in crafting, upgrade, and building rows even when the corresponding action is restricted to player-held materials.
 - Requirement affordability and red/white flashing now follow actual action permission on both code paths: player-only stock when that action's storage permission is off, aggregate player-plus-eligible-storage stock when it is on.
 - Turning storage totals off preserves vanilla count text and typography while storage-backed crafting or building can remain enabled independently; turning both display and the relevant permission off leaves that requirement UI untouched.
