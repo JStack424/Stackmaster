@@ -916,6 +916,12 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ResourceTransactionContext.Begin", nearby)
 
         self.assertIn("CraftTimerField.SetValue(_intent.Gui, -1f)", action)
+        self.assertIn("intent.Player.IsDead()", action)
+        self.assertIn("intent.Player.IsTeleporting()", action)
+        self.assertIn("intent.Player.InCutscene()", action)
+        self.assertIn("intent.Station.CheckUsable(intent.Player, false)", action)
+        self.assertIn("intent.Station.GetLevel(true) != intent.StationLevel", action)
+        self.assertIn("intent.Player.transform.position - intent.PlayerPosition", action)
         self.assertIn("OwnershipCoordinator.Cancel(_ownership", action)
         self.assertIn("ReleasePreparedCraftingResources", action)
         self.assertIn("HoldForCrafting", ownership)
@@ -923,7 +929,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("try the action again", action.lower())
         for dependency in (
             "OnCraftPressed", "OnCraftCancelPressed", "OnTabCraftPressed", "OnTabUpgradePressed",
-            "OnSelectedRecipe", "UpdateRecipe", "m_selectedVariant", "m_craftVariant", "m_touchMultiCrafting",
+            "OnSelectedRecipe", "UpdateRecipe", "GetLevel", "CheckUsable", "RecipeDataPair", "ItemData",
+            "m_selectedVariant", "m_craftVariant", "m_touchMultiCrafting",
         ):
             self.assertIn(f'"{dependency}"', gate)
 

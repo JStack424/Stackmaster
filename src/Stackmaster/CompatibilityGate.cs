@@ -161,6 +161,8 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNetView), "GetZDO");
             RequireStaticMethod(failures, typeof(CraftingStation), "get_Instances");
             RequireMethod(failures, typeof(CraftingStation), "GetStationBuildRange");
+            RequireMethod(failures, typeof(CraftingStation), "GetLevel", typeof(bool));
+            RequireMethod(failures, typeof(CraftingStation), "CheckUsable", typeof(Player), typeof(bool));
             RequireStaticMethod(failures, typeof(ZNetScene), "get_instance");
             RequireMethod(failures, typeof(ZNetScene), "GetPrefab", typeof(string));
             RequireMethod(failures, typeof(ZNetScene), "GetPrefabHash", typeof(GameObject));
@@ -178,6 +180,16 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_selectedVariant");
             RequireField(failures, typeof(InventoryGui), "m_craftVariant");
             RequireField(failures, typeof(InventoryGui), "m_touchMultiCrafting");
+            var recipeDataPairType = AccessTools.Inner(typeof(InventoryGui), "RecipeDataPair");
+            if (recipeDataPairType == null)
+            {
+                failures.Add("InventoryGui.RecipeDataPair missing");
+            }
+            else
+            {
+                RequireProperty(failures, recipeDataPairType, "Recipe");
+                RequireProperty(failures, recipeDataPairType, "ItemData");
+            }
             RequireField(failures, typeof(InventoryGui), "m_multiCrafting");
             RequireField(failures, typeof(InventoryGui), "m_multiCraftAmount");
             RequireField(failures, typeof(InventoryGui), "m_dragItem");
@@ -261,6 +273,14 @@ namespace Stackmaster
             if (AccessTools.Constructor(type, parameters) == null)
             {
                 failures.Add(type.Name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") constructor missing");
+            }
+        }
+
+        private static void RequireProperty(ICollection<string> failures, Type type, string name)
+        {
+            if (AccessTools.Property(type, name) == null)
+            {
+                failures.Add(type.Name + "." + name + " missing");
             }
         }
 

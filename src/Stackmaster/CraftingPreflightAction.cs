@@ -57,6 +57,8 @@ namespace Stackmaster
             MultiCrafting = multiCrafting;
             Multiplier = multiplier;
             Station = station;
+            StationLevel = station == null ? 0 : station.GetLevel(true);
+            PlayerPosition = player.transform.position;
             ScopeSignature = scope == null ? null : scope.Signature;
             Session = session;
         }
@@ -70,6 +72,8 @@ namespace Stackmaster
         internal bool MultiCrafting { get; }
         internal int Multiplier { get; }
         internal CraftingStation Station { get; }
+        internal int StationLevel { get; }
+        internal Vector3 PlayerPosition { get; }
         internal string ScopeSignature { get; }
         internal SessionToken Session { get; }
     }
@@ -203,7 +207,7 @@ namespace Stackmaster
             var requireCraftFields = Lifecycle.Phase == CraftingActionPhase.Crafting;
             if (!IsSelectionCurrent(_intent, requireCraftFields))
             {
-                Cancel("the crafting selection, station, or storage scope changed", true);
+                Cancel("the player, crafting selection, station, or storage scope changed", true);
                 return;
             }
             if (requireCraftFields && GetCraftTimer(gui) < 0f)
@@ -416,7 +420,11 @@ namespace Stackmaster
         {
             if (intent == null || intent.Player == null || intent.Gui == null ||
                 !ReferenceEquals(Player.m_localPlayer, intent.Player) ||
-                !ReferenceEquals(intent.Player.GetCurrentCraftingStation(), intent.Station))
+                intent.Player.IsDead() || intent.Player.IsTeleporting() || intent.Player.InCutscene() ||
+                !ReferenceEquals(intent.Player.GetCurrentCraftingStation(), intent.Station) ||
+                (intent.Station != null &&
+                 (!intent.Station.CheckUsable(intent.Player, false) || intent.Station.GetLevel(true) != intent.StationLevel)) ||
+                (intent.Player.transform.position - intent.PlayerPosition).sqrMagnitude > 0.0025f)
             {
                 return false;
             }
