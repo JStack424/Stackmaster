@@ -639,6 +639,7 @@ namespace Stackmaster
         internal static void Shutdown(string reason)
         {
             var active = _active;
+            var completedSafely = true;
             try
             {
                 if (active != null)
@@ -651,6 +652,7 @@ namespace Stackmaster
                     }
                     catch (Exception exception)
                     {
+                        completedSafely = false;
                         LogCleanupFailure("refreshing the active ownership batch", exception);
                     }
 
@@ -660,6 +662,7 @@ namespace Stackmaster
                     }
                     catch (Exception exception)
                     {
+                        completedSafely = false;
                         LogCleanupFailure("timing out the active ownership batch", exception);
                     }
 
@@ -669,6 +672,7 @@ namespace Stackmaster
                     }
                     catch (Exception exception)
                     {
+                        completedSafely = false;
                         LogCleanupFailure("releasing the active ownership batch", exception);
                     }
                 }
@@ -683,6 +687,7 @@ namespace Stackmaster
                     }
                     catch (Exception exception)
                     {
+                        completedSafely = false;
                         LogCleanupFailure("ending the active ownership batch", exception);
                         _active = null;
                     }
@@ -694,8 +699,15 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
+                    completedSafely = false;
                     LogCleanupFailure("releasing retained ownership cleanup", exception);
                 }
+            }
+
+            if (!completedSafely)
+            {
+                throw new InvalidOperationException(
+                    "One or more ownership cleanup stages failed; see the preceding cleanup errors.");
             }
         }
 

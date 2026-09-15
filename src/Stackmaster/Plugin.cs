@@ -94,6 +94,11 @@ namespace Stackmaster
                 return;
             }
 
+            if (RuntimeContext.IsAwaitingReconnect)
+            {
+                return;
+            }
+
             if (!_compatibilityWarningShown && Player.m_localPlayer != null && MessageHud.instance != null)
             {
                 _compatibilityWarningShown = true;

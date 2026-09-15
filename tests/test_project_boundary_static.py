@@ -723,9 +723,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(rearm.index("StorageAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
         self.assertLess(rearm.index("NearbyResourceOwnership.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
         self.assertLess(rearm.index("ExpeditionKitAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
+        self.assertIn("_disconnectCleanupCompleted = RunSafetyCleanup", disconnect)
+        self.assertIn("cleanupCompletedSafely: _disconnectCleanupCompleted", rearm)
+        self.assertNotIn("cleanupCompletedSafely: true", rearm)
+        self.assertIn("throw new InvalidOperationException(", ownership[ownership.index("internal static void Shutdown(string reason)") : ownership.index("private static void LogCleanupFailure")])
         self.assertIn("_lifecycle.DisablePermanently()", runtime)
         self.assertIn('RuntimeContext.Disable("plugin disabled")', plugin)
         self.assertIn('RuntimeContext.Disable("plugin unloading")', plugin)
+        self.assertIn("if (RuntimeContext.IsAwaitingReconnect)", plugin)
 
         safety_update = ownership[ownership.index("internal static class OwnershipSafetyUpdatePatch") : ownership.index("[HarmonyPatch(typeof(Container), \"RPC_RequestOpen\"")]
         self.assertLess(safety_update.index("UpdatePendingReservationReleases"), safety_update.index("TryRearmSession"))

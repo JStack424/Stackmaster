@@ -11,10 +11,12 @@ namespace Stackmaster
         private static CompatibilityResult _verifiedCompatibility = new CompatibilityResult(false, "not initialized");
         private static SessionLifecycleState _lifecycle = new SessionLifecycleState(false);
         private static ZNet _disconnectingNetwork;
+        private static bool _disconnectCleanupCompleted;
         private static bool _cleanupInProgress;
 
         internal static Plugin Plugin { get; private set; }
         internal static CompatibilityResult Compatibility { get; private set; } = new CompatibilityResult(false, "not initialized");
+        internal static bool IsAwaitingReconnect => _lifecycle.CanAttemptRearm;
 
         internal static void Initialize(Plugin plugin, CompatibilityResult compatibility)
         {
@@ -22,6 +24,7 @@ namespace Stackmaster
             _verifiedCompatibility = compatibility;
             _lifecycle = new SessionLifecycleState(compatibility.IsCompatible);
             _disconnectingNetwork = null;
+            _disconnectCleanupCompleted = false;
             _cleanupInProgress = false;
             Compatibility = compatibility;
             ChestSortPreferences.Initialize();
@@ -44,7 +47,8 @@ namespace Stackmaster
             _lifecycle.BeginDisconnect();
             Compatibility = new CompatibilityResult(false, "between server sessions");
 
-            if (!RunSafetyCleanup("session disconnect") && !_lifecycle.IsPermanentlyDisabled)
+            _disconnectCleanupCompleted = RunSafetyCleanup("session disconnect");
+            if (!_disconnectCleanupCompleted && !_lifecycle.IsPermanentlyDisabled)
             {
                 Disable("Session cleanup failed; restart required before any further Stackmaster actions.");
             }
@@ -76,12 +80,15 @@ namespace Stackmaster
                 NearbyHudFailOpen.ResetSession();
                 InventoryIntegration.OnSessionRearmed();
 
-                if (!_lifecycle.TryRearm(isDifferentNetworkSession: true, cleanupCompletedSafely: true))
+                if (!_lifecycle.TryRearm(
+                        isDifferentNetworkSession: true,
+                        cleanupCompletedSafely: _disconnectCleanupCompleted))
                 {
                     return;
                 }
 
                 _disconnectingNetwork = null;
+                _disconnectCleanupCompleted = false;
                 Compatibility = _verifiedCompatibility;
                 Plugin?.OnSessionRearmed();
                 Plugin?.Log.LogInfo("Stackmaster session state rearmed for the new server connection.");
@@ -173,6 +180,7 @@ namespace Stackmaster
             ResourceActionContext.Reset();
             _lifecycle.ShutDown();
             _disconnectingNetwork = null;
+            _disconnectCleanupCompleted = false;
             Plugin = null;
             Compatibility = new CompatibilityResult(false, "shut down");
         }
