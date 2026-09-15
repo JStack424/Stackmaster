@@ -47,6 +47,15 @@ namespace Stackmaster
 
             try
             {
+                NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown();
+            }
+            catch (Exception exception)
+            {
+                Plugin?.Log.LogError("Pending reservation shutdown cleanup failed safely: " + exception);
+            }
+
+            try
+            {
                 OwnershipCoordinator.Shutdown(reason);
             }
             catch (Exception exception)

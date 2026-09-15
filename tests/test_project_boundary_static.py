@@ -208,9 +208,20 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('catch (Exception exception)\n            {\n                RuntimeContext.Plugin?.Log.LogError("Expedition-kit transaction threw after mutation began:', action)
         transfer_catch = action[action.index('RuntimeContext.Plugin?.Log.LogError("Expedition-kit transfer primitive threw:'):]
         self.assertIn("throw;", transfer_catch[:500])
-        self.assertIn("backup.Items.Select(item => item.Clone()).ToList()", action)
+        self.assertIn("_items.PrepareRestore(snapshot => snapshot.Clone())", action)
+        self.assertIn("preserveItemIdentity: true", action)
+        self.assertIn("preserveItemIdentity: false", action)
+        self.assertIn("target.Items.RestoreStates(RestoreItemDataState)", action)
+        self.assertIn("target.Items.HasExactOriginalReferences", action)
+        self.assertIn("target.Items.StatesMatch(ItemDataStateMatches)", action)
         self.assertIn("InventoryItemsField.SetValue(target.Inventory, current)", action)
-        self.assertIn("InventoryItemsField.SetValue(target.Inventory, target.Items)", action)
+        self.assertIn("InventoryItemsField.SetValue(target.Inventory, restoredLists[index])", action)
+        for field_name in (
+            "m_shared", "m_stack", "m_durability", "m_equipped", "m_quality", "m_variant",
+            "m_crafterID", "m_crafterName", "m_worldLevel", "m_pickedUp", "m_cheated", "m_gridPos",
+            "m_dropPrefab", "m_lastAttackTime", "m_lastProjectile", "m_customData",
+        ):
+            self.assertIn(f"original.{field_name} = snapshot.{field_name}", action)
         self.assertIn("Expedition-kit cache refresh failed after commit", action)
         self.assertIn("reservationsReleased = NearbyResourceService.ReleaseReservations", action)
         self.assertIn("for (var attempt = 0; attempt < 2 && !released; attempt++)", nearby)
@@ -225,6 +236,48 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipLeaseManager.ReleaseBatch(ownership", action)
         self.assertIn("if (releaseMatchingOwnership)", nearby)
         self.assertNotIn("ClaimOwnership()", action)
+
+    def test_pending_reservation_cleanup_precedes_exact_ownership_release(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        plugin = (PLUGIN_DIR / "Plugin.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "IdentityPreservingRollback.cs").read_text(encoding="utf-8")
+
+        transaction_release = nearby[
+            nearby.index("private static void ReleaseReservations("):
+            nearby.index("internal sealed class RuntimeResourceStack")
+        ]
+        self.assertIn("NearbyResourceService.ReleaseReservations", transaction_release)
+        self.assertIn("releaseMatchingOwnership: false", transaction_release)
+        self.assertIn("if (!reservationsReleased)", transaction_release)
+        self.assertNotIn("container.SetInUse(false)", transaction_release)
+        self.assertIn("HasPendingReservationRelease(string containerId)", nearby)
+        self.assertIn("PendingReservationReleases.ContainsKey(containerId)", nearby)
+        self.assertIn("FlushPendingReservationReleasesBeforeOwnershipShutdown", nearby)
+        disable = runtime[runtime.index("internal static void Disable(string reason)"):runtime.index("internal static void Shutdown()")]
+        self.assertLess(
+            disable.index("FlushPendingReservationReleasesBeforeOwnershipShutdown"),
+            disable.index("OwnershipCoordinator.Shutdown(reason)"),
+        )
+        relinquish = ownership[ownership.index("private static bool TryRelinquish("):ownership.index("internal static class OwnershipCoordinator")]
+        self.assertIn("ReservationOwnershipCleanupPolicy.CanRelinquishOwnership", relinquish)
+        self.assertIn("NearbyResourceService.HasPendingReservationRelease(acquisition.Id)", relinquish)
+        self.assertLess(
+            relinquish.index("ReservationOwnershipCleanupPolicy.CanRelinquishOwnership"),
+            relinquish.index("if (!shutdownRelease"),
+        )
+        safety = ownership[ownership.index("internal static class OwnershipSafetyUpdatePatch"):ownership.index("internal static class ContainerOpenRequestLeasePatch")]
+        self.assertLess(
+            safety.index("NearbyResourceService.UpdatePendingReservationReleases();"),
+            safety.index("OwnershipLeaseManager.Update();"),
+        )
+        clear = nearby[nearby.index("private static bool TryClearReservation"):nearby.index("internal static bool RevalidateContainers")]
+        self.assertIn("!string.Equals(zdo.m_uid.ToString(), handle.Id", clear)
+        self.assertIn("zdo.OwnerRevision != reservation.OwnerRevision", clear)
+        self.assertLess(clear.index("zdo.OwnerRevision != reservation.OwnerRevision"), clear.index("container.SetInUse(false)"))
+        self.assertIn("OwnershipCoordinator.HasUnresolvedCleanup || NearbyResourceService.HasPendingReservationReleases", plugin)
+        self.assertIn("=> !hasPendingReservationCleanup", policy)
 
     def test_expedition_kit_runtime_surface_is_compatibility_gated(self):
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
@@ -546,7 +599,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Building)", nearby)
         self.assertIn("if (retainSuccessfulBuildOwnership)", nearby)
         self.assertIn("OwnershipLeaseManager.RenewForSuccessfulBuild(held.Select(item => item.Handle))", nearby)
-        self.assertLess(nearby.index("container.SetInUse(false)"), nearby.index("if (retainSuccessfulBuildOwnership)"))
+        transaction_release = nearby[
+            nearby.index("private static void ReleaseReservations("):
+            nearby.index("internal sealed class RuntimeResourceStack")
+        ]
+        self.assertLess(
+            transaction_release.index("NearbyResourceService.ReleaseReservations"),
+            transaction_release.index("if (retainSuccessfulBuildOwnership)"),
+        )
         self.assertIn("ObserveRemoteManualOpen", ownership)
         self.assertIn("requesterSession != acquiredSession", (ROOT / "src" / "Stackmaster.Core" / "OwnershipLeasePolicy.cs").read_text(encoding="utf-8"))
         self.assertIn("Leases.Remove(lease.Acquisition.Id)", ownership)

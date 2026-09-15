@@ -512,6 +512,14 @@ namespace Stackmaster
             {
                 var handle = acquisition.Handle;
                 var container = handle != null ? handle.Container : null;
+                if (!ReservationOwnershipCleanupPolicy.CanRelinquishOwnership(
+                        NearbyResourceService.HasPendingReservationRelease(acquisition.Id)))
+                {
+                    // The exact local reservation must be cleared while this exact acquisition is
+                    // still ours. This applies even to shutdownRelease; the safety patch retries
+                    // reservations before ownership leases and keeps all identity/revision guards.
+                    return false;
+                }
                 if (ZDOMan.instance == null || ZDOMan.GetSessionID() != acquisition.AcquiredSession)
                 {
                     return true;

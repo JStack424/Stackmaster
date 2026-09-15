@@ -90,6 +90,8 @@ internal static class Program
             ExpeditionCapacityRejectsSharedSlotOverbooking,
             ExpeditionCapacityRejectsOverweightKit,
             ExpeditionCapacityAcceptsExactWeightLimit,
+            ExpeditionFallbackRollbackPreservesEquippedItemIdentityAndState,
+            ReservationCleanupMustPrecedeOwnershipRelease,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
             ResourcePlanMinimizesDistinctContainers,
             ResourcePlanMinimizesAcrossDifferentMaterials,
@@ -1356,6 +1358,68 @@ internal static class Program
         Equal(10, plan.Steps.Sum(step => step.Quantity), "the full exact-boundary kit is planned");
     }
 
+    private static void ExpeditionFallbackRollbackPreservesEquippedItemIdentityAndState()
+    {
+        var equipped = new FakeRollbackItem(
+            "hammer", 1, 73.5, 4, 17, new Slot(2, 3),
+            new Dictionary<string, string> { ["upgrade"] = "ancient", ["owner"] = "joe" });
+        var carried = new FakeRollbackItem(
+            "wood", 37, 12.25, 2, 6, new Slot(4, 1),
+            new Dictionary<string, string> { ["source"] = "forest" });
+        var equipment = new FakeEquipmentReferences(equipped, carried);
+        var live = new List<FakeRollbackItem> { equipped, carried };
+        var backup = IdentityPreservingInventoryBackup<FakeRollbackItem, FakeRollbackItem>.Capture(
+            live,
+            item => item.Clone());
+
+        equipped.Name = "corrupted";
+        equipped.Stack = 99;
+        equipped.Durability = 0;
+        equipped.Quality = 1;
+        equipped.Variant = 0;
+        equipped.Position = new Slot(0, 0);
+        equipped.CustomData.Clear();
+        carried.Name = "removed";
+        carried.Stack = 0;
+        live = new List<FakeRollbackItem> { equipped.Clone() };
+
+        // This is the emergency snapshot path used only after reverse rollback fails.
+        var restore = backup.PrepareRestore(item => item.Clone());
+        restore.RestoreStates((original, snapshot) => original.RestoreFrom(snapshot));
+        live = restore.RebuildInventoryList();
+
+        True(restore.HasExactOriginalReferences(live), "fallback rebuild contains every original ItemData reference in order");
+        True(ReferenceEquals(equipped, live[0]), "equipped inventory entry is the same original object");
+        foreach (var retained in equipment.All)
+        {
+            True(live.Any(item => ReferenceEquals(retained, item)),
+                "every pinned Humanoid equipment field remains attached to an original restored object");
+        }
+        Equal("hammer", equipped.Name, "item name is restored");
+        Equal(1, equipped.Stack, "item stack is restored");
+        Equal(73.5, equipped.Durability, "item durability is restored");
+        Equal(4, equipped.Quality, "item quality is restored");
+        Equal(17, equipped.Variant, "item variant is restored");
+        Equal(new Slot(2, 3), equipped.Position, "item grid position is restored");
+        Equal("ancient", equipped.CustomData["upgrade"], "item custom data is restored");
+        Equal("joe", equipped.CustomData["owner"], "all captured custom data survives fallback");
+        Equal("wood", carried.Name, "second item state is restored without accepting a partial result");
+        Equal(37, carried.Stack, "second item stack is restored exactly");
+        True(restore.StatesMatch((original, snapshot) => original.Matches(snapshot)),
+            "complete restored state is accepted");
+        carried.Quality++;
+        True(!restore.StatesMatch((original, snapshot) => original.Matches(snapshot)),
+            "a partial state restore is detected rather than accepted");
+    }
+
+    private static void ReservationCleanupMustPrecedeOwnershipRelease()
+    {
+        True(!ReservationOwnershipCleanupPolicy.CanRelinquishOwnership(true),
+            "pending exact local reservation blocks ownership relinquish, including shutdown");
+        True(ReservationOwnershipCleanupPolicy.CanRelinquishOwnership(false),
+            "ownership cleanup resumes only after the exact reservation is no longer pending");
+    }
+
     private static void ResourcePlanUsesPlayerThenDeterministicContainerOrder()
     {
         var plan = ResourcePlan(
@@ -1842,6 +1906,103 @@ internal static class Program
         Equal(TransferKind.Replenishment, step.Kind, "replenishment kind");
         Equal(sourceId, step.Source.InventoryId, "replenishment source");
         Equal(quantity, step.Quantity, "replenishment quantity");
+    }
+
+    private sealed class FakeEquipmentReferences
+    {
+        internal FakeEquipmentReferences(FakeRollbackItem primary, FakeRollbackItem secondary)
+        {
+            Right = primary;
+            Left = secondary;
+            Chest = primary;
+            Legs = secondary;
+            Ammo = secondary;
+            Helmet = primary;
+            Shoulder = primary;
+            Utility = secondary;
+            Trinket = primary;
+            HiddenLeft = secondary;
+            HiddenRight = primary;
+        }
+
+        internal FakeRollbackItem Right { get; }
+        internal FakeRollbackItem Left { get; }
+        internal FakeRollbackItem Chest { get; }
+        internal FakeRollbackItem Legs { get; }
+        internal FakeRollbackItem Ammo { get; }
+        internal FakeRollbackItem Helmet { get; }
+        internal FakeRollbackItem Shoulder { get; }
+        internal FakeRollbackItem Utility { get; }
+        internal FakeRollbackItem Trinket { get; }
+        internal FakeRollbackItem HiddenLeft { get; }
+        internal FakeRollbackItem HiddenRight { get; }
+
+        internal IEnumerable<FakeRollbackItem> All => new[]
+        {
+            Right, Left, Chest, Legs, Ammo, Helmet, Shoulder, Utility, Trinket, HiddenLeft, HiddenRight
+        };
+    }
+
+    private sealed class FakeRollbackItem
+    {
+        internal FakeRollbackItem(
+            string name,
+            int stack,
+            double durability,
+            int quality,
+            int variant,
+            Slot position,
+            Dictionary<string, string> customData)
+        {
+            Name = name;
+            Stack = stack;
+            Durability = durability;
+            Quality = quality;
+            Variant = variant;
+            Position = position;
+            CustomData = customData;
+        }
+
+        internal string Name { get; set; }
+        internal int Stack { get; set; }
+        internal double Durability { get; set; }
+        internal int Quality { get; set; }
+        internal int Variant { get; set; }
+        internal Slot Position { get; set; }
+        internal Dictionary<string, string> CustomData { get; private set; }
+
+        internal FakeRollbackItem Clone()
+            => new FakeRollbackItem(
+                Name,
+                Stack,
+                Durability,
+                Quality,
+                Variant,
+                Position,
+                new Dictionary<string, string>(CustomData));
+
+        internal void RestoreFrom(FakeRollbackItem snapshot)
+        {
+            Name = snapshot.Name;
+            Stack = snapshot.Stack;
+            Durability = snapshot.Durability;
+            Quality = snapshot.Quality;
+            Variant = snapshot.Variant;
+            Position = snapshot.Position;
+            CustomData = new Dictionary<string, string>(snapshot.CustomData);
+        }
+
+        internal bool Matches(FakeRollbackItem snapshot)
+            => string.Equals(Name, snapshot.Name, StringComparison.Ordinal) &&
+               Stack == snapshot.Stack &&
+               Durability.Equals(snapshot.Durability) &&
+               Quality == snapshot.Quality &&
+               Variant == snapshot.Variant &&
+               Position.Equals(snapshot.Position) &&
+               CustomData.Count == snapshot.CustomData.Count &&
+               snapshot.CustomData.All(pair =>
+                   CustomData.TryGetValue(pair.Key, out var value) &&
+                   string.Equals(value, pair.Value, StringComparison.Ordinal));
     }
 
     private sealed class FakeDetachedItem

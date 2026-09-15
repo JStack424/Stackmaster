@@ -223,26 +223,14 @@ namespace Stackmaster
         {
             if (reservations == null) return;
             var held = reservations.ToArray();
-            foreach (var reservation in held.Reverse())
-            {
-                try
-                {
-                    var container = reservation.Container;
-                    if (container != null && container.IsOwner()) container.SetInUse(false);
-                }
-                catch (Exception exception)
-                {
-                    if (RuntimeContext.Plugin != null)
-                    {
-                        RuntimeContext.Plugin.Log.LogError("Failed to release a nearby-resource container reservation: " + exception);
-                    }
-                }
-            }
+            var reservationsReleased = NearbyResourceService.ReleaseReservations(
+                held,
+                releaseMatchingOwnership: false);
 
-            // The logical in-use reservation always ends synchronously. Only ownership that
-            // Stackmaster demonstrably acquired and this successful build actually consumed
-            // can enter or renew the sliding build lease; crafting and every failed/cancelled
-            // transaction still release immediately.
+            // Only ownership that Stackmaster demonstrably acquired and this successful build
+            // actually consumed can enter or renew the sliding build lease. A failed exact
+            // in-use cleanup is retained and blocks even shutdown ownership release until the
+            // session-lifetime safety update clears that reservation first.
             if (retainSuccessfulBuildOwnership)
             {
                 OwnershipLeaseManager.RenewForSuccessfulBuild(held.Select(item => item.Handle));
@@ -251,6 +239,10 @@ namespace Stackmaster
             {
                 OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
                     "nearby-resource transaction ended");
+            }
+            if (!reservationsReleased)
+            {
+                RuntimeContext.Disable("Stackmaster could not fully release a nearby-resource reservation.");
             }
         }
     }
@@ -329,6 +321,9 @@ namespace Stackmaster
         private static NearbyResourceCapture _cachedCapture;
 
         internal static bool HasPendingReservationReleases => PendingReservationReleases.Count > 0;
+
+        internal static bool HasPendingReservationRelease(string containerId)
+            => !string.IsNullOrEmpty(containerId) && PendingReservationReleases.ContainsKey(containerId);
 
         internal static void ResetCaches()
         {
@@ -1139,6 +1134,18 @@ namespace Stackmaster
         internal static void UpdatePendingReservationReleases()
         {
             if (PendingReservationReleases.Count == 0 || Time.realtimeSinceStartup < _nextReservationReleaseRetryAt) return;
+            RetryPendingReservationReleases("deferred reservation cleanup completed");
+        }
+
+        internal static void FlushPendingReservationReleasesBeforeOwnershipShutdown()
+        {
+            // Ignore the ordinary one-second retry delay during disable/unload. Any exact cleanup
+            // that still fails remains recorded for the retained session-lifetime safety patch.
+            RetryPendingReservationReleases("shutdown reservation cleanup completed");
+        }
+
+        private static void RetryPendingReservationReleases(string ownershipReason)
+        {
             _nextReservationReleaseRetryAt = Time.realtimeSinceStartup + 1f;
             foreach (var pair in PendingReservationReleases.ToArray())
             {
@@ -1151,7 +1158,7 @@ namespace Stackmaster
                     {
                         OwnershipLeaseManager.ReleaseMatching(
                             new[] { pending.Reservation.Handle },
-                            "deferred reservation cleanup completed");
+                            ownershipReason);
                     }
                     catch (Exception exception)
                     {

@@ -54,25 +54,39 @@ namespace Stackmaster
 
     internal sealed class ExpeditionInventoryBackup
     {
-        internal ExpeditionInventoryBackup(Inventory inventory)
+        private readonly IdentityPreservingInventoryBackup<ItemDrop.ItemData, ItemDrop.ItemData> _items;
+
+        internal ExpeditionInventoryBackup(Inventory inventory, bool preserveItemIdentity)
         {
-            Inventory = inventory;
-            Items = inventory.GetAllItems()
-                .Select(item => item.Clone())
+            Inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
+            var ordered = inventory.GetAllItems()
                 .OrderBy(item => item.m_gridPos.y)
                 .ThenBy(item => item.m_gridPos.x)
                 .ToArray();
+            // Player backups retain the live instances because Humanoid equipment fields point to
+            // them directly. Chest backups deliberately retain detached clones instead.
+            var retained = preserveItemIdentity ? ordered : ordered.Select(item => item.Clone()).ToArray();
+            _items = IdentityPreservingInventoryBackup<ItemDrop.ItemData, ItemDrop.ItemData>.Capture(
+                retained,
+                item => item.Clone());
+            TotalUnits = ordered.Sum(item => item.m_stack);
         }
 
         internal Inventory Inventory { get; }
-        internal ItemDrop.ItemData[] Items { get; }
+        internal int TotalUnits { get; }
+
+        internal ExpeditionSnapshotRestoreTarget PrepareRestore()
+            => new ExpeditionSnapshotRestoreTarget(
+                Inventory,
+                _items.PrepareRestore(snapshot => snapshot.Clone()),
+                TotalUnits);
     }
 
     internal sealed class ExpeditionSnapshotRestoreTarget
     {
         internal ExpeditionSnapshotRestoreTarget(
             Inventory inventory,
-            List<ItemDrop.ItemData> items,
+            IdentityPreservingInventoryRestorePlan<ItemDrop.ItemData, ItemDrop.ItemData> items,
             int totalUnits)
         {
             Inventory = inventory;
@@ -81,7 +95,7 @@ namespace Stackmaster
         }
 
         internal Inventory Inventory { get; }
-        internal List<ItemDrop.ItemData> Items { get; }
+        internal IdentityPreservingInventoryRestorePlan<ItemDrop.ItemData, ItemDrop.ItemData> Items { get; }
         internal int TotalUnits { get; }
     }
 
@@ -564,8 +578,13 @@ namespace Stackmaster
             foreach (var source in withdrawal.Steps) catalog.KeyFor(capture.RuntimeStacks[source.StackId].Item);
 
             var reservationByContainer = reservations.ToDictionary(reservation => reservation.Container);
-            var backups = new List<ExpeditionInventoryBackup> { new ExpeditionInventoryBackup(playerInventory) };
-            backups.AddRange(reservations.Select(reservation => new ExpeditionInventoryBackup(reservation.Container.GetInventory())));
+            var backups = new List<ExpeditionInventoryBackup>
+            {
+                new ExpeditionInventoryBackup(playerInventory, preserveItemIdentity: true)
+            };
+            backups.AddRange(reservations.Select(reservation => new ExpeditionInventoryBackup(
+                reservation.Container.GetInventory(),
+                preserveItemIdentity: false)));
             var completed = new List<CompletedExpeditionMove>();
             var sourceMoved = new Dictionary<string, int>(StringComparer.Ordinal);
 
@@ -818,15 +837,15 @@ namespace Stackmaster
         {
             if (InventoryItemsField == null) return false;
             ExpeditionSnapshotRestoreTarget[] prepared;
+            List<ItemDrop.ItemData>[] restoredLists;
             try
             {
-                // Clone every complete target list before touching any live inventory. Snapshot
-                // rollback then replaces each backing list directly instead of invoking game move/add
-                // primitives that can throw after partially mutating one side of the transaction.
-                prepared = backups.Select(backup => new ExpeditionSnapshotRestoreTarget(
-                    backup.Inventory,
-                    backup.Items.Select(item => item.Clone()).ToList(),
-                    backup.Items.Sum(item => item.m_stack))).ToArray();
+                // Clone every detached state and reconstruct every target list before touching any
+                // live inventory. The target lists contain the original ItemData objects, not clones,
+                // so Humanoid equipment fields stay attached through emergency fallback rollback.
+                prepared = backups.Select(backup => backup.PrepareRestore()).ToArray();
+                restoredLists = prepared.Select(target => target.Items.RebuildInventoryList()).ToArray();
+                if (restoredLists.Any(items => items.Any(item => item == null))) return false;
             }
             catch (Exception exception)
             {
@@ -836,8 +855,9 @@ namespace Stackmaster
 
             try
             {
-                // Prove the reflected field is writable for every participant before replacing
-                // any list. This keeps a compatibility/reflection failure on the no-mutation side.
+                // Prove the reflected inventory list is writable for every participant before any
+                // ItemData state is restored. The exact-runtime gate and compile-time field copy
+                // surface make state-copy compatibility fail closed before rollback mutation begins.
                 foreach (var target in prepared)
                 {
                     var current = InventoryItemsField.GetValue(target.Inventory);
@@ -855,23 +875,26 @@ namespace Stackmaster
             }
 
             var allRestored = true;
-            foreach (var target in prepared)
+            for (var index = 0; index < prepared.Length; index++)
             {
+                var target = prepared[index];
                 try
                 {
-                    InventoryItemsField.SetValue(target.Inventory, target.Items);
+                    target.Items.RestoreStates(RestoreItemDataState);
+                    InventoryItemsField.SetValue(target.Inventory, restoredLists[index]);
                 }
                 catch (Exception exception)
                 {
                     allRestored = false;
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot list replacement failed: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit identity-preserving restore failed: " + exception);
                 }
             }
             foreach (var target in prepared)
             {
                 try
                 {
-                    allRestored &= ReferenceEquals(InventoryItemsField.GetValue(target.Inventory), target.Items) &&
+                    allRestored &= target.Items.HasExactOriginalReferences(target.Inventory.GetAllItems()) &&
+                        target.Items.StatesMatch(ItemDataStateMatches) &&
                         TotalUnits(target.Inventory) == target.TotalUnits;
                     target.Inventory.m_onChanged?.Invoke();
                 }
@@ -895,6 +918,59 @@ namespace Stackmaster
                 }
             }
             return allRestored;
+        }
+
+        private static void RestoreItemDataState(ItemDrop.ItemData original, ItemDrop.ItemData snapshot)
+        {
+            // ItemData is a field-only DTO in the pinned runtime. Copy every declared instance field
+            // explicitly; the exact-assembly compatibility gate prevents silent layout drift.
+            original.m_shared = snapshot.m_shared;
+            original.m_stack = snapshot.m_stack;
+            original.m_durability = snapshot.m_durability;
+            original.m_equipped = snapshot.m_equipped;
+            original.m_quality = snapshot.m_quality;
+            original.m_variant = snapshot.m_variant;
+            original.m_crafterID = snapshot.m_crafterID;
+            original.m_crafterName = snapshot.m_crafterName;
+            original.m_worldLevel = snapshot.m_worldLevel;
+            original.m_pickedUp = snapshot.m_pickedUp;
+            original.m_cheated = snapshot.m_cheated;
+            original.m_gridPos = snapshot.m_gridPos;
+            original.m_dropPrefab = snapshot.m_dropPrefab;
+            original.m_lastAttackTime = snapshot.m_lastAttackTime;
+            original.m_lastProjectile = snapshot.m_lastProjectile;
+            original.m_customData = snapshot.m_customData;
+        }
+
+        private static bool ItemDataStateMatches(ItemDrop.ItemData original, ItemDrop.ItemData snapshot)
+        {
+            if (!ReferenceEquals(original.m_shared, snapshot.m_shared) ||
+                original.m_stack != snapshot.m_stack ||
+                !original.m_durability.Equals(snapshot.m_durability) ||
+                original.m_equipped != snapshot.m_equipped ||
+                original.m_quality != snapshot.m_quality ||
+                original.m_variant != snapshot.m_variant ||
+                original.m_crafterID != snapshot.m_crafterID ||
+                !string.Equals(original.m_crafterName, snapshot.m_crafterName, StringComparison.Ordinal) ||
+                original.m_worldLevel != snapshot.m_worldLevel ||
+                original.m_pickedUp != snapshot.m_pickedUp ||
+                original.m_cheated != snapshot.m_cheated ||
+                !original.m_gridPos.Equals(snapshot.m_gridPos) ||
+                !ReferenceEquals(original.m_dropPrefab, snapshot.m_dropPrefab) ||
+                !original.m_lastAttackTime.Equals(snapshot.m_lastAttackTime) ||
+                !ReferenceEquals(original.m_lastProjectile, snapshot.m_lastProjectile))
+            {
+                return false;
+            }
+
+            if (original.m_customData == null || snapshot.m_customData == null)
+            {
+                return original.m_customData == null && snapshot.m_customData == null;
+            }
+            return original.m_customData.Count == snapshot.m_customData.Count &&
+                snapshot.m_customData.All(pair =>
+                    original.m_customData.TryGetValue(pair.Key, out var value) &&
+                    string.Equals(value, pair.Value, StringComparison.Ordinal));
         }
 
         private static int TotalUnits(Inventory inventory)
