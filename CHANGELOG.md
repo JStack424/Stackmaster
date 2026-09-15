@@ -2,7 +2,7 @@
 
 ## 1.1.0
 
-Local test candidate; not published.
+Public release, promoted from the live-tested 1.1.0 candidate without gameplay or configuration changes.
 
 - Replaced the former all-in-one protected-item modifier-click prompt with separate mouse controls using the configured storage-action modifier (Left Alt by default).
 - Modifier + left-click now toggles protection immediately with no dialog: an unprotected item becomes protection-only, while any protected item is fully unprotected and loses its target in one click.
@@ -23,7 +23,7 @@ Local test candidate; not published.
 - Craft cancel, recipe or tab changes, inventory close, scope/station changes, failed validation, exceptions, timeout, disable, disconnect, and shutdown immediately clear reservations and release only exact proven Stackmaster acquisitions; delayed callbacks are generation- and session-isolated.
 - Uses the existing configured shortcut modifier, connected-workbench/fallback storage scope, vanilla ownership handshake, and access/in-use protections without Jötunn, custom RPCs, server data, or networking.
 - Ordinary build-piece clicks, the existing 30-second chest-backed building lease, and all existing features remain unchanged.
-- Automated verification passes with zero compiler warnings/errors, 133/133 pure-domain tests, and 65/65 static/repository safety checks. Live in-game reconnect and one-click crafting validation is pending.
+- Final automated verification passes with zero compiler warnings/errors, 133/133 pure-domain tests, and 65/65 static/repository safety checks. In-game validation of the release candidate passed; broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete.
 
 ## 1.0.0
 

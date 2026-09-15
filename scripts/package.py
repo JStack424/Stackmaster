@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify the deterministic Stackmaster 1.1.0 test-candidate ZIP.
+"""Build and verify the deterministic Thunderstore Stackmaster release ZIP.
 
 The script has no upload capability. It packages only an explicit allowlist from
 a clean committed checkout and the already-built Release plugin DLL.
@@ -127,7 +127,7 @@ def verify_zip(path: Path) -> dict[str, bytes]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / f"JStack424-Stackmaster-{VERSION}-test.zip")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / f"JStack424-Stackmaster-{VERSION}.zip")
     parser.add_argument("--verify-only", type=Path)
     args = parser.parse_args()
 
