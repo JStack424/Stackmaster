@@ -8,87 +8,171 @@ namespace Stackmaster
     {
         internal const string CharacterDataKey = "com.jstack424.stackmaster/protected-slots";
 
+        private static CompatibilityResult _verifiedCompatibility = new CompatibilityResult(false, "not initialized");
+        private static SessionLifecycleState _lifecycle = new SessionLifecycleState(false);
+        private static ZNet _disconnectingNetwork;
+        private static bool _cleanupInProgress;
+
         internal static Plugin Plugin { get; private set; }
         internal static CompatibilityResult Compatibility { get; private set; } = new CompatibilityResult(false, "not initialized");
 
         internal static void Initialize(Plugin plugin, CompatibilityResult compatibility)
         {
             Plugin = plugin;
+            _verifiedCompatibility = compatibility;
+            _lifecycle = new SessionLifecycleState(compatibility.IsCompatible);
+            _disconnectingNetwork = null;
+            _cleanupInProgress = false;
             Compatibility = compatibility;
             ChestSortPreferences.Initialize();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
             NearbyCraftingHudPatch.ResetCache();
+            NearbyHudFailOpen.ResetSession();
+        }
+
+        internal static void DisconnectSession()
+        {
+            if (_lifecycle.IsPermanentlyDisabled)
+            {
+                RunSafetyCleanup("session disconnect after permanent disable");
+                return;
+            }
+
+            _disconnectingNetwork = ZNet.instance;
+            _lifecycle.BeginDisconnect();
+            Compatibility = new CompatibilityResult(false, "between server sessions");
+
+            if (!RunSafetyCleanup("session disconnect") && !_lifecycle.IsPermanentlyDisabled)
+            {
+                Disable("Session cleanup failed; restart required before any further Stackmaster actions.");
+            }
+        }
+
+        internal static void TryRearmSession(ZNet network)
+        {
+            if (!_lifecycle.CanAttemptRearm || network == null || ReferenceEquals(network, _disconnectingNetwork))
+            {
+                return;
+            }
+
+            try
+            {
+                // A different ZNet instance proves the prior transport is over. Delayed replies,
+                // reservations, and ownership records from it can no longer authorize mutation in
+                // this session, so discard them before restoring any gameplay entrypoint.
+                NearbyResourceService.DiscardEndedSessionState();
+                OwnershipCoordinator.DiscardEndedSessionState();
+                ResourceActionContext.Reset();
+                StorageAction.RearmSession();
+                NearbyResourceOwnership.RearmSession();
+                ExpeditionKitAction.RearmSession();
+                ChestSortPreferences.Initialize();
+                StorageScopeProvider.Reset();
+                NearbyResourceService.ResetCaches();
+                NearbyBuildHudPatch.ResetCache();
+                NearbyCraftingHudPatch.ResetCache();
+                NearbyHudFailOpen.ResetSession();
+                InventoryIntegration.OnSessionRearmed();
+
+                if (!_lifecycle.TryRearm(isDifferentNetworkSession: true, cleanupCompletedSafely: true))
+                {
+                    return;
+                }
+
+                _disconnectingNetwork = null;
+                Compatibility = _verifiedCompatibility;
+                Plugin?.OnSessionRearmed();
+                Plugin?.Log.LogInfo("Stackmaster session state rearmed for the new server connection.");
+            }
+            catch (Exception exception)
+            {
+                Disable("Session rearm failed: " + exception.GetType().Name);
+                Plugin?.Log.LogError("Stackmaster could not safely rearm after reconnect: " + exception);
+            }
         }
 
         internal static void Disable(string reason)
         {
-            // Roll back and clear reservations before handing any exact acquired ZDO back to
-            // vanilla. Neither cleanup failure may escape a shutdown Harmony prefix or prevent
-            // the other cleanup stage from running.
-            try
+            _lifecycle.DisablePermanently();
+            Compatibility = new CompatibilityResult(false, reason);
+            if (_cleanupInProgress)
             {
-                ResourceTransactionContext.Shutdown();
-            }
-            catch (Exception exception)
-            {
-                Plugin?.Log.LogError("Resource transaction shutdown failed safely: " + exception);
+                return;
             }
 
-            try
+            RunSafetyCleanup(reason);
+        }
+
+        private static bool RunSafetyCleanup(string reason)
+        {
+            if (_cleanupInProgress)
             {
-                ExpeditionKitAction.Shutdown();
-            }
-            catch (Exception exception)
-            {
-                Plugin?.Log.LogError("Expedition-kit shutdown failed safely: " + exception);
+                return false;
             }
 
+            var completedSafely = true;
+            _cleanupInProgress = true;
             try
             {
-                NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown();
-            }
-            catch (Exception exception)
-            {
-                Plugin?.Log.LogError("Pending reservation shutdown cleanup failed safely: " + exception);
-            }
-
-            try
-            {
-                OwnershipCoordinator.Shutdown(reason);
-            }
-            catch (Exception exception)
-            {
-                Plugin?.Log.LogError("Ownership shutdown failed safely: " + exception);
+                // Roll back mutations and clear logical reservations before handing any exact
+                // acquired ZDO back to vanilla. Every stage runs even if another stage fails.
+                completedSafely &= TryCleanup("Resource transaction shutdown", ResourceTransactionContext.Shutdown);
+                completedSafely &= TryCleanup("Expedition-kit shutdown", ExpeditionKitAction.Shutdown);
+                completedSafely &= TryCleanup("Storage-action shutdown", StorageAction.Shutdown);
+                completedSafely &= TryCleanup("Nearby-resource ownership shutdown", NearbyResourceOwnership.Shutdown);
+                completedSafely &= TryCleanup("Pending reservation shutdown cleanup",
+                    NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown);
+                completedSafely &= TryCleanup("Ownership shutdown", () => OwnershipCoordinator.Shutdown(reason));
+                completedSafely &= TryCleanup("Resource action context cleanup", ResourceActionContext.Reset);
+                completedSafely &= TryCleanup("Inventory session cleanup", InventoryIntegration.OnSessionDisconnected);
+                completedSafely &= TryCleanup("Chest-sort preference session cleanup", ChestSortPreferences.Shutdown);
+                completedSafely &= TryCleanup("Storage scope cleanup", StorageScopeProvider.Reset);
+                completedSafely &= TryCleanup("Nearby resource cache cleanup", NearbyResourceService.ResetCaches);
+                completedSafely &= TryCleanup("Build HUD cache cleanup", NearbyBuildHudPatch.ResetCache);
+                completedSafely &= TryCleanup("Crafting HUD cache cleanup", NearbyCraftingHudPatch.ResetCache);
+                completedSafely &= TryCleanup("HUD diagnostic cache cleanup", NearbyHudFailOpen.ResetSession);
             }
             finally
             {
-                Compatibility = new CompatibilityResult(false, reason);
-                try
-                {
-                    InventoryIntegration.OnCompatibilityDisabled();
-                    ChestSortPreferences.Shutdown();
-                    StorageScopeProvider.Reset();
-                    NearbyResourceService.ResetCaches();
-                    NearbyBuildHudPatch.ResetCache();
-                    NearbyCraftingHudPatch.ResetCache();
-                }
-                catch (Exception exception)
-                {
-                    Plugin?.Log.LogError("Local chest-sort UI cleanup failed safely: " + exception);
-                }
+                _cleanupInProgress = false;
+            }
+
+            return completedSafely;
+        }
+
+        private static bool TryCleanup(string operation, Action action)
+        {
+            try
+            {
+                action();
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Plugin?.Log.LogError(operation + " failed safely: " + exception);
+                _lifecycle.DisablePermanently();
+                Compatibility = new CompatibilityResult(false,
+                    operation + " failed; restart required before any further Stackmaster actions.");
+                return false;
             }
         }
 
         internal static void Shutdown()
         {
             ExpeditionKitAction.Shutdown();
+            StorageAction.Shutdown();
+            NearbyResourceOwnership.Shutdown();
             ChestSortPreferences.Shutdown();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
             NearbyCraftingHudPatch.ResetCache();
+            NearbyHudFailOpen.ResetSession();
+            ResourceActionContext.Reset();
+            _lifecycle.ShutDown();
+            _disconnectingNetwork = null;
             Plugin = null;
             Compatibility = new CompatibilityResult(false, "shut down");
         }

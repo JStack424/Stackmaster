@@ -102,6 +102,11 @@ namespace Stackmaster
             }
         }
 
+        internal void OnSessionRearmed()
+        {
+            _compatibilityWarningShown = false;
+        }
+
         private void OnDisable()
         {
             // Unity can disable a plugin component without destroying it. Return every exact

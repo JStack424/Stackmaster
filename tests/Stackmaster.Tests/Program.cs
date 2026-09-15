@@ -120,6 +120,11 @@ internal static class Program
             OwnershipBuildLeaseDoesNotYieldToLocalManualOpen,
             OwnershipBuildLeaseDoesNotYieldWhileLogicallyReserved,
             OwnershipRetryLeaseDoesNotUseBuildPreemption,
+            SessionDisconnectSuspendsAndSafeReconnectRearms,
+            SessionReconnectRequiresDifferentNetworkAndSafeCleanup,
+            PermanentDisableNeverRearms,
+            RepeatedDisconnectReconnectCyclesAreIdempotent,
+            LifecycleShutdownIsTerminal,
             WorkbenchMeshIgnoresVerticalDistance,
             WorkbenchMeshUsesStrictBoundaries,
             TangentWorkbenchZonesDoNotConnect,
@@ -1708,6 +1713,65 @@ internal static class Program
         True(!OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
                 OwnershipLeasePurpose.Retry, 202L, 101L, false),
             "the build-only preemption policy does not broaden retry or crafting behavior");
+    }
+
+    private static void SessionDisconnectSuspendsAndSafeReconnectRearms()
+    {
+        var lifecycle = new SessionLifecycleState(true);
+        Equal(true, lifecycle.IsOperational, "compatible startup is operational");
+
+        lifecycle.BeginDisconnect();
+        Equal(SessionLifecyclePhase.AwaitingReconnect, lifecycle.Phase, "disconnect suspends features");
+        Equal(false, lifecycle.IsOperational, "features stay fail-closed between sessions");
+
+        Equal(true, lifecycle.TryRearm(true, true), "safe different session rearms");
+        Equal(true, lifecycle.IsOperational, "features operate after reconnect");
+    }
+
+    private static void SessionReconnectRequiresDifferentNetworkAndSafeCleanup()
+    {
+        var sameSession = new SessionLifecycleState(true);
+        sameSession.BeginDisconnect();
+        Equal(false, sameSession.TryRearm(false, true), "same network session cannot rearm");
+        Equal(SessionLifecyclePhase.AwaitingReconnect, sameSession.Phase, "same session remains suspended");
+
+        var unsafeCleanup = new SessionLifecycleState(true);
+        unsafeCleanup.BeginDisconnect();
+        Equal(false, unsafeCleanup.TryRearm(true, false), "unsafe cleanup cannot rearm");
+        Equal(SessionLifecyclePhase.AwaitingReconnect, unsafeCleanup.Phase, "unsafe cleanup remains suspended");
+    }
+
+    private static void PermanentDisableNeverRearms()
+    {
+        var lifecycle = new SessionLifecycleState(true);
+        lifecycle.DisablePermanently();
+        lifecycle.BeginDisconnect();
+        Equal(false, lifecycle.TryRearm(true, true), "permanent safety disable cannot rearm");
+        Equal(SessionLifecyclePhase.PermanentlyDisabled, lifecycle.Phase, "permanent disable survives reconnect");
+    }
+
+    private static void RepeatedDisconnectReconnectCyclesAreIdempotent()
+    {
+        var lifecycle = new SessionLifecycleState(true);
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            lifecycle.BeginDisconnect();
+            lifecycle.BeginDisconnect();
+            Equal(SessionLifecyclePhase.AwaitingReconnect, lifecycle.Phase, "repeated disconnect remains suspended");
+            Equal(true, lifecycle.TryRearm(true, true), "cycle rearms once");
+            Equal(false, lifecycle.TryRearm(true, true), "already-operational duplicate rearm is ignored");
+        }
+        Equal(true, lifecycle.IsOperational, "repeated cycles end operational");
+    }
+
+    private static void LifecycleShutdownIsTerminal()
+    {
+        var lifecycle = new SessionLifecycleState(true);
+        lifecycle.ShutDown();
+        lifecycle.BeginDisconnect();
+        lifecycle.DisablePermanently();
+        Equal(false, lifecycle.TryRearm(true, true), "unloaded plugin cannot rearm");
+        Equal(SessionLifecyclePhase.ShutDown, lifecycle.Phase, "shutdown remains terminal");
     }
 
     private static void WorkbenchMeshIgnoresVerticalDistance()

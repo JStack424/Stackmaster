@@ -653,11 +653,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("requiredHandles.Any(handle => OwnershipLeaseManager.HasPotentialAcquisition(handle.Id))", (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8"))
         self.assertIn("ZDOMan.instance.GetZDO(handle.ResourceZdoId)", ownership)
         self.assertIn("Keep retrying through scene unload", ownership)
-        self.assertNotIn("Pending.Clear()", ownership)
+        release_all = ownership[ownership.index("internal static void ReleaseAll") : ownership.index("private static void Release(")]
+        self.assertNotIn("Pending.Clear()", release_all)
+        ended_session = ownership[ownership.index("internal static void DiscardEndedSessionState()") : ownership.index("internal static void CancelPotentialAcquisition")]
+        self.assertIn("Pending.Clear()", ended_session)
+        self.assertIn("Leases.Clear()", ended_session)
         self.assertNotIn("pending.ExpiresAt", ownership)
         self.assertIn("if (!granted) OwnershipLeaseManager.CancelPotentialAcquisition(container)", ownership)
         self.assertIn("internal static void Shutdown()", (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8"))
-        self.assertLess(runtime.index("ResourceTransactionContext.Shutdown()"), runtime.index("OwnershipCoordinator.Shutdown(reason)"))
+        self.assertLess(runtime.index("ResourceTransactionContext.Shutdown"), runtime.index("OwnershipCoordinator.Shutdown(reason)"))
         self.assertIn('Prefix(typeof(Game), "Shutdown"', installer)
         self.assertIn('Prefix(typeof(ZNet), "Shutdown"', installer)
         self.assertIn('Prefix(typeof(ZNet), "ShutdownWithoutSave"', installer)
@@ -674,6 +678,71 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipLeaseManager.ReleaseAll(reason)", shutdown)
         self.assertIn("catch (Exception exception)", shutdown)
         self.assertLess(plugin.index("safetyHarmony.Patch"), plugin.index("_harmony?.UnpatchSelf()", plugin.index("private void OnDestroy")))
+
+    def test_disconnect_is_session_scoped_and_reconnect_rearms_only_after_full_cleanup(self):
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        storage = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        expedition = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+        plugin = PLUGIN.read_text(encoding="utf-8")
+
+        lifecycle_patch = ownership[ownership.index("internal static class OwnershipLifecyclePatch") : ownership.index("internal static class OwnershipSafetyUpdatePatch")]
+        self.assertIn("RuntimeContext.DisconnectSession()", lifecycle_patch)
+        self.assertNotIn("RuntimeContext.Disable", lifecycle_patch)
+
+        disconnect = runtime[runtime.index("internal static void DisconnectSession()") : runtime.index("internal static void TryRearmSession")]
+        self.assertIn("_lifecycle.BeginDisconnect()", disconnect)
+        self.assertIn('Compatibility = new CompatibilityResult(false, "between server sessions")', disconnect)
+        self.assertIn('RunSafetyCleanup("session disconnect")', disconnect)
+
+        cleanup = runtime[runtime.index("private static bool RunSafetyCleanup") : runtime.index("private static bool TryCleanup")]
+        ordered = [
+            "ResourceTransactionContext.Shutdown",
+            "ExpeditionKitAction.Shutdown",
+            "StorageAction.Shutdown",
+            "NearbyResourceOwnership.Shutdown",
+            "NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown",
+            "OwnershipCoordinator.Shutdown",
+            "ResourceActionContext.Reset",
+            "InventoryIntegration.OnSessionDisconnected",
+            "ChestSortPreferences.Shutdown",
+            "StorageScopeProvider.Reset",
+            "NearbyResourceService.ResetCaches",
+            "NearbyBuildHudPatch.ResetCache",
+            "NearbyCraftingHudPatch.ResetCache",
+            "NearbyHudFailOpen.ResetSession",
+        ]
+        positions = [cleanup.index(item) for item in ordered]
+        self.assertEqual(positions, sorted(positions))
+
+        rearm = runtime[runtime.index("internal static void TryRearmSession") : runtime.index("internal static void Disable")]
+        self.assertIn("ReferenceEquals(network, _disconnectingNetwork)", rearm)
+        self.assertLess(rearm.index("NearbyResourceService.DiscardEndedSessionState()"), rearm.index("_lifecycle.TryRearm"))
+        self.assertLess(rearm.index("OwnershipCoordinator.DiscardEndedSessionState()"), rearm.index("_lifecycle.TryRearm"))
+        self.assertLess(rearm.index("StorageAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
+        self.assertLess(rearm.index("NearbyResourceOwnership.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
+        self.assertLess(rearm.index("ExpeditionKitAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
+        self.assertIn("_lifecycle.DisablePermanently()", runtime)
+        self.assertIn('RuntimeContext.Disable("plugin disabled")', plugin)
+        self.assertIn('RuntimeContext.Disable("plugin unloading")', plugin)
+
+        safety_update = ownership[ownership.index("internal static class OwnershipSafetyUpdatePatch") : ownership.index("[HarmonyPatch(typeof(Container), \"RPC_RequestOpen\"")]
+        self.assertLess(safety_update.index("UpdatePendingReservationReleases"), safety_update.index("TryRearmSession"))
+        self.assertLess(safety_update.index("OwnershipLeaseManager.Update"), safety_update.index("TryRearmSession"))
+        self.assertIn("LateResponseSuppressions.Clear()", ownership)
+        self.assertIn("PendingReservationReleases.Clear()", nearby)
+        self.assertIn("_generation++", storage)
+        self.assertIn("generation == _generation", storage)
+        self.assertIn("_generation++", nearby)
+        self.assertIn("generation == _generation", nearby)
+        self.assertIn("_generation++", expedition)
+        self.assertIn("generation == _generation", expedition)
+        for action in (storage, nearby, expedition):
+            self.assertIn("generation != _generation || !RuntimeContext.Compatibility.IsCompatible", action)
+            self.assertIn("if (generation == _generation)", action)
+        self.assertIn("!SameAcquisition(existing.Acquisition, acquisition)", ownership)
+        self.assertIn("SameReservation(pending.Reservation, reservation)", nearby)
 
     def test_protected_item_indicators_use_reconciled_assignments_and_do_not_intercept_input(self):
         integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")

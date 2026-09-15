@@ -18,6 +18,20 @@ namespace Stackmaster
         private static readonly FieldInfo DragItemField = AccessTools.Field(typeof(InventoryGui), "m_dragItem");
         private static int _lastActionFrame = -1;
         private static bool _actionRunning;
+        private static int _generation;
+
+        internal static void Shutdown()
+        {
+            _generation++;
+            _lastActionFrame = -1;
+            _actionRunning = false;
+        }
+
+        internal static void RearmSession()
+        {
+            _lastActionFrame = -1;
+            _actionRunning = false;
+        }
 
         internal static void Update()
         {
@@ -239,10 +253,12 @@ namespace Stackmaster
                 }
 
                 RuntimeContext.ShowTopLeft("Stackmaster: checking nearby storage…");
+                var generation = _generation;
                 RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(
                     player,
                     target,
-                    neededHandles));
+                    neededHandles,
+                    generation));
             }
             catch (Exception exception)
             {
@@ -255,8 +271,14 @@ namespace Stackmaster
         private static IEnumerator FinishAfterOwnership(
             Player player,
             Container target,
-            ContainerHandle[] neededHandles)
+            ContainerHandle[] neededHandles,
+            int generation)
         {
+            if (generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
+            {
+                yield break;
+            }
+
             OwnershipBatch ownership = null;
             try
             {
@@ -274,7 +296,8 @@ namespace Stackmaster
             {
                 var refreshFailed = false;
                 var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
-                while (!ownership.IsComplete && Time.realtimeSinceStartup < deadline)
+                while (generation == _generation && RuntimeContext.Compatibility.IsCompatible &&
+                       !ownership.IsComplete && Time.realtimeSinceStartup < deadline)
                 {
                     try
                     {
@@ -289,7 +312,10 @@ namespace Stackmaster
                     if (refreshFailed) break;
                     yield return null;
                 }
-                if (refreshFailed) yield break;
+                if (refreshFailed || generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
+                {
+                    yield break;
+                }
 
                 try
                 {
@@ -376,11 +402,16 @@ namespace Stackmaster
             }
             finally
             {
-                // Alt+E never needs a cross-attempt lease. Return only exact ownership newly
-                // acquired by this action after transfer rollback/validation has finished.
-                OwnershipLeaseManager.ReleaseBatch(ownership, "storage action ended");
-                OwnershipCoordinator.End(ownership);
-                _actionRunning = false;
+                if (generation == _generation)
+                {
+                    // Alt+E never needs a cross-attempt lease. Return only exact ownership newly
+                    // acquired by this action after transfer rollback/validation has finished.
+                    OwnershipLeaseManager.ReleaseBatch(ownership, "storage action ended");
+                    OwnershipCoordinator.End(ownership);
+                    _actionRunning = false;
+                }
+                // A disconnect invalidates the generation and RuntimeContext performs the same
+                // ordered cleanup centrally. The stale coroutine must not touch a later session.
             }
         }
 

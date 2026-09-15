@@ -37,6 +37,11 @@ namespace Stackmaster
         {
             _current = previous;
         }
+
+        internal static void Reset()
+        {
+            _current = ResourceActionKind.None;
+        }
     }
 
     internal sealed class RemovedResource
@@ -324,6 +329,15 @@ namespace Stackmaster
 
         internal static bool HasPendingReservationRelease(string containerId)
             => !string.IsNullOrEmpty(containerId) && PendingReservationReleases.ContainsKey(containerId);
+
+        internal static void DiscardEndedSessionState()
+        {
+            // Called only after a different ZNet instance has started. Records from the ended
+            // transport can no longer match a live reservation and must not cross into the new world.
+            PendingReservationReleases.Clear();
+            _nextReservationReleaseRetryAt = 0f;
+            ResetCaches();
+        }
 
         internal static void ResetCaches()
         {
@@ -1097,7 +1111,12 @@ namespace Stackmaster
                 }
                 if (released)
                 {
-                    PendingReservationReleases.Remove(reservation.Handle.Id);
+                    PendingReservationRelease pending;
+                    if (PendingReservationReleases.TryGetValue(reservation.Handle.Id, out pending) &&
+                        SameReservation(pending.Reservation, reservation))
+                    {
+                        PendingReservationReleases.Remove(reservation.Handle.Id);
+                    }
                 }
                 else
                 {
@@ -1166,6 +1185,15 @@ namespace Stackmaster
                     }
                 }
             }
+        }
+
+        private static bool SameReservation(ContainerReservation left, ContainerReservation right)
+        {
+            return left != null && right != null &&
+                   string.Equals(left.Handle.Id, right.Handle.Id, StringComparison.Ordinal) &&
+                   left.LocalSession == right.LocalSession &&
+                   left.DataRevision == right.DataRevision &&
+                   left.OwnerRevision == right.OwnerRevision;
         }
 
         private static bool TryClearReservation(ContainerReservation reservation)
@@ -1387,6 +1415,18 @@ namespace Stackmaster
         internal const string InUseMessage = "The required materials are currently in use";
         private const float OwnershipTimeoutSeconds = 2f;
         private static bool _running;
+        private static int _generation;
+
+        internal static void Shutdown()
+        {
+            _generation++;
+            _running = false;
+        }
+
+        internal static void RearmSession()
+        {
+            _running = false;
+        }
 
         internal static bool TryBegin(
             Player player,
@@ -1410,6 +1450,7 @@ namespace Stackmaster
                 return false;
             }
 
+            var generation = _generation;
             _running = true;
             try
             {
@@ -1421,7 +1462,8 @@ namespace Stackmaster
                     readOnlyCapture,
                     readOnlyPlan,
                     requiredHandles,
-                    unownedHandles));
+                    unownedHandles,
+                    generation));
                 return true;
             }
             catch (Exception exception)
@@ -1439,8 +1481,14 @@ namespace Stackmaster
             NearbyResourceCapture readOnlyCapture,
             ResourceWithdrawalPlan readOnlyPlan,
             ContainerHandle[] requiredHandles,
-            ContainerHandle[] unownedHandles)
+            ContainerHandle[] unownedHandles,
+            int generation)
         {
+            if (generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
+            {
+                yield break;
+            }
+
             OwnershipBatch ownership;
             try
             {
@@ -1459,7 +1507,8 @@ namespace Stackmaster
             {
                 var refreshFailed = false;
                 var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
-                while (!ownership.IsComplete && Time.realtimeSinceStartup < deadline)
+                while (generation == _generation && RuntimeContext.Compatibility.IsCompatible &&
+                       !ownership.IsComplete && Time.realtimeSinceStartup < deadline)
                 {
                     try
                     {
@@ -1473,6 +1522,11 @@ namespace Stackmaster
                     }
                     if (refreshFailed) yield break;
                     yield return null;
+                }
+
+                if (generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
+                {
+                    yield break;
                 }
 
                 try
@@ -1535,6 +1589,8 @@ namespace Stackmaster
             }
             finally
             {
+                if (generation == _generation)
+                {
                 // Stopping/disposal of the coroutine must not strand the coordinator. If a vanilla
                 // response can still arrive, Timeout records that container for permanent one-shot
                 // suppression before End clears the active batch.
@@ -1559,9 +1615,15 @@ namespace Stackmaster
                     }
                     finally
                     {
-                        _running = false;
+                        if (generation == _generation)
+                        {
+                            _running = false;
+                        }
                     }
                 }
+                }
+                // RuntimeContext already cleaned an invalidated generation; it must never touch
+                // ownership records created by a later server session.
             }
         }
     }
@@ -1569,6 +1631,14 @@ namespace Stackmaster
     internal static class NearbyHudFailOpen
     {
         private static readonly HashSet<string> ReportedSurfaces = new HashSet<string>(StringComparer.Ordinal);
+
+        internal static void ResetSession()
+        {
+            lock (ReportedSurfaces)
+            {
+                ReportedSurfaces.Clear();
+            }
+        }
 
         internal static void ReportOnce(string surface, Exception exception)
         {

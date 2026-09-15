@@ -312,6 +312,15 @@ namespace Stackmaster
 
         internal static bool HasUnresolvedCleanup => Pending.Count > 0 || Leases.Count > 0;
 
+        internal static void DiscardEndedSessionState()
+        {
+            // RuntimeContext calls this only after observing a different ZNet instance. At that
+            // point old transport responses cannot arrive and these identity-scoped records must
+            // not be allowed to influence the new session.
+            Pending.Clear();
+            Leases.Clear();
+        }
+
         internal static void CancelPotentialAcquisition(Container container)
         {
             if (container == null) return;
@@ -484,23 +493,39 @@ namespace Stackmaster
             string reason,
             bool shutdownRelease = false)
         {
+            OwnershipLease existing;
+            var hasExisting = Leases.TryGetValue(acquisition.Id, out existing);
+            if (hasExisting && !SameAcquisition(existing.Acquisition, acquisition))
+            {
+                // A delayed prior-session coroutine must never remove or overwrite a newer exact
+                // lease that happens to use the same persistent container id.
+                return;
+            }
+
             if (TryRelinquish(acquisition, reason, shutdownRelease))
             {
-                Leases.Remove(acquisition.Id);
+                if (hasExisting) Leases.Remove(acquisition.Id);
             }
             else
             {
                 // Retain the exact cleanup record on a transient failure. Update retries it;
                 // stale identity/revision guards still prevent touching unrelated ownership.
-                OwnershipLease existing;
-                var purpose = Leases.TryGetValue(acquisition.Id, out existing)
-                    ? existing.Purpose
-                    : OwnershipLeasePurpose.Retry;
+                var purpose = hasExisting ? existing.Purpose : OwnershipLeasePurpose.Retry;
                 Leases[acquisition.Id] = new OwnershipLease(
                     acquisition,
                     Time.realtimeSinceStartup + 1f,
                     purpose);
             }
+        }
+
+        private static bool SameAcquisition(
+            AcquiredContainerOwnership left,
+            AcquiredContainerOwnership right)
+        {
+            return left != null && right != null &&
+                   string.Equals(left.Id, right.Id, StringComparison.Ordinal) &&
+                   left.AcquiredSession == right.AcquiredSession &&
+                   left.AcquiredOwnerRevision == right.AcquiredOwnerRevision;
         }
 
         private static bool TryRelinquish(
@@ -682,6 +707,17 @@ namespace Stackmaster
             }
         }
 
+        internal static void DiscardEndedSessionState()
+        {
+            if (_active != null)
+            {
+                throw new InvalidOperationException("Cannot rearm while a prior-session ownership batch is still active.");
+            }
+
+            OwnershipLeaseManager.DiscardEndedSessionState();
+            LateResponseSuppressions.Clear();
+        }
+
         internal static void SuppressLateResponse(Container container)
         {
             if (!ReferenceEquals(container, null))
@@ -713,18 +749,20 @@ namespace Stackmaster
     {
         internal static void Prefix()
         {
-            RuntimeContext.Disable("session disconnect");
+            RuntimeContext.DisconnectSession();
         }
     }
 
     internal static class OwnershipSafetyUpdatePatch
     {
-        private static void Postfix()
+        private static void Postfix(ZNet __instance)
         {
             // Runs independently of the plugin component's enabled/compatibility state. It is
-            // also retained under the session-lifetime Harmony id during hot unload.
+            // also retained under the session-lifetime Harmony id during hot unload. Cleanup for
+            // the ended session is observed before a different ZNet instance may rearm features.
             NearbyResourceService.UpdatePendingReservationReleases();
             OwnershipLeaseManager.Update();
+            RuntimeContext.TryRearmSession(__instance);
         }
     }
 

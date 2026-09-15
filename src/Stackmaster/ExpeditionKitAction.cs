@@ -248,6 +248,12 @@ namespace Stackmaster
             _running = false;
         }
 
+        internal static void RearmSession()
+        {
+            PendingRequests.Clear();
+            _running = false;
+        }
+
         private static IEnumerator FinishAfterOwnership(
             Player player,
             Piece piece,
@@ -255,6 +261,11 @@ namespace Stackmaster
             ContainerHandle[] unownedHandles,
             int generation)
         {
+            if (generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
+            {
+                yield break;
+            }
+
             OwnershipBatch ownership;
             try
             {
@@ -328,6 +339,8 @@ namespace Stackmaster
             }
             finally
             {
+                if (generation == _generation)
+                {
                 try
                 {
                     if (!ownership.IsComplete) ownership.Timeout();
@@ -363,6 +376,9 @@ namespace Stackmaster
                         Complete(generation);
                     }
                 }
+                }
+                // RuntimeContext already cleaned an invalidated generation; it must never touch
+                // ownership records created by a later server session.
             }
         }
 

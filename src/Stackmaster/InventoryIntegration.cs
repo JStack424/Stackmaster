@@ -392,10 +392,32 @@ namespace Stackmaster
 
         internal static void OnCompatibilityDisabled()
         {
+            OnSessionDisconnected();
+        }
+
+        internal static void OnSessionDisconnected()
+        {
             OnInventoryHidden();
+            _sortingChestOnClose = false;
             if (_toggleAnchor != null)
             {
                 _toggleAnchor.SetActive(false);
+            }
+        }
+
+        internal static void OnSessionRearmed()
+        {
+            OnInventoryHidden();
+            _sortingChestOnClose = false;
+            _overlaysDisabled = false;
+            _overlayFailureLogged = false;
+            if (_toggleAnchor != null)
+            {
+                _toggleAnchor.SetActive(true);
+            }
+            if (_toggleCheckmark != null && RuntimeContext.Plugin != null)
+            {
+                _toggleCheckmark.SetActive(RuntimeContext.Plugin.AutoSortEnabled.Value);
             }
         }
 

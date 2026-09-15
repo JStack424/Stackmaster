@@ -14,9 +14,13 @@ Local test candidate; not published.
 - Preflights the complete kit against exact inventory slots and added carry weight before requesting any chest ownership.
 - Replans from fresh storage after asynchronous ownership acquisition, requires an identical plan, reserves and revalidates every required chest, then performs exact source-to-destination moves.
 - Cancels without moving anything on shortage, access or ownership changes, busy storage, stale contents, insufficient slots, or insufficient carry capacity. Late transfer failures roll back completed moves before guarded ownership cleanup.
+- Emergency snapshot rollback restores the original player item objects and their complete captured state, preserving every equipped-item reference; chest snapshots remain detached.
+- A failed exact local in-use cleanup is retained and retried before Stackmaster may relinquish its matching ownership acquisition, including disable and hot-unload paths, without clearing later or unrelated owners' state.
+- Logging out now performs a recoverable session teardown rather than permanently disabling Stackmaster for the remaining Valheim process. Joining a new server session rearms every feature without requiring a game restart.
+- Reconnect rearming is fail-closed: rollback and reservation-before-ownership cleanup must complete successfully, the network-session object must change, permanent compatibility failures stay disabled, and stale coroutines are generation-isolated from later sessions.
 - Uses the existing configured shortcut modifier, connected-workbench/fallback storage scope, vanilla ownership handshake, and access/in-use protections without Jötunn, custom RPCs, server data, or networking.
 - Ordinary build-piece clicks, the existing 30-second chest-backed building lease, and all existing features remain unchanged.
-- Automated verification passes with zero compiler warnings/errors, 120/120 pure-domain tests, and 62/62 static/repository safety checks. Live in-game validation is pending.
+- Automated verification passes with zero compiler warnings/errors, 127/127 pure-domain tests, and 64/64 static/repository safety checks. Live in-game reconnect validation is pending.
 
 ## 1.0.0
 
