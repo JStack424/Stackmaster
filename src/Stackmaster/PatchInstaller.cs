@@ -19,7 +19,12 @@ namespace Stackmaster
                 Postfix(typeof(InventoryGui), "Awake", Type.EmptyTypes, typeof(InventoryGuiAwakePatch)),
                 Both(typeof(InventoryGui), "Hide", Type.EmptyTypes, typeof(InventoryGuiHidePatch)),
                 Postfix(typeof(InventoryGui), "Show", new[] { typeof(Container), typeof(int) }, typeof(InventoryGuiShowPatch)),
-                Prefix(typeof(InventoryGui), "Update", Type.EmptyTypes, typeof(InventoryGuiStorageActionPatch)),
+                Both(typeof(InventoryGui), "Update", Type.EmptyTypes, typeof(InventoryGuiStorageActionPatch)),
+                Transactional(typeof(InventoryGui), "OnCraftPressed", Type.EmptyTypes, typeof(CraftingStartPatch)),
+                Prefix(typeof(InventoryGui), "OnCraftCancelPressed", Type.EmptyTypes, typeof(CraftingCancelPatch)),
+                Prefix(typeof(InventoryGui), "OnTabCraftPressed", Type.EmptyTypes, typeof(CraftingSelectionPatch)),
+                Prefix(typeof(InventoryGui), "OnTabUpgradePressed", Type.EmptyTypes, typeof(CraftingSelectionPatch)),
+                Prefix(typeof(InventoryGui), "OnSelectedRecipe", new[] { typeof(UnityEngine.GameObject) }, typeof(CraftingSelectionPatch)),
                 Postfix(typeof(InventoryGrid), "UpdateInventory", new[] { typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData) }, typeof(InventoryGridUpdateInventoryPatch)),
                 Prefix(typeof(InventoryGui), "OnSelectedItem", new[]
                 {

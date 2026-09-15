@@ -77,6 +77,12 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
             RequireMethod(failures, typeof(InventoryGui), "OnRightClickItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i));
             RequireMethod(failures, typeof(InventoryGui), "OnDropOutside");
+            RequireMethod(failures, typeof(InventoryGui), "OnCraftPressed");
+            RequireMethod(failures, typeof(InventoryGui), "OnCraftCancelPressed");
+            RequireMethod(failures, typeof(InventoryGui), "OnTabCraftPressed");
+            RequireMethod(failures, typeof(InventoryGui), "OnTabUpgradePressed");
+            RequireMethod(failures, typeof(InventoryGui), "OnSelectedRecipe", typeof(GameObject));
+            RequireMethod(failures, typeof(InventoryGui), "UpdateRecipe", typeof(Player), typeof(float));
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
             RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
             RequireMethod(failures, typeof(InventoryGui), "get_instance");
@@ -169,6 +175,9 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_selectedRecipe");
             RequireField(failures, typeof(InventoryGui), "m_reqList");
             RequireField(failures, typeof(InventoryGui), "m_craftUpgradeItem");
+            RequireField(failures, typeof(InventoryGui), "m_selectedVariant");
+            RequireField(failures, typeof(InventoryGui), "m_craftVariant");
+            RequireField(failures, typeof(InventoryGui), "m_touchMultiCrafting");
             RequireField(failures, typeof(InventoryGui), "m_multiCrafting");
             RequireField(failures, typeof(InventoryGui), "m_multiCraftAmount");
             RequireField(failures, typeof(InventoryGui), "m_dragItem");

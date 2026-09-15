@@ -795,6 +795,7 @@ namespace Stackmaster
     {
         private static void Prefix()
         {
+            CraftingPreflightAction.Cancel("the inventory was closed", false);
             if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.SortClosingChest();
         }

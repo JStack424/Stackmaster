@@ -288,6 +288,68 @@ namespace Stackmaster
         internal IReadOnlyDictionary<string, RuntimeResourceStack> RuntimeStacks { get; }
     }
 
+    internal sealed class CraftingResourcePlan
+    {
+        internal CraftingResourcePlan(
+            IReadOnlyList<ResourceRequirement> requirements,
+            NearbyResourceCapture capture,
+            ResourceWithdrawalPlan plan,
+            ContainerHandle[] requiredHandles,
+            ItemDrop.ItemData selectedIngredient,
+            int selectedAmount,
+            int selectedExtraAmount)
+        {
+            Requirements = requirements;
+            Capture = capture;
+            Plan = plan;
+            RequiredHandles = requiredHandles;
+            SelectedIngredient = selectedIngredient;
+            SelectedAmount = selectedAmount;
+            SelectedExtraAmount = selectedExtraAmount;
+        }
+
+        internal IReadOnlyList<ResourceRequirement> Requirements { get; }
+        internal NearbyResourceCapture Capture { get; }
+        internal ResourceWithdrawalPlan Plan { get; }
+        internal ContainerHandle[] RequiredHandles { get; }
+        internal ItemDrop.ItemData SelectedIngredient { get; }
+        internal int SelectedAmount { get; }
+        internal int SelectedExtraAmount { get; }
+    }
+
+    internal sealed class PreparedCraftingResources
+    {
+        internal PreparedCraftingResources(
+            CraftingResourcePlan source,
+            NearbyResourceCapture capture,
+            ResourceWithdrawalPlan plan,
+            ContainerHandle[] requiredHandles,
+            IReadOnlyList<ContainerReservation> reservations,
+            string inventorySignature)
+        {
+            Source = source;
+            Capture = capture;
+            Plan = plan;
+            RequiredHandles = requiredHandles;
+            Reservations = reservations;
+            InventorySignature = inventorySignature;
+        }
+
+        internal CraftingResourcePlan Source { get; }
+        internal NearbyResourceCapture Capture { get; }
+        internal ResourceWithdrawalPlan Plan { get; }
+        internal ContainerHandle[] RequiredHandles { get; }
+        internal IReadOnlyList<ContainerReservation> Reservations { get; private set; }
+        internal string InventorySignature { get; }
+
+        internal IReadOnlyList<ContainerReservation> TakeReservations()
+        {
+            var result = Reservations;
+            Reservations = Array.Empty<ContainerReservation>();
+            return result;
+        }
+    }
+
     internal sealed class RuntimeRequirementAvailability
     {
         internal RuntimeRequirementAvailability(
@@ -473,7 +535,263 @@ namespace Stackmaster
                 failure = "invalid building transaction";
                 return false;
             }
-            return TryBeginTransaction(player, PieceRequirements(piece), true, out failure);
+            return TryBeginTransaction(player, PieceRequirements(piece), true, true, out failure);
+        }
+
+        internal static bool TryPlanCraftingResources(
+            Player player,
+            Recipe recipe,
+            int qualityLevel,
+            int craftMultiplier,
+            out CraftingResourcePlan planned,
+            out string failure)
+        {
+            planned = null;
+            failure = null;
+            if (player == null || recipe == null || craftMultiplier <= 0)
+            {
+                failure = "invalid crafting transaction";
+                return false;
+            }
+
+            ItemDrop.ItemData selected = null;
+            var amount = 0;
+            var extraAmount = 0;
+            IReadOnlyList<ResourceRequirement> requirements;
+            if (!recipe.m_requireOnlyOneIngredient)
+            {
+                requirements = RecipeRequirements(player, recipe, qualityLevel, craftMultiplier);
+            }
+            else
+            {
+                selected = FindFirstRequiredItem(player, recipe, qualityLevel, craftMultiplier, true, out amount, out extraAmount);
+                if (selected == null || selected.m_shared == null || amount <= 0)
+                {
+                    failure = "fresh nearby stock no longer satisfies the selected ingredient";
+                    return false;
+                }
+                requirements = new[] { new ResourceRequirement(selected.m_shared.m_name, amount, selected.m_quality) };
+            }
+
+            var capture = Capture(player, true, true);
+            ResourceWithdrawalPlan plan;
+            if (!Planner.TryPlanWithMinimumContainers(requirements, capture.Stacks, PlayerInventoryId, out plan))
+            {
+                failure = "the exact minimum-container search exceeded its safe bound";
+                return false;
+            }
+            if (!plan.IsSatisfiable || plan.PlannedUnits != plan.RequiredUnits)
+            {
+                failure = "fresh nearby stock no longer satisfies the exact complete cost";
+                return false;
+            }
+
+            ContainerHandle[] handles;
+            if (!TryResolveRequiredContainers(player, plan, capture, out handles, out failure)) return false;
+            if (handles.Any(handle => OwnershipLeaseManager.HasPotentialAcquisition(handle.Id)))
+            {
+                failure = "a previous ownership transition is still pending";
+                return false;
+            }
+
+            planned = new CraftingResourcePlan(requirements, capture, plan, handles, selected, amount, extraAmount);
+            return true;
+        }
+
+        internal static bool TryPrepareCraftingResources(
+            Player player,
+            CraftingResourcePlan source,
+            out PreparedCraftingResources prepared,
+            out string failure)
+        {
+            prepared = null;
+            failure = null;
+            if (player == null || source == null)
+            {
+                failure = "invalid crafting reservation";
+                return false;
+            }
+
+            var freshCapture = Capture(player, true, true);
+            ResourceWithdrawalPlan freshPlan;
+            if (!Planner.TryPlanWithMinimumContainers(source.Requirements, freshCapture.Stacks, PlayerInventoryId, out freshPlan))
+            {
+                failure = "the refreshed minimum-container search exceeded its safe bound";
+                return false;
+            }
+            if (!freshPlan.IsSatisfiable || freshPlan.PlannedUnits != freshPlan.RequiredUnits ||
+                !SameWithdrawalPlan(source.Plan, freshPlan))
+            {
+                failure = "nearby or carried materials changed before the craft could be reserved";
+                return false;
+            }
+
+            ContainerHandle[] handles;
+            if (!TryResolveRequiredContainers(player, freshPlan, freshCapture, out handles, out failure)) return false;
+            if (!new HashSet<string>(source.RequiredHandles.Select(handle => handle.Id), StringComparer.Ordinal)
+                    .SetEquals(handles.Select(handle => handle.Id)))
+            {
+                failure = "the exact minimum container plan changed before reservation";
+                return false;
+            }
+            if (handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
+            {
+                failure = "required container ownership changed before reservation";
+                return false;
+            }
+            if (!RevalidateContainers(player, freshPlan, freshCapture, out failure) ||
+                !RevalidateStacks(freshPlan, freshCapture, true, out failure))
+            {
+                return false;
+            }
+
+            IReadOnlyList<ContainerReservation> reservations;
+            if (!TryReserveContainers(player, freshCapture.Scope, handles, true, out reservations, out failure)) return false;
+            if (!RevalidateReservedContainers(player, freshCapture.Scope, reservations, out failure) ||
+                !RevalidateStacks(freshPlan, freshCapture, true, out failure))
+            {
+                ReleaseReservations(reservations);
+                return false;
+            }
+
+            prepared = new PreparedCraftingResources(
+                source,
+                freshCapture,
+                freshPlan,
+                handles,
+                reservations,
+                CraftingInventorySignature(player, handles));
+            return true;
+        }
+
+        internal static bool TryBeginPreparedCraftingTransaction(
+            Player player,
+            PreparedCraftingResources prepared,
+            out string failure)
+        {
+            failure = null;
+            if (player == null || prepared == null || prepared.Reservations == null ||
+                prepared.Reservations.Count != prepared.RequiredHandles.Length)
+            {
+                failure = "the prepared crafting reservation is unavailable";
+                return false;
+            }
+            if (ResourceTransactionContext.Active)
+            {
+                failure = "another nearby-resource transaction is already active";
+                return false;
+            }
+            if (!string.Equals(prepared.InventorySignature,
+                    CraftingInventorySignature(player, prepared.RequiredHandles),
+                    StringComparison.Ordinal))
+            {
+                failure = "carried or nearby inventory changed during crafting";
+                return false;
+            }
+            if (!RevalidateReservedContainers(player, prepared.Capture.Scope, prepared.Reservations, out failure) ||
+                !RevalidateStacks(prepared.Plan, prepared.Capture, true, out failure))
+            {
+                return false;
+            }
+
+            var reservations = prepared.TakeReservations();
+            var removed = new List<RemovedResource>();
+            try
+            {
+                ResourceTransactionContext.Begin(removed, prepared.Plan.RequiredUnits, reservations);
+            }
+            catch (Exception exception)
+            {
+                ReleaseReservations(reservations);
+                failure = "prepared crafting transaction could not begin: " + exception.GetType().Name;
+                return false;
+            }
+            ResourceTransactionContext.SetSelectedIngredient(
+                prepared.Source.SelectedIngredient,
+                prepared.Source.SelectedAmount,
+                prepared.Source.SelectedExtraAmount);
+            try
+            {
+                if (!ExecuteWithRollback(player, prepared.Plan, prepared.Capture, reservations, removed, out failure))
+                {
+                    ResourceTransactionContext.Rollback();
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                var restored = ResourceTransactionContext.Rollback();
+                failure = "resource removal threw " + exception.GetType().Name +
+                    (restored ? "; all mutations were rolled back" : "; rollback could not restore every item");
+                if (!restored) RuntimeContext.Disable(failure);
+                return false;
+            }
+        }
+
+        internal static void ReleasePreparedCraftingResources(PreparedCraftingResources prepared)
+        {
+            if (prepared == null) return;
+            var reservations = prepared.TakeReservations();
+            if (!ReleaseReservations(reservations, releaseMatchingOwnership: true))
+            {
+                RuntimeContext.Disable("Stackmaster could not fully release a prepared crafting reservation.");
+            }
+        }
+
+        private static bool SameWithdrawalPlan(ResourceWithdrawalPlan left, ResourceWithdrawalPlan right)
+        {
+            if (left == null || right == null || left.RequiredUnits != right.RequiredUnits ||
+                left.PlannedUnits != right.PlannedUnits || left.Steps.Count != right.Steps.Count)
+            {
+                return false;
+            }
+            for (var index = 0; index < left.Steps.Count; index++)
+            {
+                var a = left.Steps[index];
+                var b = right.Steps[index];
+                if (!string.Equals(a.InventoryId, b.InventoryId, StringComparison.Ordinal) ||
+                    !string.Equals(a.StackId, b.StackId, StringComparison.Ordinal) ||
+                    !string.Equals(a.ItemName, b.ItemName, StringComparison.Ordinal) ||
+                    a.Quality != b.Quality || a.Quantity != b.Quantity)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static string CraftingInventorySignature(Player player, IEnumerable<ContainerHandle> handles)
+        {
+            var parts = new List<string>();
+            AppendInventorySignature(parts, PlayerInventoryId, player.GetInventory());
+            foreach (var handle in handles.OrderBy(item => item.Id, StringComparer.Ordinal))
+            {
+                AppendInventorySignature(parts, handle.Id, handle.Container.GetInventory());
+            }
+            return string.Join("|", parts);
+        }
+
+        private static void AppendInventorySignature(ICollection<string> parts, string id, Inventory inventory)
+        {
+            if (inventory == null)
+            {
+                parts.Add(id + ":missing");
+                return;
+            }
+            foreach (var item in inventory.GetAllItems()
+                .Where(item => item != null)
+                .OrderBy(item => item.m_gridPos.y)
+                .ThenBy(item => item.m_gridPos.x))
+            {
+                parts.Add(string.Concat(
+                    id, ":", item.m_gridPos.x.ToString(CultureInfo.InvariantCulture), ",",
+                    item.m_gridPos.y.ToString(CultureInfo.InvariantCulture), ":",
+                    item.m_shared == null ? "<missing>" : item.m_shared.m_name, ":",
+                    item.m_quality.ToString(CultureInfo.InvariantCulture), ":",
+                    item.m_worldLevel.ToString(CultureInfo.InvariantCulture), ":",
+                    item.m_stack.ToString(CultureInfo.InvariantCulture)));
+            }
         }
 
         internal static bool TryBeginRecipeTransaction(
@@ -492,7 +810,7 @@ namespace Stackmaster
 
             if (!recipe.m_requireOnlyOneIngredient)
             {
-                return TryBeginTransaction(player, RecipeRequirements(player, recipe, qualityLevel, craftMultiplier), true, out failure);
+                return TryBeginTransaction(player, RecipeRequirements(player, recipe, qualityLevel, craftMultiplier), true, false, out failure);
             }
 
             int amount;
@@ -507,6 +825,7 @@ namespace Stackmaster
                     player,
                     new[] { new ResourceRequirement(selected.m_shared.m_name, amount, selected.m_quality) },
                     true,
+                    false,
                     out failure))
             {
                 return false;
@@ -558,6 +877,7 @@ namespace Stackmaster
             Player player,
             IEnumerable<ResourceRequirement> requirements,
             bool matchWorldLevel,
+            bool allowDeferredOwnership,
             out string failure)
         {
             failure = null;
@@ -601,6 +921,11 @@ namespace Stackmaster
                 .ToArray();
             if (unowned.Length > 0)
             {
+                if (!allowDeferredOwnership)
+                {
+                    failure = "required container ownership was not prepared before crafting";
+                    return false;
+                }
                 // Valheim's owner-authorized RPC is asynchronous. Never block the main thread or
                 // bypass the current owner with ClaimOwnership. This attempt is cancelled with no
                 // mutation while only the minimum chests selected by the player-first plan are
@@ -2182,9 +2507,34 @@ namespace Stackmaster
         }
     }
 
+    internal static class CraftingStartPatch
+    {
+        internal static bool Prefix(InventoryGui __instance)
+            => CraftingPreflightAction.Prefix(__instance);
+
+        internal static void Postfix(InventoryGui __instance)
+            => CraftingPreflightAction.AfterVanillaStart(__instance);
+
+        internal static Exception Finalizer(Exception __exception)
+            => CraftingPreflightAction.Finalizer(__exception);
+    }
+
+    internal static class CraftingCancelPatch
+    {
+        internal static void Prefix()
+            => CraftingPreflightAction.Cancel("the craft was canceled", false);
+    }
+
+    internal static class CraftingSelectionPatch
+    {
+        internal static void Prefix()
+            => CraftingPreflightAction.Cancel("the crafting tab or recipe changed", false);
+    }
+
     internal static class NearbyCraftingActionPatch
     {
         internal static bool Prefix(
+            InventoryGui __instance,
             [HarmonyArgument(0)] Player player,
             Recipe ___m_craftRecipe,
             ItemDrop.ItemData ___m_craftUpgradeItem,
@@ -2203,7 +2553,19 @@ namespace Stackmaster
             var qualityLevel = ___m_craftUpgradeItem == null ? 1 : ___m_craftUpgradeItem.m_quality + 1;
             var multiplier = ___m_multiCrafting ? ___m_multiCraftAmount : 1;
             string failure;
-            if (NearbyResourceService.TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure))
+            bool handledPrepared;
+            if (CraftingPreflightAction.TryBeginPreparedTransaction(
+                    __instance,
+                    player,
+                    ___m_craftRecipe,
+                    qualityLevel,
+                    multiplier,
+                    out handledPrepared,
+                    out failure))
+            {
+                return true;
+            }
+            if (!handledPrepared && NearbyResourceService.TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure))
             {
                 return true;
             }

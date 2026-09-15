@@ -502,6 +502,11 @@ namespace Stackmaster
         {
             return !RuntimeContext.Compatibility.IsCompatible || StorageAction.HandleOpenContainerShortcut(__instance);
         }
+
+        private static void Postfix(InventoryGui __instance)
+        {
+            CraftingPreflightAction.Update(__instance);
+        }
     }
 
     [HarmonyPatch(typeof(Container), "Interact", typeof(Humanoid), typeof(bool), typeof(bool))]

@@ -128,6 +128,7 @@ namespace Stackmaster
                 completedSafely &= TryCleanup("Resource transaction shutdown", ResourceTransactionContext.Shutdown);
                 completedSafely &= TryCleanup("Expedition-kit shutdown", ExpeditionKitAction.Shutdown);
                 completedSafely &= TryCleanup("Storage-action shutdown", StorageAction.Shutdown);
+                completedSafely &= TryCleanup("Crafting preflight shutdown", () => CraftingPreflightAction.Shutdown(reason));
                 completedSafely &= TryCleanup("Nearby-resource ownership shutdown", NearbyResourceOwnership.Shutdown);
                 completedSafely &= TryCleanup("Pending reservation shutdown cleanup",
                     NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown);
@@ -170,6 +171,7 @@ namespace Stackmaster
         {
             ExpeditionKitAction.Shutdown();
             StorageAction.Shutdown();
+            CraftingPreflightAction.Shutdown("plugin shutdown");
             NearbyResourceOwnership.Shutdown();
             ChestSortPreferences.Shutdown();
             StorageScopeProvider.Reset();

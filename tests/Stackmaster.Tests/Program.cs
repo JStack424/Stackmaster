@@ -120,6 +120,12 @@ internal static class Program
             OwnershipBuildLeaseDoesNotYieldToLocalManualOpen,
             OwnershipBuildLeaseDoesNotYieldWhileLogicallyReserved,
             OwnershipRetryLeaseDoesNotUseBuildPreemption,
+            CraftingIntentDefersThenStartsExactlyOneBar,
+            CraftingReservationPrecedesCrafting,
+            CraftingCancelInvalidatesDelayedOwnership,
+            CraftingTransferCanHappenOnlyOnce,
+            CraftingRepeatedAttemptsUseNewGeneration,
+            CraftingDisconnectInvalidatesPreviousSessionCallback,
             SessionDisconnectSuspendsAndSafeReconnectRearms,
             SessionReconnectRequiresDifferentNetworkAndSafeCleanup,
             PermanentDisableNeverRearms,
@@ -1713,6 +1719,66 @@ internal static class Program
         True(!OwnershipLeaseRetentionPolicy.ShouldYieldToManualOpen(
                 OwnershipLeasePurpose.Retry, 202L, 101L, false),
             "the build-only preemption policy does not broaden retry or crafting behavior");
+    }
+
+    private static void CraftingIntentDefersThenStartsExactlyOneBar()
+    {
+        var lifecycle = new CraftingActionLifecycle();
+        var generation = lifecycle.Begin(needsOwnership: true);
+        Equal(CraftingActionPhase.Acquiring, lifecycle.Phase, "remote ownership defers the vanilla bar");
+        True(lifecycle.MarkReserved(generation), "the exact plan becomes reserved");
+        True(lifecycle.MarkCrafting(generation), "the original intent starts one vanilla bar");
+        True(!lifecycle.MarkCrafting(generation), "the same intent cannot start a second bar");
+    }
+
+    private static void CraftingReservationPrecedesCrafting()
+    {
+        var lifecycle = new CraftingActionLifecycle();
+        var generation = lifecycle.Begin(needsOwnership: true);
+        True(!lifecycle.MarkCrafting(generation), "crafting cannot start before reservation");
+        True(lifecycle.MarkReserved(generation), "reservation follows acquisition");
+        True(lifecycle.MarkCrafting(generation), "crafting starts only after reservation");
+    }
+
+    private static void CraftingCancelInvalidatesDelayedOwnership()
+    {
+        var lifecycle = new CraftingActionLifecycle();
+        var staleGeneration = lifecycle.Begin(needsOwnership: true);
+        lifecycle.Cancel();
+        Equal(CraftingActionPhase.Idle, lifecycle.Phase, "cancel immediately returns to idle");
+        True(!lifecycle.MarkReserved(staleGeneration), "a delayed grant cannot revive a canceled craft");
+    }
+
+    private static void CraftingTransferCanHappenOnlyOnce()
+    {
+        var lifecycle = new CraftingActionLifecycle();
+        var generation = lifecycle.Begin(needsOwnership: false);
+        True(lifecycle.MarkCrafting(generation), "locally owned resources start normally");
+        True(lifecycle.TransferToTransaction(generation), "prepared reservation transfers at DoCrafting");
+        True(!lifecycle.TransferToTransaction(generation), "reservation cannot transfer twice");
+        lifecycle.FinishTransferred(generation);
+        Equal(CraftingActionPhase.Idle, lifecycle.Phase, "completed craft clears lifecycle");
+    }
+
+    private static void CraftingRepeatedAttemptsUseNewGeneration()
+    {
+        var lifecycle = new CraftingActionLifecycle();
+        var first = lifecycle.Begin(needsOwnership: true);
+        lifecycle.Cancel();
+        var second = lifecycle.Begin(needsOwnership: true);
+        True(first != second, "repeated attempts have different callback generations");
+        True(!lifecycle.MarkReserved(first), "first attempt cannot reserve for the second");
+        True(lifecycle.MarkReserved(second), "second attempt can proceed independently");
+    }
+
+    private static void CraftingDisconnectInvalidatesPreviousSessionCallback()
+    {
+        var lifecycle = new CraftingActionLifecycle();
+        var previousSession = lifecycle.Begin(needsOwnership: true);
+        lifecycle.Cancel();
+        True(!lifecycle.Matches(previousSession), "disconnect cleanup invalidates the previous callback");
+        var rejoinedSession = lifecycle.Begin(needsOwnership: false);
+        True(rejoinedSession != previousSession, "rejoin receives an isolated generation");
     }
 
     private static void SessionDisconnectSuspendsAndSafeReconnectRearms()

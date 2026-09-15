@@ -15,7 +15,8 @@ namespace Stackmaster.Core
     public enum OwnershipLeasePurpose
     {
         Retry,
-        Building
+        Building,
+        Crafting
     }
 
     public static class OwnershipLeaseRetentionPolicy

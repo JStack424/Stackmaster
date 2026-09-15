@@ -481,7 +481,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('[HarmonyPatch(typeof(InventoryGui), "Update")]', action)
         self.assertIn("return !RuntimeContext.Compatibility.IsCompatible || StorageAction.HandleOpenContainerShortcut(__instance)", action)
         self.assertIn("return false;", action[action.index("internal static bool HandleOpenContainerShortcut"):action.index("internal static bool IsLocalOpenTarget")])
-        self.assertIn('Prefix(typeof(InventoryGui), "Update"', installer)
+        self.assertIn('Both(typeof(InventoryGui), "Update"', installer)
         self.assertIn('RequireMethod(failures, typeof(InventoryGui), "Update")', gate)
         self.assertIn('RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen")', gate)
         self.assertIn('RequireMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string))', gate)
@@ -880,6 +880,53 @@ class ProjectBoundaryTests(unittest.TestCase):
         for method in ("HaveRequirementItems", "HaveRequirements", "GetFirstRequiredItem", "DoCrafting", "UpdatePlacement", "TryPlacePiece"):
             self.assertIn(f'"{method}"', gate)
 
+    def test_crafting_is_one_click_reserved_then_one_vanilla_bar_with_full_cleanup(self):
+        action = (PLUGIN_DIR / "CraftingPreflightAction.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        inventory = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        storage = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+
+        self.assertIn('Transactional(typeof(InventoryGui), "OnCraftPressed"', installer)
+        self.assertIn('Prefix(typeof(InventoryGui), "OnCraftCancelPressed"', installer)
+        self.assertIn('Prefix(typeof(InventoryGui), "OnTabCraftPressed"', installer)
+        self.assertIn('Prefix(typeof(InventoryGui), "OnTabUpgradePressed"', installer)
+        self.assertIn('Prefix(typeof(InventoryGui), "OnSelectedRecipe"', installer)
+        self.assertIn("CraftingPreflightAction.Update(__instance)", storage)
+        self.assertIn("CraftingPreflightAction.Cancel", inventory)
+        self.assertIn("Crafting preflight shutdown", runtime)
+
+        self.assertIn("TryPlanCraftingResources", action)
+        self.assertIn("plan.RequiredHandles", action)
+        self.assertIn("Lifecycle.Begin(unowned.Length != 0)", action)
+        self.assertIn("return false;", action[action.index("AcquireAndResume"):])
+        self.assertEqual(1, action.count("OnCraftPressedMethod.Invoke"))
+        self.assertIn("TryPrepareCraftingResources", action)
+        self.assertIn("Lifecycle.MarkReserved", action)
+        self.assertIn("Lifecycle.MarkCrafting", action)
+        self.assertIn("TryBeginPreparedTransaction", nearby)
+        self.assertIn("TryBeginPreparedCraftingTransaction", nearby)
+        self.assertIn("CraftingInventorySignature", nearby)
+        self.assertIn("SameWithdrawalPlan", nearby)
+        self.assertIn("RevalidateReservedContainers", nearby)
+        self.assertIn("TakeReservations", nearby)
+        self.assertIn("ResourceTransactionContext.Begin", nearby)
+
+        self.assertIn("CraftTimerField.SetValue(_intent.Gui, -1f)", action)
+        self.assertIn("OwnershipCoordinator.Cancel(_ownership", action)
+        self.assertIn("ReleasePreparedCraftingResources", action)
+        self.assertIn("HoldForCrafting", ownership)
+        self.assertIn("OwnershipLeasePurpose.Crafting", ownership)
+        self.assertNotIn("try the action again", action.lower())
+        for dependency in (
+            "OnCraftPressed", "OnCraftCancelPressed", "OnTabCraftPressed", "OnTabUpgradePressed",
+            "OnSelectedRecipe", "UpdateRecipe", "m_selectedVariant", "m_craftVariant", "m_touchMultiCrafting",
+        ):
+            self.assertIn(f'"{dependency}"', gate)
+
     def test_remote_owned_resource_stock_is_read_only_and_claimed_only_for_exact_action_plan(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
@@ -933,7 +980,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(rollback_context.index("NearbyResourceService.Rollback"), rollback_context.index("ReleaseReservations"))
         self.assertIn("var actualRemoved = before - after", nearby)
         self.assertIn("clone.m_stack = actualRemoved", nearby)
-        self.assertLess(nearby.index("TryCaptureOwnedPlan"), nearby.index("ExecuteWithRollback", nearby.index("TryBeginTransaction")))
+        ordinary_begin = nearby.index("private static bool TryBeginTransaction(")
+        self.assertLess(nearby.index("TryCaptureOwnedPlan", ordinary_begin), nearby.index("ExecuteWithRollback", ordinary_begin))
         self.assertIn("CancelRemaining", ownership)
         self.assertIn("OwnerRejectedContainerIds", ownership)
         cleanup = nearby.index("Stopping/disposal of the coroutine must not strand the coordinator")

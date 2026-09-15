@@ -246,16 +246,23 @@ namespace Stackmaster
 
         internal static void HoldForRetry(OwnershipBatch batch)
         {
+            Hold(batch, OwnershipLeasePurpose.Retry);
+        }
+
+        internal static void HoldForCrafting(OwnershipBatch batch)
+        {
+            Hold(batch, OwnershipLeasePurpose.Crafting);
+        }
+
+        private static void Hold(OwnershipBatch batch, OwnershipLeasePurpose purpose)
+        {
             if (batch == null) return;
             var expiresAt = OwnershipLeaseRetentionPolicy.RenewedExpiry(
                 Time.realtimeSinceStartup,
                 RetryLeaseSeconds);
             foreach (var acquisition in batch.AcquiredOwnerships)
             {
-                Leases[acquisition.Id] = new OwnershipLease(
-                    acquisition,
-                    expiresAt,
-                    OwnershipLeasePurpose.Retry);
+                Leases[acquisition.Id] = new OwnershipLease(acquisition, expiresAt, purpose);
             }
         }
 
@@ -633,6 +640,21 @@ namespace Stackmaster
                     OwnershipLeaseManager.WatchPotentialAcquisition(batch.TimedOutAcquisitionHandle);
                 }
                 _active = null;
+            }
+        }
+
+        internal static void Cancel(OwnershipBatch batch, string reason)
+        {
+            if (batch == null) return;
+            try
+            {
+                batch.Refresh();
+                if (!batch.IsComplete) batch.Timeout();
+                OwnershipLeaseManager.ReleaseBatch(batch, string.IsNullOrWhiteSpace(reason) ? "action canceled" : reason);
+            }
+            finally
+            {
+                End(batch);
             }
         }
 

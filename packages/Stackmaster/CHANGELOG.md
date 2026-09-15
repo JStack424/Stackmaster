@@ -18,9 +18,12 @@ Local test candidate; not published.
 - A failed exact local in-use cleanup is retained and retried before Stackmaster may relinquish its matching ownership acquisition, including disable and hot-unload paths, without clearing later or unrelated owners' state.
 - Logging out now performs a recoverable session teardown rather than permanently disabling Stackmaster for the remaining Valheim process. Joining a new server session rearms every feature without requiring a game restart.
 - Reconnect rearming is fail-closed: rollback and reservation-before-ownership cleanup must complete successfully, the network-session object must change, permanent compatibility failures stay disabled, and stale coroutines are generation-isolated from later sessions.
+- Chest-backed crafting is now one click: Stackmaster captures the exact recipe/upgrade/variant/multi-craft intent, acquires only the minimum required chest set before starting vanilla crafting, marks every selected chest in use, and resumes that original intent automatically.
+- Ownership waiting no longer starts a disposable progress bar. The normal vanilla craft duration and animation begin exactly once, only after every required chest is reserved, and the atomic withdrawal occurs only when vanilla reaches `DoCrafting`.
+- Craft cancel, recipe or tab changes, inventory close, scope/station changes, failed validation, exceptions, timeout, disable, disconnect, and shutdown immediately clear reservations and release only exact proven Stackmaster acquisitions; delayed callbacks are generation- and session-isolated.
 - Uses the existing configured shortcut modifier, connected-workbench/fallback storage scope, vanilla ownership handshake, and access/in-use protections without Jötunn, custom RPCs, server data, or networking.
 - Ordinary build-piece clicks, the existing 30-second chest-backed building lease, and all existing features remain unchanged.
-- Automated verification passes with zero compiler warnings/errors, 127/127 pure-domain tests, and 64/64 static/repository safety checks. Live in-game reconnect validation is pending.
+- Automated verification passes with zero compiler warnings/errors, 133/133 pure-domain tests, and 65/65 static/repository safety checks. Live in-game reconnect and one-click crafting validation is pending.
 
 ## 1.0.0
 
