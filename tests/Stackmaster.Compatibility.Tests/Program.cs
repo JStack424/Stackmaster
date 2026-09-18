@@ -120,10 +120,10 @@ namespace Stackmaster.Compatibility.Tests
 
         private static void RuntimeContractGateBehavior()
         {
-            Equal(0, EvaluateSyntheticIdentity("client-1.0", Guid.Parse("9930fa9c-93c9-4886-9e0c-decab1668359"), "client-hash"),
-                "different client identity passes an unchanged member contract");
-            Equal(0, EvaluateSyntheticIdentity("dedicated-reference", Guid.Parse("a63433e8-968e-407a-918a-9f9fe7e7ba9a"), "reference-hash"),
-                "reference identity passes the same member contract");
+            Equal(0, EvaluateSyntheticIdentity("client-build-a", Guid.Parse("11111111-1111-1111-1111-111111111111"), "identity-a"),
+                "first arbitrary runtime identity passes an unchanged member contract");
+            Equal(0, EvaluateSyntheticIdentity("client-build-b", Guid.Parse("22222222-2222-2222-2222-222222222222"), "identity-b"),
+                "different arbitrary runtime identity passes the same member contract");
 
             var failures = new List<string>();
             global::Stackmaster.RuntimeContractValidator.RequireMethod(
