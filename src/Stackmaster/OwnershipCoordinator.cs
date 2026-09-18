@@ -800,7 +800,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(Container), "RPC_RequestOpen", typeof(long), typeof(long))]
     internal static class ContainerOpenRequestLeasePatch
     {
         private static void Postfix(
@@ -825,7 +824,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(Container), "RPC_StackResponse", typeof(long), typeof(bool))]
     internal static class ContainerStackResponsePatch
     {
         private static bool Prefix(Container __instance, bool granted)

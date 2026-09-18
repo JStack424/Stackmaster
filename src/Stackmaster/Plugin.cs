@@ -142,17 +142,7 @@ namespace Stackmaster
                     // suppress generated responses, observe delayed owner updates, and retry any
                     // exact local in-use release. Ordinary gameplay patches are still removed below.
                     var safetyHarmony = new Harmony(PluginGuid + ".ownership-cleanup-safety");
-                    var responseTarget = AccessTools.DeclaredMethod(typeof(Container), "RPC_StackResponse",
-                        new[] { typeof(long), typeof(bool) });
-                    var responsePrefix = AccessTools.DeclaredMethod(typeof(ContainerStackResponsePatch), "Prefix");
-                    var updateTarget = AccessTools.DeclaredMethod(typeof(ZNet), "Update", System.Type.EmptyTypes);
-                    var updatePostfix = AccessTools.DeclaredMethod(typeof(OwnershipSafetyUpdatePatch), "Postfix");
-                    if (responseTarget == null || responsePrefix == null || updateTarget == null || updatePostfix == null)
-                    {
-                        throw new System.MissingMethodException("Could not preserve delayed ownership cleanup.");
-                    }
-                    safetyHarmony.Patch(responseTarget, prefix: new HarmonyMethod(responsePrefix));
-                    safetyHarmony.Patch(updateTarget, postfix: new HarmonyMethod(updatePostfix));
+                    PatchInstaller.Install(safetyHarmony, PatchInstaller.PrepareCleanupSafety());
                     Logger.LogWarning("Preserved delayed ownership cleanup until session end.");
                 }
                 _harmony?.UnpatchSelf();

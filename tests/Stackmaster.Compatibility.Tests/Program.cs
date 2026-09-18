@@ -160,9 +160,13 @@ namespace Stackmaster.Compatibility.Tests
             var prepared = ((System.Collections.IEnumerable)installerType
                 .GetMethod("Prepare", BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, null)!).Cast<object>().ToArray();
+            var cleanupSafety = ((System.Collections.IEnumerable)installerType
+                .GetMethod("PrepareCleanupSafety", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, null)!).Cast<object>().ToArray();
 
             Equal(32, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
             Equal(descriptors.Length, prepared.Length, "PatchInstaller.Prepare returns every manifest operation");
+            Equal(2, cleanupSafety.Length, "cleanup safety installation filters the canonical manifest");
 
             var setupRequirementObserved = false;
             object? setupRequirementDescriptor = null;
@@ -212,6 +216,18 @@ namespace Stackmaster.Compatibility.Tests
                 }
             }
 
+            var cleanupOriginals = cleanupSafety
+                .Select(spec => (MethodInfo)ReadProperty(spec, "Original")!)
+                .ToArray();
+            var expectedCleanupOriginals = descriptors
+                .Where(descriptor => (bool)ReadProperty(descriptor, "PreserveDuringCleanup")!)
+                .Select(descriptor => (MethodInfo)ReadProperty(
+                    descriptor.GetType().GetMethod("Resolve", BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(descriptor, null)!, "Original")!)
+                .ToArray();
+            Equal(true, cleanupOriginals.SequenceEqual(expectedCleanupOriginals),
+                "cleanup safety Prepare returns exact canonical manifest MethodInfo objects");
+
             Equal(true, setupRequirementObserved,
                 "live regression InventoryGui.SetupRequirement resolves as static bool in Prepare");
             Equal(true, BrokenDescriptorFailsClosed(setupRequirementDescriptor!, isStatic: false, returnType: typeof(bool)),
@@ -236,7 +252,8 @@ namespace Stackmaster.Compatibility.Tests
                 ReadProperty(source, "PatchType"),
                 ReadProperty(source, "PrefixName"),
                 ReadProperty(source, "PostfixName"),
-                ReadProperty(source, "FinalizerName")
+                ReadProperty(source, "FinalizerName"),
+                false
             });
             try
             {

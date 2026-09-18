@@ -43,11 +43,11 @@ namespace Stackmaster
             Prefix(typeof(Container), "Interact", false, typeof(bool), new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, typeof(ContainerInteractPatch)),
             Postfix(typeof(Container), "GetHoverText", false, typeof(string), Type.EmptyTypes, typeof(ContainerHoverTextPatch)),
             Postfix(typeof(Container), "RPC_RequestOpen", false, typeof(void), new[] { typeof(long), typeof(long) }, typeof(ContainerOpenRequestLeasePatch)),
-            Prefix(typeof(Container), "RPC_StackResponse", false, typeof(void), new[] { typeof(long), typeof(bool) }, typeof(ContainerStackResponsePatch)),
+            Prefix(typeof(Container), "RPC_StackResponse", false, typeof(void), new[] { typeof(long), typeof(bool) }, typeof(ContainerStackResponsePatch), preserveDuringCleanup: true),
             Prefix(typeof(Game), "Shutdown", false, typeof(void), new[] { typeof(bool) }, typeof(OwnershipLifecyclePatch)),
             Prefix(typeof(ZNet), "Shutdown", false, typeof(void), new[] { typeof(bool) }, typeof(OwnershipLifecyclePatch)),
             Prefix(typeof(ZNet), "ShutdownWithoutSave", false, typeof(void), new[] { typeof(bool) }, typeof(OwnershipLifecyclePatch)),
-            Postfix(typeof(ZNet), "Update", false, typeof(void), Type.EmptyTypes, typeof(OwnershipSafetyUpdatePatch)),
+            Postfix(typeof(ZNet), "Update", false, typeof(void), Type.EmptyTypes, typeof(OwnershipSafetyUpdatePatch), preserveDuringCleanup: true),
             Postfix(typeof(Player), "HaveRequirementItems", false, typeof(bool), new[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) }, typeof(NearbyRequirementPatches), "RecipePostfix"),
             Postfix(typeof(Player), "HaveRequirements", false, typeof(bool), new[] { typeof(Piece), typeof(Player.RequirementMode) }, typeof(NearbyRequirementPatches), "PiecePostfix"),
             Postfix(typeof(Hud), "SetupPieceInfo", false, typeof(void), new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch)),
@@ -70,8 +70,18 @@ namespace Stackmaster
 
         internal static IReadOnlyList<PatchInstaller.PatchSpec> ResolveAll()
         {
-            var resolved = new List<PatchInstaller.PatchSpec>(Targets.Count);
-            foreach (var target in Targets) resolved.Add(target.Resolve());
+            return Resolve(Targets);
+        }
+
+        internal static IReadOnlyList<PatchInstaller.PatchSpec> ResolveCleanupSafety()
+        {
+            return Resolve(Targets.Where(target => target.PreserveDuringCleanup).ToArray());
+        }
+
+        private static IReadOnlyList<PatchInstaller.PatchSpec> Resolve(IReadOnlyList<HarmonyTargetDescriptor> targets)
+        {
+            var resolved = new List<PatchInstaller.PatchSpec>(targets.Count);
+            foreach (var target in targets) resolved.Add(target.Resolve());
             return resolved;
         }
 
@@ -87,17 +97,17 @@ namespace Stackmaster
             }
         }
 
-        private static HarmonyTargetDescriptor Prefix(Type targetType, string targetName, bool isStatic, Type returnType, Type[] parameters, Type patchType)
-            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, "Prefix", null, null);
+        private static HarmonyTargetDescriptor Prefix(Type targetType, string targetName, bool isStatic, Type returnType, Type[] parameters, Type patchType, bool preserveDuringCleanup = false)
+            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, "Prefix", null, null, preserveDuringCleanup);
 
-        private static HarmonyTargetDescriptor Postfix(Type targetType, string targetName, bool isStatic, Type returnType, Type[] parameters, Type patchType, string patchName = "Postfix")
-            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, null, patchName, null);
+        private static HarmonyTargetDescriptor Postfix(Type targetType, string targetName, bool isStatic, Type returnType, Type[] parameters, Type patchType, string patchName = "Postfix", bool preserveDuringCleanup = false)
+            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, null, patchName, null, preserveDuringCleanup);
 
         private static HarmonyTargetDescriptor Both(Type targetType, string targetName, bool isStatic, Type returnType, Type[] parameters, Type patchType)
-            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, "Prefix", "Postfix", null);
+            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, "Prefix", "Postfix", null, false);
 
         private static HarmonyTargetDescriptor Transactional(Type targetType, string targetName, bool isStatic, Type returnType, Type[] parameters, Type patchType)
-            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, "Prefix", "Postfix", "Finalizer");
+            => new HarmonyTargetDescriptor(targetType, targetName, isStatic, returnType, parameters, patchType, "Prefix", "Postfix", "Finalizer", false);
     }
 
     internal sealed class HarmonyTargetDescriptor
@@ -111,7 +121,8 @@ namespace Stackmaster
             Type patchType,
             string prefixName,
             string postfixName,
-            string finalizerName)
+            string finalizerName,
+            bool preserveDuringCleanup = false)
         {
             TargetType = targetType;
             TargetName = targetName;
@@ -122,6 +133,7 @@ namespace Stackmaster
             PrefixName = prefixName;
             PostfixName = postfixName;
             FinalizerName = finalizerName;
+            PreserveDuringCleanup = preserveDuringCleanup;
         }
 
         internal Type TargetType { get; }
@@ -133,6 +145,7 @@ namespace Stackmaster
         internal string PrefixName { get; }
         internal string PostfixName { get; }
         internal string FinalizerName { get; }
+        internal bool PreserveDuringCleanup { get; }
 
         internal string Identity => TargetType.FullName + "." + TargetName + "(" +
                                     string.Join(",", Parameters.Select(type => type.FullName).ToArray()) + ")";

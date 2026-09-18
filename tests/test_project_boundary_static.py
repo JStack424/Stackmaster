@@ -496,6 +496,19 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("TryRefreshFromNetwork(container, out refreshFailure)", discovery)
         self.assertIn("TryCheckAccess(player, container, out accessFailure)", discovery)
 
+    def test_manifest_is_the_only_harmony_target_declaration_and_resolution_path(self):
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        plugin = PLUGIN.read_text(encoding="utf-8")
+        patch_sources = "\n".join(path.read_text(encoding="utf-8") for path in PLUGIN_DIR.glob("*.cs"))
+
+        self.assertNotIn("[HarmonyPatch(", patch_sources)
+        self.assertIn("PreserveDuringCleanup", manifest)
+        self.assertIn("ResolveCleanupSafety", manifest)
+        self.assertIn("HarmonyTargetManifest.ResolveCleanupSafety()", installer)
+        self.assertIn("PatchInstaller.Install(safetyHarmony, PatchInstaller.PrepareCleanupSafety())", plugin)
+        self.assertNotIn("AccessTools.DeclaredMethod", plugin)
+
     def test_input_paths_are_narrow_and_modal_safe(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         protection = (PLUGIN_DIR / "ProtectionInteraction.cs").read_text(encoding="utf-8")
@@ -514,7 +527,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("modifiers.Length > 0 && modifiers.All(Input.GetKey)", protection)
         self.assertIn("ReferenceEquals(grid.GetInventory(), player.GetInventory())", protection)
         self.assertIn("item != null", protection)
-        self.assertIn('HarmonyPatch(typeof(InventoryGui), "OnRightClickItem"', protection)
+        self.assertNotIn("[HarmonyPatch(", protection)
         self.assertIn('Prefix(typeof(InventoryGui), "OnRightClickItem"',
                       (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8"))
         self.assertIn("HarmonyTargetManifest.Validate(failures)",
@@ -532,7 +545,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('ZInput.ResetButtonStatus("Use")', action)
         self.assertIn("Begin(player, openContainer)", action)
         self.assertLess(action.index('ZInput.ResetButtonStatus("Use")'), action.index("Begin(player, openContainer)"))
-        self.assertIn('[HarmonyPatch(typeof(InventoryGui), "Update")]', action)
+        self.assertNotIn("[HarmonyPatch(", action)
         self.assertIn("return !RuntimeContext.Compatibility.IsCompatible || StorageAction.HandleOpenContainerShortcut(__instance)", action)
         self.assertIn("return false;", action[action.index("internal static bool HandleOpenContainerShortcut"):action.index("internal static bool IsLocalOpenTarget")])
         self.assertIn('Both(typeof(InventoryGui), "Update", false, typeof(void)', installer)
@@ -724,14 +737,16 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipCoordinator.HasUnresolvedCleanup", plugin)
         self.assertIn("NearbyResourceService.HasPendingReservationReleases", plugin)
         self.assertIn('PluginGuid + ".ownership-cleanup-safety"', plugin)
-        self.assertIn("OwnershipSafetyUpdatePatch", plugin)
+        self.assertIn("OwnershipSafetyUpdatePatch", installer)
         self.assertIn("shutdownRelease", ownership)
         shutdown = ownership[ownership.index("internal static void Shutdown(string reason)") : ownership.index("internal static void SuppressLateResponse")]
         self.assertIn("active.Refresh()", shutdown)
         self.assertIn("finally", shutdown)
         self.assertIn("OwnershipLeaseManager.ReleaseAll(reason)", shutdown)
         self.assertIn("catch (Exception exception)", shutdown)
-        self.assertLess(plugin.index("safetyHarmony.Patch"), plugin.index("_harmony?.UnpatchSelf()", plugin.index("private void OnDestroy")))
+        self.assertIn("PatchInstaller.Install(safetyHarmony, PatchInstaller.PrepareCleanupSafety())", plugin)
+        self.assertLess(plugin.index("PatchInstaller.Install(safetyHarmony"), plugin.index("_harmony?.UnpatchSelf()", plugin.index("private void OnDestroy")))
+        self.assertNotIn("AccessTools.DeclaredMethod", plugin)
 
     def test_disconnect_is_session_scoped_and_reconnect_rearms_only_after_full_cleanup(self):
         runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
@@ -786,7 +801,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('RuntimeContext.Disable("plugin unloading")', plugin)
         self.assertIn("if (RuntimeContext.IsAwaitingReconnect)", plugin)
 
-        safety_update = ownership[ownership.index("internal static class OwnershipSafetyUpdatePatch") : ownership.index("[HarmonyPatch(typeof(Container), \"RPC_RequestOpen\"")]
+        safety_update = ownership[ownership.index("internal static class OwnershipSafetyUpdatePatch") : ownership.index("internal static class ContainerOpenRequestLeasePatch")]
         self.assertLess(safety_update.index("UpdatePendingReservationReleases"), safety_update.index("TryRearmSession"))
         self.assertLess(safety_update.index("OwnershipLeaseManager.Update"), safety_update.index("TryRearmSession"))
         self.assertIn("LateResponseSuppressions.Clear()", ownership)
@@ -828,11 +843,12 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("image.raycastTarget = false", integration)
         self.assertIn("targetLabel.raycastTarget = false", integration)
         self.assertNotIn("InventoryGuiUpdatePatch", integration)
-        self.assertNotIn('[HarmonyPatch(typeof(InventoryGui), "Update")]', integration)
+        self.assertNotIn("[HarmonyPatch(", integration)
         self.assertIn("_observedPlayerInventory.m_onChanged += InventoryChangedHandler", integration)
         self.assertIn("_observedPlayerInventory.m_onChanged -= InventoryChangedHandler", integration)
         self.assertIn("_overlayRefreshPending = true", integration)
-        self.assertIn('[HarmonyPatch(typeof(InventoryGrid), "UpdateInventory"', integration)
+        self.assertIn('Postfix(typeof(InventoryGrid), "UpdateInventory"',
+                      (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8"))
         self.assertIn("InventoryIntegration.FlushPendingProtectionOverlayRefresh(__instance, inventory)", integration)
         self.assertIn("!ReferenceEquals(grid, gui.m_playerGrid)", integration)
         self.assertIn("InventoryIntegration.BindPlayerInventory(Player.m_localPlayer)", integration)

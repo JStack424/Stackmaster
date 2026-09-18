@@ -495,7 +495,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(InventoryGui), "Update")]
     internal static class InventoryGuiStorageActionPatch
     {
         private static bool Prefix(InventoryGui __instance)
@@ -509,7 +508,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(Container), "Interact", typeof(Humanoid), typeof(bool), typeof(bool))]
     internal static class ContainerInteractPatch
     {
         private static bool Prefix(Container __instance, Humanoid character, ref bool __result)
@@ -524,7 +522,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(Container), "GetHoverText")]
     internal static class ContainerHoverTextPatch
     {
         private static void Postfix(Container __instance, ref string __result)

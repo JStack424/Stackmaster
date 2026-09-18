@@ -15,6 +15,12 @@ namespace Stackmaster
             return HarmonyTargetManifest.ResolveAll();
         }
 
+        internal static IReadOnlyList<PatchSpec> PrepareCleanupSafety()
+        {
+            // This is a filtered view of the same canonical manifest used at startup.
+            return HarmonyTargetManifest.ResolveCleanupSafety();
+        }
+
         internal static void Install(Harmony harmony, IReadOnlyList<PatchSpec> patches)
         {
             if (harmony == null) throw new ArgumentNullException(nameof(harmony));

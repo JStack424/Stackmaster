@@ -779,7 +779,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(InventoryGui), "Awake")]
     internal static class InventoryGuiAwakePatch
     {
         private static void Postfix(InventoryGui __instance)
@@ -790,7 +789,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(InventoryGui), "Hide")]
     internal static class InventoryGuiHidePatch
     {
         private static void Prefix()
@@ -807,7 +805,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData))]
     internal static class InventoryGridUpdateInventoryPatch
     {
         private static void Postfix(InventoryGrid __instance, Inventory inventory)
@@ -817,7 +814,6 @@ namespace Stackmaster
         }
     }
 
-    [HarmonyPatch(typeof(InventoryGui), "Show", typeof(Container), typeof(int))]
     internal static class InventoryGuiShowPatch
     {
         private static void Postfix(InventoryGui __instance, Container container)
