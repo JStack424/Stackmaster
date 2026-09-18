@@ -496,6 +496,17 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("TryRefreshFromNetwork(container, out refreshFailure)", discovery)
         self.assertIn("TryCheckAccess(player, container, out accessFailure)", discovery)
 
+    def test_release_build_normalizes_and_verifies_sourcelink_paths(self):
+        props = (ROOT / "Directory.Build.props").read_text(encoding="utf-8")
+        build = (ROOT / "scripts" / "build.sh").read_text(encoding="utf-8")
+        verifier = (ROOT / "scripts" / "verify_sourcelink.py").read_text(encoding="utf-8")
+
+        self.assertIn("<Deterministic>true</Deterministic>", props)
+        self.assertIn("<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>", props)
+        self.assertIn("verify_sourcelink.py", build)
+        self.assertIn('"/_/*"', verifier)
+        self.assertIn("raw.githubusercontent.com/JStack424/Stackmaster", verifier)
+
     def test_manifest_is_the_only_harmony_target_declaration_and_resolution_path(self):
         manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")

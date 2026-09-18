@@ -26,6 +26,9 @@ fi
 
 ./scripts/dotnet.sh restore Stackmaster.sln --locked-mode -p:SourceRevisionId="$code_revision"
 ./scripts/dotnet.sh build Stackmaster.sln --configuration Release --no-restore -p:SourceRevisionId="$code_revision"
+python3 ./scripts/verify_sourcelink.py \
+  "$repo_root/src/Stackmaster/obj/Release/Stackmaster.sourcelink.json" \
+  "$code_revision"
 ./scripts/dotnet.sh run --project tests/Stackmaster.Tests/Stackmaster.Tests.csproj --configuration Release --no-build
 ./scripts/dotnet.sh run --project tests/Stackmaster.Compatibility.Tests/Stackmaster.Compatibility.Tests.csproj --configuration Release --no-build -- "$reference_path/assembly_valheim.dll" "$reference_path/assembly_utils.dll" "$repo_root/src/Stackmaster/bin/Release/Stackmaster.dll" "$managed_path"
 python3 -m unittest discover -s tests -p 'test_*.py' -v

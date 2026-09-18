@@ -8,6 +8,7 @@ Harmony-target manifest correction and release-gate hardening with no gameplay o
 - Replaced every duplicated target declaration, including target-bearing patch attributes and the hot-unload cleanup resolver, with one canonical Harmony target manifest consumed by compatibility validation and every installation path. Each descriptor pins the declaring type, exact overload, static/instance shape, return type, patch entrypoints, and whether it belongs to the cleanup-safety subset.
 - Added fail-closed Harmony patch-signature validation for original arguments, `__instance`, `__result`, `__state`, `__exception`, and injected fields before any patch is installed.
 - Added the release-gating `HarmonyTargetManifestReleaseGate`, which resolves all 32 patch operations against the pinned Valheim assemblies and proves `PatchInstaller.Prepare()` returns those exact resolved `MethodInfo` objects. Packaging now runs the complete build/test gate itself and refuses to create a ZIP if this check fails.
+- Made release binaries byte-reproducible across clean checkout paths by enabling deterministic source paths and requiring the generated Source Link map to use the normalized `/_/` root and pinned release revision.
 - Runtime identity, version, SHA-256, and MVID remain diagnostic-only. All Stackmaster 1.1.0 gameplay and settings remain unchanged, including the rule that modifier + right-click never clears protection.
 
 ## 1.1.3
