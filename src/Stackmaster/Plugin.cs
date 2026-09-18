@@ -65,7 +65,7 @@ namespace Stackmaster
             {
                 _harmony = new Harmony(PluginGuid);
                 PatchInstaller.Install(_harmony);
-                Logger.LogInfo("Compatibility gate passed for Steam build 25253764 reference surface; gameplay hooks enabled.");
+                Logger.LogInfo("Compatibility gate passed for Steam build 25364309 reference surface; gameplay hooks enabled.");
             }
             catch (System.Exception exception)
             {

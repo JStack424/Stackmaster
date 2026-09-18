@@ -208,7 +208,7 @@ namespace Stackmaster
         }
     }
 
-    // Pinned Valheim build 25253764 routes InventoryGrid.OnLeftDown through m_onSelected
+    // Pinned Valheim build 25364309 routes InventoryGrid.OnLeftDown through m_onSelected
     // to InventoryGui.OnSelectedItem, while OnRightDown uses the separate m_onRightClick path.
     [HarmonyPatch(typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier))]
     internal static class InventoryProtectionClickPatch

@@ -6,8 +6,9 @@ Status: Accepted on September 11, 2026
 
 Joe's read-only environment report identified:
 
-- Valheim Steam build `25253764`;
+- Valheim API `1.0.14` / Steam build `25364309`;
 - Unity `6000.0.75f1`;
+- `assembly_valheim.dll` SHA-256 `e5af0669755ed3b098f71b4dd0753f8a997761b99bca1e8dac3d5ca4c706a0be`, MVID `a63433e8-968e-407a-918a-9f9fe7e7ba9a`;
 - game `mscorlib.dll` assembly version `4.0.0.0` and `netstandard.dll` assembly version `2.1.0.0`;
 - the Valheim BepInEx pack's `BepInEx.dll` version `5.4.23.5`;
 - HarmonyX `0Harmony.dll` version `2.9.0.0`.

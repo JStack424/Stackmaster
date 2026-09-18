@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 (local test candidate)
+
+- Revalidated the unchanged 1.1.0 gameplay and configuration against Valheim 1.0.14, anonymous Steam dedicated-server build 25364309, and Unity 6000.0.75f1.
+- Updated the fail-closed Valheim assembly fingerprint and private reference bundle.
+- Added deterministic private-reference fingerprint validation plus 84 independent metadata/IL compatibility checks, including exact left-click/right-click inventory routing.
+- No gameplay behavior, settings, networking, ownership, reservation, or persistence semantics changed.
+
 ## 1.1.0
 
 Public release, promoted from the live-tested 1.1.0 candidate without gameplay or configuration changes.

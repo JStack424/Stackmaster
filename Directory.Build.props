@@ -6,10 +6,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
     <PathMap>$(MSBuildThisFileDirectory)=/_/Stackmaster/</PathMap>
-    <StackmasterVersion>1.1.0</StackmasterVersion>
+    <StackmasterVersion>1.1.1</StackmasterVersion>
     <Version>$(StackmasterVersion)</Version>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.1.0</AssemblyVersion>
+    <FileVersion>1.1.1.0</FileVersion>
     <Authors>JStack424</Authors>
     <RepositoryUrl>https://github.com/JStack424/Stackmaster</RepositoryUrl>
   </PropertyGroup>

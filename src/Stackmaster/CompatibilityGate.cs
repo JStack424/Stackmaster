@@ -26,10 +26,10 @@ namespace Stackmaster
 
     internal static class CompatibilityGate
     {
-        // Exact assembly supplied by Joe's verified Steam build 25253764 reference bundle.
-        private static readonly Guid SupportedValheimMvid = new Guid("b8a6fd30-3061-43b3-99f2-11c2e315bc54");
-        private const string SupportedValheimSha256 = "27a766a8d23a7bd8b6a54fb9ad0452a96c305fb3629b39c40527c09a1c393a84";
-        private const string SupportedGameVersion = "1.0.12";
+        // Exact assembly supplied by Joe's verified Steam build 25364309 reference bundle.
+        private static readonly Guid SupportedValheimMvid = new Guid("a63433e8-968e-407a-918a-9f9fe7e7ba9a");
+        private const string SupportedValheimSha256 = "e5af0669755ed3b098f71b4dd0753f8a997761b99bca1e8dac3d5ca4c706a0be";
+        private const string SupportedGameVersion = "1.0.14";
         private const string SupportedUnityVersion = "6000.0.75f1";
         private const string SupportedBepInExVersion = "5.4.23.5";
         private const string SupportedHarmonyVersion = "2.9.0.0";

@@ -1,0 +1,15 @@
+{
+  "runtime_label": "Valheim 1.0.14 / Steam build 25364309",
+  "files": {
+    "0Harmony.dll": "1a21cc03424fc82c3dd1346905d16494536b9595ae4162228d99fb7c285c1031",
+    "BepInEx.dll": "f09821b2a7b990c6f50c5ef23229635303ce675374b70edc6f5a9b960cb818e3",
+    "Unity.TextMeshPro.dll": "ce029c08c09676b06614752c92956c51ee9ab6f77d9b7f42ce3a2924a765214e",
+    "UnityEngine.CoreModule.dll": "4cb2a683351f6644de26086d01e7b5879fcf228ee0dbd0d7cc0536570bd15681",
+    "UnityEngine.InputLegacyModule.dll": "aecfca1621312dda5435eb859aa595288e43eaa652c529d6e55afce42550e65e",
+    "UnityEngine.UI.dll": "c3ee2e6256d356d512b7ee6fe56d3c6d52b2e0b97f0054fd60a0214b135cafc4",
+    "UnityEngine.dll": "ee449f6c6d0a76826f4ef5b26cde9494b4500e9b0c9217508f2e3f3c50d3351c",
+    "assembly_guiutils.dll": "5966a7ca268fb30c8cd625181e9cb26ee0deac0332a2504eaa6c220f66d23939",
+    "assembly_utils.dll": "5d26cbdcb430acd41af26fb6efda0b6b291a89f6fb6934c503abb896bd51da40",
+    "assembly_valheim.dll": "e5af0669755ed3b098f71b4dd0753f8a997761b99bca1e8dac3d5ca4c706a0be"
+  }
+}

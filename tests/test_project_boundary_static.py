@@ -37,7 +37,7 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_compatibility_gate_fingerprints_the_exact_runtime(self):
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
-        self.assertIn('SupportedGameVersion = "1.0.12"', gate)
+        self.assertIn('SupportedGameVersion = "1.0.14"', gate)
         self.assertIn('SupportedUnityVersion = "6000.0.75f1"', gate)
         self.assertIn('SupportedBepInExVersion = "5.4.23.5"', gate)
         self.assertIn('SupportedHarmonyVersion = "2.9.0.0"', gate)

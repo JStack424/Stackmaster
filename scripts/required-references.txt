@@ -1,0 +1,10 @@
+0Harmony.dll
+BepInEx.dll
+Unity.TextMeshPro.dll
+UnityEngine.CoreModule.dll
+UnityEngine.InputLegacyModule.dll
+UnityEngine.UI.dll
+UnityEngine.dll
+assembly_guiutils.dll
+assembly_utils.dll
+assembly_valheim.dll
