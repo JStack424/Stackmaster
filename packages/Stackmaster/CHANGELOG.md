@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.1.1 (local test candidate)
+## 1.1.1
+
+Release package prepared with the exact DLL bytes supplied for live validation.
 
 - Revalidated the unchanged 1.1.0 gameplay and configuration against Valheim 1.0.14, anonymous Steam dedicated-server build 25364309, and Unity 6000.0.75f1.
 - Updated the fail-closed Valheim assembly fingerprint and private reference bundle.

@@ -23,6 +23,7 @@ PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
 VERSION = "1.1.1"
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
+CODE_REVISION_FILE = ROOT / "RELEASE_CODE_REVISION"
 EXPECTED = (
     "manifest.json",
     "icon.png",
@@ -74,10 +75,18 @@ def validate_manifest(data: bytes) -> None:
         raise ValueError("dependency string is not a valid Thunderstore dependency")
 
 
+def code_revision() -> str:
+    value = CODE_REVISION_FILE.read_text(encoding="utf-8").strip()
+    if re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise ValueError("RELEASE_CODE_REVISION must contain one full lowercase commit hash")
+    subprocess.check_call(["git", "cat-file", "-e", f"{value}^{{commit}}"], cwd=ROOT)
+    return value
+
+
 def validate_dll(data: bytes) -> None:
     if len(data) < 0x40 or data[:2] != b"MZ" or b"PE\x00\x00" not in data[:1024]:
         raise ValueError("Stackmaster.dll is not a Windows PE assembly")
-    for marker in (b"Stackmaster", b"com.jstack424.stackmaster", VERSION.encode("ascii")):
+    for marker in (b"Stackmaster", b"com.jstack424.stackmaster", VERSION.encode("ascii"), code_revision().encode("ascii")):
         if marker not in data and marker.decode().encode("utf-16le") not in data:
             raise ValueError(f"Stackmaster.dll is missing identity marker {marker!r}")
     for leaked in (b"/home/hatch", b"C:\\Users\\", b"StackmasterReferences"):

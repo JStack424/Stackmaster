@@ -1,0 +1,12 @@
+<Project>
+  <!-- Keep Source Link and the embedded informational version pinned to the
+       exact gameplay commit that produced the DLL supplied for live testing.
+       Release-only documentation and packaging commits must not change code bytes. -->
+  <Target Name="PinReleaseSourceRevision"
+          AfterTargets="InitializeSourceControlInformationFromSourceControlManager"
+          BeforeTargets="_InitializeGitHubSourceLinkUrl">
+    <ItemGroup>
+      <SourceRoot Update="@(SourceRoot)" RevisionId="$(SourceRevisionId)" />
+    </ItemGroup>
+  </Target>
+</Project>
