@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.3
+
+Compatibility-gate static-method correction with no gameplay or configuration changes. This build supersedes 1.1.2.
+
+- Corrected four contract declarations that accidentally requested instance methods even though Stackmaster and Valheim expose the APIs statically: `ZDOMan.GetSessionID()`, `GameCamera.InFreeFly()`, `ZInput.ResetButtonStatus(string)`, and `PrivateArea.CheckAccess(Vector3, float, bool, bool)`.
+- Preserves fail-closed validation for all four APIs. Session identity remains mandatory for ownership and reservation safety; free-fly detection and input reset remain mandatory input guards; ward access remains mandatory before guarded containers can be used.
+- Added regressions for each missing API and instance-shaped lookalike, plus pinned metadata checks for the exact static signatures in both `assembly_valheim.dll` and `assembly_utils.dll`.
+- Runtime identity, version, SHA-256, and MVID remain diagnostic-only. All Stackmaster 1.1.0 gameplay and settings remain unchanged.
+
 ## 1.1.2
 
 Compatibility-gate correction with no gameplay or configuration changes.

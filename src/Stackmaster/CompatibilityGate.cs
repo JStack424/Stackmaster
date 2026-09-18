@@ -92,7 +92,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNet), "Update");
             RequireMethod(failures, typeof(ZDO), "GetOwner");
             RequireMethod(failures, typeof(ZDO), "SetOwner", typeof(long));
-            RequireMethod(failures, typeof(ZDOMan), "GetSessionID");
+            RequireStaticMethod(failures, typeof(ZDOMan), "GetSessionID");
             RequireMethod(failures, typeof(ZDOMan), "GetZDO", typeof(ZDOID));
             RequireMethod(failures, typeof(ZDOMan), "ForceSendZDO", typeof(ZDOID));
             RequireMethod(failures, typeof(Character), "IsDead");
@@ -100,7 +100,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Character), "IsTeleporting");
             RequireStaticMethod(failures, typeof(TextViewer), "get_instance");
             RequireMethod(failures, typeof(TextViewer), "IsVisible");
-            RequireMethod(failures, typeof(GameCamera), "InFreeFly");
+            RequireStaticMethod(failures, typeof(GameCamera), "InFreeFly");
             RequireMethod(failures, typeof(Inventory), "MoveItemToThis", typeof(Inventory), typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int));
             RequireMethod(failures, typeof(Inventory), "GetWidth");
             RequireMethod(failures, typeof(Inventory), "GetHeight");
@@ -131,7 +131,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Player), "GetFirstRequiredItem", typeof(Inventory), typeof(Recipe), typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int));
             RequireMethod(failures, typeof(Player), "UpdatePlacement", typeof(bool), typeof(float));
             RequireMethod(failures, typeof(Player), "TryPlacePiece", typeof(Piece));
-            RequireMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
+            RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
             RequireMethod(failures, typeof(SplitDialog), "get_IsActive");
             RequireMethod(failures, typeof(ZNetView), "IsOwner");
             RequireMethod(failures, typeof(ZNetView), "IsValid");
@@ -145,7 +145,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNetScene), "GetPrefabHash", typeof(GameObject));
             RequireMethod(failures, typeof(ZDO), "GetPrefab");
             RequireMethod(failures, typeof(ZNetView), "InvokeRPC", typeof(string), typeof(object[]));
-            RequireMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool));
+            RequireStaticMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool));
             RequireField(failures, typeof(InventoryGui), "m_pvp");
             RequireField(failures, typeof(InventoryGui), "m_container");
             RequireField(failures, typeof(InventoryGui), "m_currentContainer");

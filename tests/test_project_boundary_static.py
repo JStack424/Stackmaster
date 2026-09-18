@@ -59,6 +59,17 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ResolveExactMethod", installer)
         self.assertIn("ResolveUniqueNamedMethod", installer)
 
+    def test_client_static_utility_contracts_are_validated_with_their_real_shape(self):
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        for contract in (
+            'RequireStaticMethod(failures, typeof(ZDOMan), "GetSessionID")',
+            'RequireStaticMethod(failures, typeof(GameCamera), "InFreeFly")',
+            'RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string))',
+            'RequireStaticMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool))',
+        ):
+            self.assertIn(contract, gate)
+            self.assertNotIn(contract.replace("RequireStaticMethod", "RequireMethod"), gate)
+
     def test_plugin_targets_net48_and_does_not_copy_private_references(self):
         self.assertIn("<TargetFramework>net48</TargetFramework>", self.project)
         self.assertGreaterEqual(self.project.count("<Private>false</Private>"), 10)
@@ -498,7 +509,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('Both(typeof(InventoryGui), "Update"', installer)
         self.assertIn('RequireMethod(failures, typeof(InventoryGui), "Update")', gate)
         self.assertIn('RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen")', gate)
-        self.assertIn('RequireMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string))', gate)
+        self.assertIn('RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string))', gate)
         self.assertIn('RequireMethod(failures, typeof(SplitDialog), "get_IsActive")', gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_currentContainer")', gate)
         self.assertIn('AccessTools.Field(typeof(InventoryGui), "m_craftTimer")', action)

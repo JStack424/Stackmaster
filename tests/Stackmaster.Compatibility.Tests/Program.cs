@@ -16,7 +16,7 @@ namespace Stackmaster.Compatibility.Tests
 
         private static int Main(string[] args)
         {
-            if (args.Length != 1) throw new ArgumentException("Expected path to assembly_valheim.dll.");
+            if (args.Length != 2) throw new ArgumentException("Expected paths to assembly_valheim.dll and assembly_utils.dll.");
             RuntimeContractGateBehavior();
 
             var path = Path.GetFullPath(args[0]);
@@ -84,6 +84,12 @@ namespace Stackmaster.Compatibility.Tests
             };
             foreach (var method in methods) contract.Method(method.Type, method.Name, method.Parameters);
 
+            contract.Method("ZDOMan", "GetSessionID", "System.Int64", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
+            contract.Method("GameCamera", "InFreeFly", "System.Boolean", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
+            contract.Method("PrivateArea", "CheckAccess", "System.Boolean",
+                new[] { "UnityEngine.Vector3", "System.Single", "System.Boolean", "System.Boolean" },
+                MethodAttributes.Public | MethodAttributes.Static);
+
             var fields = new (string Type, string Name)[]
             {
                 ("InventoryGui", "m_pvp"), ("InventoryGui", "m_container"),
@@ -107,6 +113,12 @@ namespace Stackmaster.Compatibility.Tests
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnLeftDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodReadsFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onSelected");
+
+            using var utilsStream = File.OpenRead(Path.GetFullPath(args[1]));
+            using var utilsPe = new PEReader(utilsStream);
+            var utilsContract = new Contract(utilsPe.GetMetadataReader(), utilsPe);
+            utilsContract.Method("ZInput", "ResetButtonStatus", "System.Void", new[] { "System.String" },
+                MethodAttributes.Public | MethodAttributes.Static);
 
             Console.WriteLine(_passed + " compatibility contract checks passed");
             return 0;
@@ -154,7 +166,76 @@ namespace Stackmaster.Compatibility.Tests
                 ambiguousFailed = true;
             }
             Equal(true, ambiguousFailed, "ambiguous Harmony patch entrypoint fails closed");
+
+            failures.Clear();
+            RequireSyntheticClientUtilityContracts(failures, typeof(StaticClientUtilities));
+            Equal(0, failures.Count, "static client utility contracts pass with their real shape");
+
+            failures.Clear();
+            RequireSyntheticClientUtilityContracts(failures, typeof(InstanceClientUtilities));
+            Equal(4, failures.Count, "instance-shaped client utility lookalikes fail closed");
+
+            foreach (var missingName in new[] { "GetSessionID", "InFreeFly", "ResetButtonStatus", "CheckAccess" })
+            {
+                failures.Clear();
+                RequireSyntheticClientUtilityContracts(failures, typeof(MissingClientUtilities), missingName);
+                Equal(1, failures.Count, "missing " + missingName + " fails closed");
+            }
         }
+
+        private static void RequireSyntheticClientUtilityContracts(
+            ICollection<string> failures,
+            Type type,
+            string? onlyName = null)
+        {
+            if (onlyName == null || onlyName == "GetSessionID")
+                global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                    failures, type, "GetSessionID", true, true);
+            if (onlyName == null || onlyName == "InFreeFly")
+                global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                    failures, type, "InFreeFly", true, true);
+            if (onlyName == null || onlyName == "ResetButtonStatus")
+                global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                    failures, type, "ResetButtonStatus", true, true, typeof(string));
+            if (onlyName == null || onlyName == "CheckAccess")
+                global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                    failures, type, "CheckAccess", true, true,
+                    typeof(SyntheticVector3), typeof(float), typeof(bool), typeof(bool));
+        }
+
+        private sealed class SyntheticVector3 { }
+
+        private static class StaticClientUtilities
+        {
+            public static long GetSessionID() => 1L;
+            public static bool InFreeFly() => false;
+            public static void ResetButtonStatus(string name) => _ = name;
+            public static bool CheckAccess(SyntheticVector3 point, float radius, bool flash, bool wardCheck)
+            {
+                _ = point;
+                _ = radius;
+                _ = flash;
+                _ = wardCheck;
+                return true;
+            }
+        }
+
+        private sealed class InstanceClientUtilities
+        {
+            public long GetSessionID() => 1L;
+            public bool InFreeFly() => false;
+            public void ResetButtonStatus(string name) => _ = name;
+            public bool CheckAccess(SyntheticVector3 point, float radius, bool flash, bool wardCheck)
+            {
+                _ = point;
+                _ = radius;
+                _ = flash;
+                _ = wardCheck;
+                return true;
+            }
+        }
+
+        private static class MissingClientUtilities { }
 
         private static int EvaluateSyntheticIdentity(string gameLabel, Guid mvid, string sha256)
         {
