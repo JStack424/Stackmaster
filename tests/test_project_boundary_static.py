@@ -29,21 +29,35 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("fully disabled before any inventory hooks were installed", self.plugin)
         self.assertIn("_harmony?.UnpatchSelf()", self.plugin)
         self.assertIn("RuntimeContext.Disable", self.plugin)
+        self.assertIn("Compatibility validation threw before patch installation", self.plugin)
         self.assertNotIn("PatchAll", self.plugin)
         self.assertLess(
             self.plugin.index("CompatibilityGate.Evaluate()"),
             self.plugin.index("PatchInstaller.Install"),
         )
 
-    def test_compatibility_gate_fingerprints_the_exact_runtime(self):
+    def test_compatibility_gate_uses_contracts_not_runtime_identity(self):
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
-        self.assertIn('SupportedGameVersion = "1.0.14"', gate)
-        self.assertIn('SupportedUnityVersion = "6000.0.75f1"', gate)
-        self.assertIn('SupportedBepInExVersion = "5.4.23.5"', gate)
-        self.assertIn('SupportedHarmonyVersion = "2.9.0.0"', gate)
-        self.assertIn("SupportedValheimMvid", gate)
-        self.assertIn("SupportedValheimSha256", gate)
-        self.assertIn("SHA256.Create()", gate)
+        validator = (PLUGIN_DIR / "RuntimeContractValidator.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        for forbidden in (
+            "SupportedGameVersion", "SupportedUnityVersion", "SupportedBepInExVersion",
+            "SupportedHarmonyVersion", "SupportedValheimMvid", "SupportedValheimSha256",
+            "SHA256.Create()",
+        ):
+            self.assertNotIn(forbidden, gate)
+        self.assertIn("Runtime diagnostics only", self.plugin)
+        self.assertIn("RuntimeContractValidator.RequireType", gate)
+        self.assertGreaterEqual(gate.count("RequireMethod(failures"), 70)
+        self.assertGreaterEqual(gate.count("RequireField(failures"), 30)
+        self.assertGreaterEqual(gate.count("RequireProperty(failures"), 2)
+        self.assertIn("matches.Length == 0", validator)
+        self.assertIn("matches.Length > 1", validator)
+        self.assertIn("AmbiguousMatchException", validator)
+        self.assertIn("PatchInstaller.Prepare()", self.plugin)
+        self.assertLess(self.plugin.index("PatchInstaller.Prepare()"), self.plugin.index("new Harmony"))
+        self.assertIn("ResolveExactMethod", installer)
+        self.assertIn("ResolveUniqueNamedMethod", installer)
 
     def test_plugin_targets_net48_and_does_not_copy_private_references(self):
         self.assertIn("<TargetFramework>net48</TargetFramework>", self.project)
@@ -148,8 +162,8 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_inventory_mutation_hooks_are_installed_only_after_gate(self):
         installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        self.assertIn("AccessTools.DeclaredMethod", installer)
-        self.assertIn("Resolve the complete exact target set before installing the first patch", installer)
+        self.assertIn("RuntimeContractValidator.ResolveExactMethod", installer)
+        self.assertIn("Resolve every exact game target and every patch entrypoint before the first", installer)
         self.assertNotIn("PatchAll", self.plugin)
         self.assertNotIn('Postfix(typeof(InventoryGui), "Update"', installer)
         self.assertIn('Postfix(typeof(InventoryGrid), "UpdateInventory"', installer)
@@ -1143,7 +1157,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", new[]', installer)
         self.assertIn('typeof(UnityEngine.Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int)', installer)
         self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int))', gate)
-        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "get_instance")', gate)
+        self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "get_instance")', gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_selectedRecipe")', gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_reqList")', gate)
         self.assertIn("internal static class NearbyCraftingHudPatch", nearby)
@@ -1225,7 +1239,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("InventoryGui __instance,", section)
         self.assertNotIn("___m_reqList", section)
         self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement"', gate)
-        self.assertIn('failures.Add(type.Name + "." + name + " is no longer static")', gate)
+        self.assertIn("method.IsStatic == mustBeStatic", (PLUGIN_DIR / "RuntimeContractValidator.cs").read_text(encoding="utf-8"))
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

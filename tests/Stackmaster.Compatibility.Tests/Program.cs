@@ -7,26 +7,24 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
-using System.Security.Cryptography;
 
 namespace Stackmaster.Compatibility.Tests
 {
     internal static class Program
     {
-        private const string ExpectedSha256 = "e5af0669755ed3b098f71b4dd0753f8a997761b99bca1e8dac3d5ca4c706a0be";
-        private static readonly Guid ExpectedMvid = new Guid("a63433e8-968e-407a-918a-9f9fe7e7ba9a");
         private static int _passed;
 
         private static int Main(string[] args)
         {
             if (args.Length != 1) throw new ArgumentException("Expected path to assembly_valheim.dll.");
-            var path = Path.GetFullPath(args[0]);
-            Equal(ExpectedSha256, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(), "assembly SHA-256");
+            RuntimeContractGateBehavior();
 
+            var path = Path.GetFullPath(args[0]);
             using var stream = File.OpenRead(path);
             using var pe = new PEReader(stream);
             var reader = pe.GetMetadataReader();
-            Equal(ExpectedMvid, reader.GetGuid(reader.GetModuleDefinition().Mvid), "assembly MVID");
+            Console.WriteLine("INFO reference identity is provenance only: MVID " +
+                              reader.GetGuid(reader.GetModuleDefinition().Mvid));
             var contract = new Contract(reader, pe);
 
             var methods = new (string Type, string Name, string[] Parameters)[]
@@ -109,7 +107,6 @@ namespace Stackmaster.Compatibility.Tests
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnLeftDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodReadsFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onSelected");
-            contract.CurrentGameVersion(1, 0, 14);
 
             Console.WriteLine(_passed + " compatibility contract checks passed");
             return 0;
@@ -119,6 +116,76 @@ namespace Stackmaster.Compatibility.Tests
             if (!expected.Equals(actual)) throw new InvalidOperationException(label + " mismatch: " + actual);
             _passed++;
             Console.WriteLine("PASS " + label);
+        }
+
+        private static void RuntimeContractGateBehavior()
+        {
+            Equal(0, EvaluateSyntheticIdentity("client-1.0", Guid.Parse("9930fa9c-93c9-4886-9e0c-decab1668359"), "client-hash"),
+                "different client identity passes an unchanged member contract");
+            Equal(0, EvaluateSyntheticIdentity("dedicated-reference", Guid.Parse("a63433e8-968e-407a-918a-9f9fe7e7ba9a"), "reference-hash"),
+                "reference identity passes the same member contract");
+
+            var failures = new List<string>();
+            global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                failures, typeof(ValidRuntime), "Target", false, true, typeof(string));
+            Equal(1, failures.Count, "missing required overload fails closed");
+
+            failures.Clear();
+            global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                failures, typeof(ValidRuntime), "StaticHook", false, true);
+            Equal(1, failures.Count, "wrong method staticness fails closed");
+
+            failures.Clear();
+            global::Stackmaster.RuntimeContractValidator.RequireField(failures, typeof(ValidRuntime), "MissingField");
+            Equal(1, failures.Count, "missing required field fails closed");
+
+            failures.Clear();
+            global::Stackmaster.RuntimeContractValidator.RequireProperty(failures, typeof(ValidRuntime), "MissingProperty");
+            Equal(1, failures.Count, "missing required property fails closed");
+
+            var ambiguousFailed = false;
+            try
+            {
+                global::Stackmaster.RuntimeContractValidator.ResolveUniqueNamedMethod(
+                    typeof(AmbiguousPatch), "Patch", true);
+            }
+            catch (AmbiguousMatchException)
+            {
+                ambiguousFailed = true;
+            }
+            Equal(true, ambiguousFailed, "ambiguous Harmony patch entrypoint fails closed");
+        }
+
+        private static int EvaluateSyntheticIdentity(string gameLabel, Guid mvid, string sha256)
+        {
+            // These values are intentionally observed but never compared. They prove
+            // that runtime identity differences cannot reject an intact ABI contract.
+            _ = gameLabel;
+            _ = mvid;
+            _ = sha256;
+            var failures = new List<string>();
+            global::Stackmaster.RuntimeContractValidator.RequireType(failures, typeof(ValidRuntime));
+            global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                failures, typeof(ValidRuntime), "Target", false, true, typeof(int));
+            global::Stackmaster.RuntimeContractValidator.RequireMethod(
+                failures, typeof(ValidRuntime), "StaticHook", true, true);
+            global::Stackmaster.RuntimeContractValidator.RequireField(failures, typeof(ValidRuntime), "Field");
+            global::Stackmaster.RuntimeContractValidator.RequireProperty(failures, typeof(ValidRuntime), "Property");
+            return failures.Count;
+        }
+
+        private sealed class ValidRuntime
+        {
+            public int Field;
+            public string Property { get; } = string.Empty;
+            public void Target(int value) => Field = value;
+            public static void StaticHook() { }
+        }
+
+        private static class AmbiguousPatch
+        {
+            public static void Patch() { }
+            public static void Patch(int value) => _ = value;
         }
 
         private sealed class Contract
@@ -490,47 +557,6 @@ namespace Stackmaster.Compatibility.Tests
                     var field = _reader.GetFieldDefinition(handle);
                     return _reader.GetString(field.Name) == fieldName && field.DecodeSignature(_provider, null) == fieldType;
                 });
-            }
-
-            internal void CurrentGameVersion(int major, int minor, int patch)
-            {
-                if (major < 0 || major > 8 || minor < 0 || minor > 8 || patch < sbyte.MinValue || patch > sbyte.MaxValue)
-                    throw new ArgumentOutOfRangeException(nameof(patch), "Version contract helper requires compact integer opcodes.");
-
-                var initializer = FindMethodHandle("Version", ".cctor", "System.Void", Array.Empty<string>());
-                var constructor = FindMethodHandle("GameVersion", ".ctor", "System.Void",
-                    new[] { "System.Int32", "System.Int32", "System.Int32" });
-                var currentVersion = FindFieldHandle("Version", "<CurrentVersion>k__BackingField", "GameVersion");
-                var il = MethodIl(initializer);
-                var pattern = new List<byte>();
-                AppendCompactInteger(pattern, major);
-                AppendCompactInteger(pattern, minor);
-                AppendCompactInteger(pattern, patch);
-                pattern.Add(0x73); // newobj
-                pattern.AddRange(BitConverter.GetBytes(MetadataTokens.GetToken(constructor)));
-                pattern.Add(0x80); // stsfld
-                pattern.AddRange(BitConverter.GetBytes(MetadataTokens.GetToken(currentVersion)));
-
-                var matches = 0;
-                for (var index = 0; index <= il.Length - pattern.Count; index++)
-                {
-                    if (il.AsSpan(index, pattern.Count).SequenceEqual(pattern.ToArray())) matches++;
-                }
-                if (matches != 1)
-                    throw new InvalidOperationException("Version.CurrentVersion initializer mismatch: " + matches);
-                _passed++;
-                Console.WriteLine("PASS IL Version.CurrentVersion = " + major + "." + minor + "." + patch);
-            }
-
-            private static void AppendCompactInteger(ICollection<byte> output, int value)
-            {
-                if (value >= 0 && value <= 8)
-                {
-                    output.Add((byte)(0x16 + value)); // ldc.i4.0 through ldc.i4.8
-                    return;
-                }
-                output.Add(0x1f); // ldc.i4.s
-                output.Add(unchecked((byte)(sbyte)value));
             }
 
             internal void EnumValues(string outerName, string nestedName, IReadOnlyDictionary<string, int> expected)

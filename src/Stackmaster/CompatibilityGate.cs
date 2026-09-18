@@ -1,12 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
-using BepInEx;
 using HarmonyLib;
 using UnityEngine;
 
@@ -14,60 +9,42 @@ namespace Stackmaster
 {
     internal sealed class CompatibilityResult
     {
-        internal CompatibilityResult(bool isCompatible, string reason)
+        internal CompatibilityResult(bool isCompatible, string reason, string diagnostics = "")
         {
             IsCompatible = isCompatible;
             Reason = reason;
+            Diagnostics = diagnostics;
         }
 
         internal bool IsCompatible { get; }
         internal string Reason { get; }
+        internal string Diagnostics { get; }
     }
 
     internal static class CompatibilityGate
     {
-        // Exact assembly supplied by Joe's verified Steam build 25364309 reference bundle.
-        private static readonly Guid SupportedValheimMvid = new Guid("a63433e8-968e-407a-918a-9f9fe7e7ba9a");
-        private const string SupportedValheimSha256 = "e5af0669755ed3b098f71b4dd0753f8a997761b99bca1e8dac3d5ca4c706a0be";
-        private const string SupportedGameVersion = "1.0.14";
-        private const string SupportedUnityVersion = "6000.0.75f1";
-        private const string SupportedBepInExVersion = "5.4.23.5";
-        private const string SupportedHarmonyVersion = "2.9.0.0";
-
         internal static CompatibilityResult Evaluate()
         {
             var failures = new List<string>();
 
-            var observedGameVersion = global::Version.CurrentVersion.ToString();
-            if (!string.Equals(observedGameVersion, SupportedGameVersion, StringComparison.Ordinal))
-            {
-                failures.Add("Valheim API version " + observedGameVersion + " != " + SupportedGameVersion);
-            }
-            if (!string.Equals(Application.unityVersion, SupportedUnityVersion, StringComparison.Ordinal))
-            {
-                failures.Add("Unity version " + Application.unityVersion + " != " + SupportedUnityVersion);
-            }
-            RequireAssemblyVersion(failures, typeof(BaseUnityPlugin).Assembly, SupportedBepInExVersion, "BepInEx");
-            RequireAssemblyVersion(failures, typeof(Harmony).Assembly, SupportedHarmonyVersion, "Harmony");
+            // Runtime identity is deliberately diagnostic only. Valheim's client and
+            // dedicated-server assemblies can expose the same contract with different
+            // labels, versions, file hashes, and MVIDs.
+            var diagnostics = DescribeRuntimeIdentity();
 
-            var valheimAssembly = typeof(Player).Assembly;
-            var observedMvid = valheimAssembly.ManifestModule.ModuleVersionId;
-            if (observedMvid != SupportedValheimMvid)
+            var requiredTypes = new[]
             {
-                failures.Add("assembly_valheim MVID " + observedMvid + " is not the verified build");
-            }
-            try
-            {
-                var observedHash = Sha256(valheimAssembly.Location);
-                if (!string.Equals(observedHash, SupportedValheimSha256, StringComparison.Ordinal))
-                {
-                    failures.Add("assembly_valheim SHA-256 does not match the verified build");
-                }
-            }
-            catch (Exception exception)
-            {
-                failures.Add("assembly_valheim SHA-256 could not be verified: " + exception.GetType().Name);
-            }
+                typeof(InventoryGui), typeof(Container), typeof(InventoryGrid),
+                typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier),
+                typeof(GameObject), typeof(Transform), typeof(Piece.Requirement), typeof(Player),
+                typeof(Hud), typeof(BuildUi), typeof(ZDOID), typeof(ZDO), typeof(Inventory),
+                typeof(ZPackage), typeof(ZNetView), typeof(Humanoid), typeof(Game), typeof(ZNet),
+                typeof(ZDOMan), typeof(Character), typeof(TextViewer), typeof(GameCamera),
+                typeof(PlayerPrefs), typeof(Recipe), typeof(Player.RequirementMode), typeof(ZInput),
+                typeof(SplitDialog), typeof(CraftingStation), typeof(ZNetScene), typeof(PrivateArea),
+                typeof(Vector3), typeof(ZDOVars), typeof(TextInput)
+            };
+            foreach (var type in requiredTypes) RuntimeContractValidator.RequireType(failures, type);
 
             RequireMethod(failures, typeof(InventoryGui), "Awake");
             RequireMethod(failures, typeof(InventoryGui), "Hide");
@@ -85,7 +62,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(InventoryGui), "UpdateRecipe", typeof(Player), typeof(float));
             RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
             RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
-            RequireMethod(failures, typeof(InventoryGui), "get_instance");
+            RequireStaticMethod(failures, typeof(InventoryGui), "get_instance");
             RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece));
             RequireMethod(failures, typeof(BuildUi), "OnSelectPiece", typeof(Piece));
             RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
@@ -121,7 +98,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Character), "IsDead");
             RequireMethod(failures, typeof(Character), "InCutscene");
             RequireMethod(failures, typeof(Character), "IsTeleporting");
-            RequireMethod(failures, typeof(TextViewer), "get_instance");
+            RequireStaticMethod(failures, typeof(TextViewer), "get_instance");
             RequireMethod(failures, typeof(TextViewer), "IsVisible");
             RequireMethod(failures, typeof(GameCamera), "InFreeFly");
             RequireMethod(failures, typeof(Inventory), "MoveItemToThis", typeof(Inventory), typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int));
@@ -221,75 +198,46 @@ namespace Stackmaster
             RequireField(failures, typeof(Recipe), "m_requireOnlyOneIngredient");
 
             return failures.Count == 0
-                ? new CompatibilityResult(true, "verified runtime surface")
-                : new CompatibilityResult(false, string.Join("; ", failures));
+                ? new CompatibilityResult(true, "verified runtime contract", diagnostics)
+                : new CompatibilityResult(false, string.Join("; ", failures), diagnostics);
         }
 
-        private static void RequireAssemblyVersion(ICollection<string> failures, Assembly assembly, string expected, string name)
+        private static string DescribeRuntimeIdentity()
         {
-            var observed = assembly.GetName().Version?.ToString() ?? "unknown";
-            if (!string.Equals(observed, expected, StringComparison.Ordinal))
-            {
-                failures.Add(name + " version " + observed + " != " + expected);
-            }
-        }
-
-        private static string Sha256(string path)
-        {
-            using (var stream = File.OpenRead(path))
-            using (var algorithm = SHA256.Create())
-            {
-                var hash = algorithm.ComputeHash(stream);
-                var text = new StringBuilder(hash.Length * 2);
-                foreach (var value in hash) text.Append(value.ToString("x2"));
-                return text.ToString();
-            }
+            var valheimAssembly = typeof(Player).Assembly;
+            var valheimVersion = global::Version.CurrentVersion.ToString();
+            var unityVersion = Application.unityVersion;
+            var bepinexVersion = typeof(BepInEx.BaseUnityPlugin).Assembly.GetName().Version?.ToString() ?? "unknown";
+            var harmonyVersion = typeof(Harmony).Assembly.GetName().Version?.ToString() ?? "unknown";
+            var mvid = valheimAssembly.ManifestModule.ModuleVersionId;
+            return "Valheim label " + Application.version + ", API " + valheimVersion +
+                   ", Unity " + unityVersion + ", BepInEx " + bepinexVersion +
+                   ", Harmony " + harmonyVersion + ", assembly_valheim MVID " + mvid;
         }
 
         private static void RequireMethod(ICollection<string> failures, Type type, string name, params Type[] parameters)
         {
-            if (AccessTools.DeclaredMethod(type, name, parameters) == null && AccessTools.Method(type, name, parameters) == null)
-            {
-                failures.Add(type.Name + "." + name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") missing");
-            }
+            RuntimeContractValidator.RequireMethod(failures, type, name, false, false, parameters);
         }
 
         private static void RequireStaticMethod(ICollection<string> failures, Type type, string name, params Type[] parameters)
         {
-            var method = AccessTools.DeclaredMethod(type, name, parameters) ?? AccessTools.Method(type, name, parameters);
-            if (method == null)
-            {
-                failures.Add(type.Name + "." + name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") missing");
-                return;
-            }
-            if (!method.IsStatic)
-            {
-                failures.Add(type.Name + "." + name + " is no longer static");
-            }
+            RuntimeContractValidator.RequireMethod(failures, type, name, true, false, parameters);
         }
 
         private static void RequireConstructor(ICollection<string> failures, Type type, params Type[] parameters)
         {
-            if (AccessTools.Constructor(type, parameters) == null)
-            {
-                failures.Add(type.Name + "(" + string.Join(",", parameters.Select(parameter => parameter.Name).ToArray()) + ") constructor missing");
-            }
+            RuntimeContractValidator.RequireConstructor(failures, type, parameters);
         }
 
         private static void RequireProperty(ICollection<string> failures, Type type, string name)
         {
-            if (AccessTools.Property(type, name) == null)
-            {
-                failures.Add(type.Name + "." + name + " missing");
-            }
+            RuntimeContractValidator.RequireProperty(failures, type, name);
         }
 
         private static void RequireField(ICollection<string> failures, Type type, string name)
         {
-            if (AccessTools.Field(type, name) == null)
-            {
-                failures.Add(type.Name + "." + name + " missing");
-            }
+            RuntimeContractValidator.RequireField(failures, type, name);
         }
     }
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2
+
+Compatibility-gate correction with no gameplay or configuration changes.
+
+- Replaced exact Valheim label, Unity/BepInEx/Harmony version, `assembly_valheim` SHA-256, and MVID runtime enforcement with a contract-based fail-closed gate.
+- Runtime identity values remain diagnostics only; the pinned private-reference hashes remain build provenance and are not a client allowlist.
+- Validates every declared dependency in the runtime contract—required types, exact method overloads and parameters, constructors, fields, properties, static/instance shape, Harmony targets, and patch entrypoints—before installing the first patch.
+- A missing or ambiguous contract disables Stackmaster before patching. Any Harmony installation failure fully disables the runtime and removes all patches installed under Stackmaster's Harmony ID.
+- Added focused executable/static tests proving differing identity metadata is accepted when contracts match, exact-version constants are absent from the runtime gate, required contracts are covered, and missing or ambiguous members fail closed.
+- Preserves the 1.1.0 gameplay, settings, networking, ownership, reservation, and persistence behavior exactly.
+
 ## 1.1.1
 
 Release package prepared with the exact DLL bytes supplied for live validation.

@@ -5,4 +5,7 @@
     <AssemblyName>Stackmaster.Compatibility.Tests</AssemblyName>
     <RootNamespace>Stackmaster.Compatibility.Tests</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Stackmaster/RuntimeContractValidator.cs" Link="RuntimeContractValidator.cs" />
+  </ItemGroup>
 </Project>

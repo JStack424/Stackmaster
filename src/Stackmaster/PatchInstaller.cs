@@ -8,12 +8,10 @@ namespace Stackmaster
 {
     internal static class PatchInstaller
     {
-        internal static void Install(Harmony harmony)
+        internal static IReadOnlyList<PatchSpec> Prepare()
         {
-            if (harmony == null) throw new ArgumentNullException(nameof(harmony));
-
-            // Resolve the complete exact target set before installing the first patch.
-            // A missing or ambiguous method therefore fails without leaving partial hooks.
+            // Resolve every exact game target and every patch entrypoint before the first
+            // Harmony write. Missing and ambiguous contracts fail closed with no partial hooks.
             var patches = new List<PatchSpec>
             {
                 Postfix(typeof(InventoryGui), "Awake", Type.EmptyTypes, typeof(InventoryGuiAwakePatch)),
@@ -65,6 +63,14 @@ namespace Stackmaster
                 Prefix(typeof(Inventory), "RemoveItem", new[] { typeof(string), typeof(int), typeof(int), typeof(bool) }, typeof(NearbyResourceRemovalPatch))
             };
 
+            return patches;
+        }
+
+        internal static void Install(Harmony harmony, IReadOnlyList<PatchSpec> patches)
+        {
+            if (harmony == null) throw new ArgumentNullException(nameof(harmony));
+            if (patches == null) throw new ArgumentNullException(nameof(patches));
+
             foreach (var patch in patches)
             {
                 harmony.Patch(
@@ -99,25 +105,17 @@ namespace Stackmaster
 
         private static MethodInfo ResolveTarget(Type type, string name, Type[] parameters)
         {
-            var method = AccessTools.DeclaredMethod(type, name, parameters);
-            if (method == null)
-            {
-                throw new MissingMethodException(type.FullName, name);
-            }
-            return method;
+            return RuntimeContractValidator.ResolveExactMethod(
+                type, name, mustBeStatic: false, declaredOnly: true, parameters);
         }
 
         private static HarmonyMethod ResolvePatch(Type type, string name)
         {
-            var method = AccessTools.DeclaredMethod(type, name);
-            if (method == null)
-            {
-                throw new MissingMethodException(type.FullName, name);
-            }
+            var method = RuntimeContractValidator.ResolveUniqueNamedMethod(type, name, mustBeStatic: true);
             return new HarmonyMethod(method);
         }
 
-        private sealed class PatchSpec
+        internal sealed class PatchSpec
         {
             internal PatchSpec(MethodInfo original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod finalizer)
             {

@@ -51,9 +51,20 @@ namespace Stackmaster
             ShowStorageAmountsInRequirementMenus = Config.Bind("General", "Show storage amounts in craft and build menus", true,
                 "Show required / total available counts from the player and eligible storage in crafting, upgrade, and building requirement rows. Affordability still follows the separate crafting and building permissions.");
 
-            var compatibility = CompatibilityGate.Evaluate();
+            CompatibilityResult compatibility;
+            try
+            {
+                compatibility = CompatibilityGate.Evaluate();
+            }
+            catch (System.Exception exception)
+            {
+                compatibility = new CompatibilityResult(false,
+                    "runtime contract validation failed: " + exception.GetType().Name);
+                Logger.LogError("Compatibility validation threw before patch installation: " + exception);
+            }
+
             RuntimeContext.Initialize(this, compatibility);
-            Logger.LogInfo($"{PluginName} {PluginVersion} loading for game {Application.version}, Unity {Application.unityVersion}.");
+            Logger.LogInfo($"{PluginName} {PluginVersion} loading. Runtime diagnostics only: {compatibility.Diagnostics}.");
 
             if (!compatibility.IsCompatible)
             {
@@ -63,9 +74,10 @@ namespace Stackmaster
 
             try
             {
+                var patchPlan = PatchInstaller.Prepare();
                 _harmony = new Harmony(PluginGuid);
-                PatchInstaller.Install(_harmony);
-                Logger.LogInfo("Compatibility gate passed for Steam build 25364309 reference surface; gameplay hooks enabled.");
+                PatchInstaller.Install(_harmony, patchPlan);
+                Logger.LogInfo("Compatibility contracts and Harmony target preflight passed; gameplay hooks enabled.");
             }
             catch (System.Exception exception)
             {

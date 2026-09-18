@@ -6,7 +6,7 @@ Status: Accepted on September 11, 2026
 
 Joe's read-only environment report identified:
 
-- Valheim API `1.0.14` / Steam build `25364309`;
+- Valheim dedicated-server reference provenance: API `1.0.14` / Steam build `25364309` (compile/test input only, not a runtime allowlist);
 - Unity `6000.0.75f1`;
 - `assembly_valheim.dll` SHA-256 `e5af0669755ed3b098f71b4dd0753f8a997761b99bca1e8dac3d5ca4c706a0be`, MVID `a63433e8-968e-407a-918a-9f9fe7e7ba9a`;
 - game `mscorlib.dll` assembly version `4.0.0.0` and `netstandard.dll` assembly version `2.1.0.0`;
@@ -31,3 +31,7 @@ The current Valheim Modding guidance still recommends .NET Framework 4.8 for a p
 - A harmless plugin can compile against Joe's exact private reference bundle while containing no gameplay patches or inventory mutation code.
 - Game integration stays behind adapters added in a later milestone, after the skeleton's clean-profile load is verified.
 - If the exact runtime rejects the `net48` skeleton, that smoke-test result reopens this decision before gameplay code is added.
+
+## Runtime compatibility
+
+Exact game labels, component versions, file hashes, and assembly MVIDs are diagnostics only. Runtime enablement is decided by the complete required member contract and exact Harmony target preflight. Missing, changed, or ambiguous members fail closed before patch installation; an installation failure disables Stackmaster and unpatches its Harmony ID.
