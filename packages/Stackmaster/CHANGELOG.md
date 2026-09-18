@@ -11,7 +11,7 @@ Release package prepared with the exact DLL bytes supplied for live validation.
 
 ## 1.1.0
 
-Public release, promoted from the live-tested 1.1.0 candidate without gameplay or configuration changes.
+Public release, preserving the live-validated 1.1.0 behavior without gameplay or configuration changes.
 
 - Replaced the former all-in-one protected-item modifier-click prompt with separate mouse controls using the configured storage-action modifier (Left Alt by default).
 - Modifier + left-click now toggles protection immediately with no dialog: an unprotected item becomes protection-only, while any protected item is fully unprotected and loses its target in one click.
@@ -32,11 +32,11 @@ Public release, promoted from the live-tested 1.1.0 candidate without gameplay o
 - Craft cancel, recipe or tab changes, inventory close, scope/station changes, failed validation, exceptions, timeout, disable, disconnect, and shutdown immediately clear reservations and release only exact proven Stackmaster acquisitions; delayed callbacks are generation- and session-isolated.
 - Uses the existing configured shortcut modifier, connected-workbench/fallback storage scope, vanilla ownership handshake, and access/in-use protections without Jötunn, custom RPCs, server data, or networking.
 - Ordinary build-piece clicks, the existing 30-second chest-backed building lease, and all existing features remain unchanged.
-- Final automated verification passes with zero compiler warnings/errors, 133/133 pure-domain tests, and 65/65 static/repository safety checks. In-game validation of the release candidate passed; broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete.
+- Final automated verification passes with zero compiler warnings/errors, 133/133 pure-domain tests, and 65/65 static/repository safety checks. In-game validation passed; broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete.
 
 ## 1.0.0
 
-Public release, promoted from the live-tested 0.4.2 candidate without gameplay or configuration changes.
+Public release, preserving the live-validated 0.4.2 behavior without gameplay or configuration changes.
 
 - Added independent, default-on controls for storage-backed crafting, storage-backed building, and aggregate storage totals in crafting, upgrade, and building requirement rows.
 - Preserved explicit legacy building/crafting opt-outs through one-time migration to the renamed settings.
@@ -45,11 +45,11 @@ Public release, promoted from the live-tested 0.4.2 candidate without gameplay o
 - Fixed full-stack chest transfers and world drops leaving stale protected-item targets; partial transfers and internal player-inventory moves continue to retain protection.
 - Pruned orphaned target records before storage actions so removed items no longer produce stale `target item missing` shortages.
 - Final verification passes with zero compiler warnings/errors, 99/99 pure-domain tests, and 57/57 static/repository safety checks.
-- In-game validation of the release candidate passed. Broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete.
+- In-game validation passed. Broader multiplayer, dedicated-server, workbench-extension, and load/unload edge-case testing remains incomplete.
 
 ## 0.4.2
 
-Local r2modman test candidate; not published.
+Development-only build; not published.
 
 - Split nearby-resource behavior into three independent, default-on settings: **Allow crafting from storage**, **Allow building from storage**, and **Show storage amounts in craft and build menus**.
 - Existing `Enable building from nearby chests` and `Enable crafting from nearby chests` choices migrate once to the renamed permissions; explicit opt-outs remain off, and obsolete keys are removed from the saved configuration.
@@ -61,7 +61,7 @@ Local r2modman test candidate; not published.
 
 ## 0.4.1
 
-Local r2modman test candidate; not published.
+Development-only build; not published.
 
 - Added a 30-second sliding Valheim ownership lease after a successful chest-backed building placement. Only exact chests Stackmaster demonstrably acquired and actually used are retained, and each successful build use renews that chest's lease.
 - Logical `in-use` reservations still end immediately after the atomic transaction; crafting behavior is unchanged and does not retain the new build lease.
@@ -107,7 +107,7 @@ Public release.
 
 Early public testing release.
 
-Version 0.2.1 reissues the approved nearby-resource release under a fresh Thunderstore version number so package managers can distinguish it from an earlier 0.2.0 upload. There are no gameplay changes from the approved candidate.
+Version 0.2.1 reissues the approved nearby-resource release under a fresh Thunderstore version number so package managers can distinguish it from an earlier 0.2.0 upload. There are no gameplay changes from the approved build.
 
 ### Added
 
