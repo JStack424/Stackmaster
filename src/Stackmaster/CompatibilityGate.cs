@@ -46,26 +46,11 @@ namespace Stackmaster
             };
             foreach (var type in requiredTypes) RuntimeContractValidator.RequireType(failures, type);
 
-            RequireMethod(failures, typeof(InventoryGui), "Awake");
-            RequireMethod(failures, typeof(InventoryGui), "Hide");
-            RequireMethod(failures, typeof(InventoryGui), "Show", typeof(Container), typeof(int));
-            RequireMethod(failures, typeof(InventoryGui), "Update");
+            HarmonyTargetManifest.Validate(failures);
+
             RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen");
-            RequireMethod(failures, typeof(InventoryGui), "OnSelectedItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier));
-            RequireMethod(failures, typeof(InventoryGui), "OnRightClickItem", typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i));
-            RequireMethod(failures, typeof(InventoryGui), "OnDropOutside");
-            RequireMethod(failures, typeof(InventoryGui), "OnCraftPressed");
-            RequireMethod(failures, typeof(InventoryGui), "OnCraftCancelPressed");
-            RequireMethod(failures, typeof(InventoryGui), "OnTabCraftPressed");
-            RequireMethod(failures, typeof(InventoryGui), "OnTabUpgradePressed");
-            RequireMethod(failures, typeof(InventoryGui), "OnSelectedRecipe", typeof(GameObject));
             RequireMethod(failures, typeof(InventoryGui), "UpdateRecipe", typeof(Player), typeof(float));
-            RequireMethod(failures, typeof(InventoryGui), "DoCrafting", typeof(Player));
-            RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int));
             RequireStaticMethod(failures, typeof(InventoryGui), "get_instance");
-            RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece));
-            RequireMethod(failures, typeof(BuildUi), "OnSelectPiece", typeof(Piece));
-            RequireMethod(failures, typeof(InventoryGrid), "UpdateInventory", typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData));
             RequireMethod(failures, typeof(Container), "CheckAccess", typeof(long));
             RequireMethod(failures, typeof(Container), "CheckForChanges");
             RequireMethod(failures, typeof(Container), "GetInventory");
@@ -80,16 +65,8 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Container), "IsOwner");
             RequireMethod(failures, typeof(Container), "IsInUse");
             RequireMethod(failures, typeof(Container), "SetInUse", typeof(bool));
-            RequireMethod(failures, typeof(Container), "Interact", typeof(Humanoid), typeof(bool), typeof(bool));
-            RequireMethod(failures, typeof(Container), "GetHoverText");
             RequireMethod(failures, typeof(Container), "StackAll");
-            RequireMethod(failures, typeof(Container), "RPC_RequestOpen", typeof(long), typeof(long));
             RequireMethod(failures, typeof(Container), "RPC_RequestStack", typeof(long), typeof(long));
-            RequireMethod(failures, typeof(Container), "RPC_StackResponse", typeof(long), typeof(bool));
-            RequireMethod(failures, typeof(Game), "Shutdown", typeof(bool));
-            RequireMethod(failures, typeof(ZNet), "Shutdown", typeof(bool));
-            RequireMethod(failures, typeof(ZNet), "ShutdownWithoutSave", typeof(bool));
-            RequireMethod(failures, typeof(ZNet), "Update");
             RequireMethod(failures, typeof(ZDO), "GetOwner");
             RequireMethod(failures, typeof(ZDO), "SetOwner", typeof(long));
             RequireStaticMethod(failures, typeof(ZDOMan), "GetSessionID");
@@ -111,7 +88,6 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Inventory), "RemoveAll");
             RequireMethod(failures, typeof(Inventory), "CountItems", typeof(string), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(ItemDrop.ItemData), typeof(int));
-            RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(string), typeof(int), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(Inventory), "AddItem", typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(ItemDrop.ItemData), "Clone");
             RequireMethod(failures, typeof(ItemDrop.ItemData), "GetWeight", typeof(int));
@@ -126,11 +102,6 @@ namespace Stackmaster
             RequireStaticMethod(failures, typeof(PlayerPrefs), "SetInt", typeof(string), typeof(int));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "DeleteKey", typeof(string));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "Save");
-            RequireMethod(failures, typeof(Player), "HaveRequirementItems", typeof(Recipe), typeof(bool), typeof(int), typeof(int));
-            RequireMethod(failures, typeof(Player), "HaveRequirements", typeof(Piece), typeof(Player.RequirementMode));
-            RequireMethod(failures, typeof(Player), "GetFirstRequiredItem", typeof(Inventory), typeof(Recipe), typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int));
-            RequireMethod(failures, typeof(Player), "UpdatePlacement", typeof(bool), typeof(float));
-            RequireMethod(failures, typeof(Player), "TryPlacePiece", typeof(Piece));
             RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
             RequireMethod(failures, typeof(SplitDialog), "get_IsActive");
             RequireMethod(failures, typeof(ZNetView), "IsOwner");

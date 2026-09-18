@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Runtime.Loader;
 
 namespace Stackmaster.Compatibility.Tests
 {
@@ -16,8 +17,10 @@ namespace Stackmaster.Compatibility.Tests
 
         private static int Main(string[] args)
         {
-            if (args.Length != 2) throw new ArgumentException("Expected paths to assembly_valheim.dll and assembly_utils.dll.");
+            if (args.Length != 4)
+                throw new ArgumentException("Expected paths to assembly_valheim.dll, assembly_utils.dll, Stackmaster.dll, and the complete Valheim Managed directory.");
             RuntimeContractGateBehavior();
+            HarmonyTargetManifestReleaseGate(args[2], args[3], Path.GetDirectoryName(Path.GetFullPath(args[0]))!);
 
             var path = Path.GetFullPath(args[0]);
             using var stream = File.OpenRead(path);
@@ -128,6 +131,128 @@ namespace Stackmaster.Compatibility.Tests
             if (!expected.Equals(actual)) throw new InvalidOperationException(label + " mismatch: " + actual);
             _passed++;
             Console.WriteLine("PASS " + label);
+        }
+
+        private static void HarmonyTargetManifestReleaseGate(string pluginPath, string managedDirectory, string referenceDirectory)
+        {
+            var plugin = Path.GetFullPath(pluginPath);
+            var managed = Path.GetFullPath(managedDirectory);
+            if (!File.Exists(plugin)) throw new FileNotFoundException("Compiled Stackmaster.dll missing", plugin);
+            if (!Directory.Exists(managed)) throw new DirectoryNotFoundException("Complete Valheim Managed directory missing: " + managed);
+
+            var searchDirectories = new[] { Path.GetDirectoryName(plugin)!, referenceDirectory, managed };
+            AssemblyLoadContext.Default.Resolving += (_, name) =>
+            {
+                foreach (var directory in searchDirectories)
+                {
+                    var candidate = Path.Combine(directory, name.Name + ".dll");
+                    if (File.Exists(candidate)) return AssemblyLoadContext.Default.LoadFromAssemblyPath(candidate);
+                }
+                return null;
+            };
+
+            var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(plugin);
+            var manifestType = assembly.GetType("Stackmaster.HarmonyTargetManifest", true)!;
+            var installerType = assembly.GetType("Stackmaster.PatchInstaller", true)!;
+            var descriptors = ((System.Collections.IEnumerable)manifestType
+                .GetProperty("Descriptors", BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null)!).Cast<object>().ToArray();
+            var prepared = ((System.Collections.IEnumerable)installerType
+                .GetMethod("Prepare", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, null)!).Cast<object>().ToArray();
+
+            Equal(32, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
+            Equal(descriptors.Length, prepared.Length, "PatchInstaller.Prepare returns every manifest operation");
+
+            var setupRequirementObserved = false;
+            object? setupRequirementDescriptor = null;
+            for (var index = 0; index < descriptors.Length; index++)
+            {
+                var descriptor = descriptors[index];
+                var descriptorType = descriptor.GetType();
+                var targetType = (Type)ReadProperty(descriptor, "TargetType")!;
+                var targetName = (string)ReadProperty(descriptor, "TargetName")!;
+                var isStatic = (bool)ReadProperty(descriptor, "IsStatic")!;
+                var returnType = (Type)ReadProperty(descriptor, "ReturnType")!;
+                var parameters = (Type[])ReadProperty(descriptor, "Parameters")!;
+                var patchType = (Type)ReadProperty(descriptor, "PatchType")!;
+                var identity = (string)ReadProperty(descriptor, "Identity")!;
+
+                var matches = targetType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic |
+                                                    BindingFlags.Instance | BindingFlags.Static |
+                                                    BindingFlags.DeclaredOnly)
+                    .Where(method => method.Name == targetName)
+                    .Where(method => method.IsStatic == isStatic)
+                    .Where(method => method.ReturnType == returnType)
+                    .Where(method => method.GetParameters().Select(parameter => parameter.ParameterType)
+                        .SequenceEqual(parameters))
+                    .ToArray();
+                Equal(1, matches.Length, "release target exact declaring/static/return/parameter contract " + identity);
+
+                var resolved = descriptorType.GetMethod("Resolve", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(descriptor, null)!;
+                var preparedSpec = prepared[index];
+                var expectedOriginal = (MethodInfo)ReadProperty(resolved, "Original")!;
+                var actualOriginal = (MethodInfo)ReadProperty(preparedSpec, "Original")!;
+                Equal(expectedOriginal, actualOriginal, "Prepare exact MethodInfo " + identity);
+
+                foreach (var role in new[] { "Prefix", "Postfix", "Finalizer" })
+                {
+                    var patchMethod = (MethodInfo?)ReadProperty(preparedSpec, role);
+                    if (patchMethod == null) continue;
+                    Equal(true, patchMethod.IsStatic, identity + " " + role.ToLowerInvariant() + " is a unique static patch entrypoint");
+                    Equal(patchType, patchMethod.DeclaringType!, identity + " " + role.ToLowerInvariant() + " declaring type");
+                }
+
+                if (targetType.Name == "InventoryGui" && targetName == "SetupRequirement")
+                {
+                    setupRequirementDescriptor = descriptor;
+                    setupRequirementObserved = isStatic && returnType == typeof(bool) &&
+                                               actualOriginal.IsStatic && actualOriginal.ReturnType == typeof(bool);
+                }
+            }
+
+            Equal(true, setupRequirementObserved,
+                "live regression InventoryGui.SetupRequirement resolves as static bool in Prepare");
+            Equal(true, BrokenDescriptorFailsClosed(setupRequirementDescriptor!, isStatic: false, returnType: typeof(bool)),
+                "negative regression rejects SetupRequirement declared as an instance method");
+            Equal(true, BrokenDescriptorFailsClosed(setupRequirementDescriptor!, isStatic: true, returnType: typeof(void)),
+                "negative regression rejects SetupRequirement declared with the wrong return type");
+            Console.WriteLine("PASS HarmonyTargetManifestReleaseGate validates target uniqueness, shape, patch compatibility, and Prepare MethodInfo identity");
+            _passed++;
+        }
+
+        private static bool BrokenDescriptorFailsClosed(object source, bool isStatic, Type returnType)
+        {
+            var descriptorType = source.GetType();
+            var constructor = descriptorType.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single();
+            var broken = constructor.Invoke(new object?[]
+            {
+                ReadProperty(source, "TargetType"),
+                ReadProperty(source, "TargetName"),
+                isStatic,
+                returnType,
+                ReadProperty(source, "Parameters"),
+                ReadProperty(source, "PatchType"),
+                ReadProperty(source, "PrefixName"),
+                ReadProperty(source, "PostfixName"),
+                ReadProperty(source, "FinalizerName")
+            });
+            try
+            {
+                descriptorType.GetMethod("Resolve", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(broken, null);
+                return false;
+            }
+            catch (TargetInvocationException exception) when (exception.InnerException is MissingMethodException)
+            {
+                return true;
+            }
+        }
+
+        private static object? ReadProperty(object value, string name)
+        {
+            return value.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(value);
         }
 
         private static void RuntimeContractGateBehavior()

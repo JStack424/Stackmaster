@@ -37,9 +37,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         )
 
     def test_compatibility_gate_uses_contracts_not_runtime_identity(self):
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         validator = (PLUGIN_DIR / "RuntimeContractValidator.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         for forbidden in (
             "SupportedGameVersion", "SupportedUnityVersion", "SupportedBepInExVersion",
             "SupportedHarmonyVersion", "SupportedValheimMvid", "SupportedValheimSha256",
@@ -48,7 +48,9 @@ class ProjectBoundaryTests(unittest.TestCase):
             self.assertNotIn(forbidden, gate)
         self.assertIn("Runtime diagnostics only", self.plugin)
         self.assertIn("RuntimeContractValidator.RequireType", gate)
-        self.assertGreaterEqual(gate.count("RequireMethod(failures"), 70)
+        self.assertGreaterEqual(gate.count("RequireMethod(failures"), 50)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
+        self.assertIn("HarmonyTargetManifest.ResolveAll()", installer)
         self.assertGreaterEqual(gate.count("RequireField(failures"), 30)
         self.assertGreaterEqual(gate.count("RequireProperty(failures"), 2)
         self.assertIn("matches.Length == 0", validator)
@@ -59,8 +61,34 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ResolveExactMethod", installer)
         self.assertIn("ResolveUniqueNamedMethod", installer)
 
-    def test_client_static_utility_contracts_are_validated_with_their_real_shape(self):
+    def test_harmony_targets_have_one_manifest_and_release_gate(self):
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        build = (ROOT / "scripts" / "build.sh").read_text(encoding="utf-8")
+        package = (ROOT / "scripts" / "package.py").read_text(encoding="utf-8")
+
+        self.assertEqual(1, gate.count("HarmonyTargetManifest.Validate(failures)"))
+        self.assertEqual(1, installer.count("HarmonyTargetManifest.ResolveAll()"))
+        self.assertNotIn("ResolveExactMethod", installer)
+        self.assertNotRegex(installer, r"typeof\((InventoryGui|Container|InventoryGrid|Player|Hud|BuildUi|Game|ZNet)\)")
+        self.assertEqual(
+            32,
+            len(re.findall(r"^\s{12}(?:Prefix|Postfix|Both|Transactional)\(", manifest, flags=re.MULTILINE)),
+        )
+        self.assertIn(
+            'Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]',
+            manifest,
+        )
+        self.assertIn("RuntimeContractValidator.ResolveExactMethod(", manifest)
+        self.assertIn("HarmonyPatchCompatibility.Validate(original, prefix, postfix, finalizer)", manifest)
+        self.assertIn("tests/Stackmaster.Compatibility.Tests/Stackmaster.Compatibility.Tests.csproj", build)
+        self.assertIn("run_release_gate()", package)
+        self.assertLess(package.index("run_release_gate()", package.index("def main")),
+                        package.index('run_git("status"', package.index("def main")))
+
+    def test_client_static_utility_contracts_are_validated_with_their_real_shape(self):
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         for contract in (
             'RequireStaticMethod(failures, typeof(ZDOMan), "GetSessionID")',
             'RequireStaticMethod(failures, typeof(GameCamera), "InFreeFly")',
@@ -111,7 +139,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
 
         self.assertIn('WorkbenchPrefabName = "piece_workbench"', scope)
@@ -173,19 +201,20 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_inventory_mutation_hooks_are_installed_only_after_gate(self):
         installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        self.assertIn("RuntimeContractValidator.ResolveExactMethod", installer)
-        self.assertIn("Resolve every exact game target and every patch entrypoint before the first", installer)
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        self.assertIn("HarmonyTargetManifest.ResolveAll()", installer)
+        self.assertIn("Every target and patch entrypoint is resolved before the first Harmony write", installer)
         self.assertNotIn("PatchAll", self.plugin)
         self.assertNotIn('Postfix(typeof(InventoryGui), "Update"', installer)
-        self.assertIn('Postfix(typeof(InventoryGrid), "UpdateInventory"', installer)
+        self.assertIn('Postfix(typeof(InventoryGrid), "UpdateInventory"', manifest)
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
     def test_expedition_kit_intercepts_only_modified_build_ui_piece_clicks(self):
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionKit.cs").read_text(encoding="utf-8")
-        self.assertIn('Prefix(typeof(BuildUi), "OnSelectPiece", new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch))', installer)
+        self.assertIn('Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch))', installer)
         self.assertIn("plugin.StorageActionShortcut.Value.Modifiers", action)
         self.assertIn("modifiers.Select(Input.GetKey)", action)
         self.assertIn("ExpeditionClickPolicy.ShouldIntercept", action)
@@ -305,9 +334,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("=> !hasPendingReservationCleanup", policy)
 
     def test_expedition_kit_runtime_surface_is_compatibility_gated(self):
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         for signature in (
-            'RequireMethod(failures, typeof(BuildUi), "OnSelectPiece", typeof(Piece))',
+            'Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch))',
             'RequireMethod(failures, typeof(Inventory), "GetWidth")',
             'RequireMethod(failures, typeof(Inventory), "GetHeight")',
             'RequireMethod(failures, typeof(Inventory), "GetTotalWeight")',
@@ -394,7 +423,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
         preferences = (PLUGIN_DIR / "ChestSortPreferences.cs").read_text(encoding="utf-8")
         policy = (ROOT / "src" / "Stackmaster.Core" / "ChestSortPreferencePolicy.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         self.assertIn('label.text = "Auto-sort chest"', integration)
         self.assertIn("_chestToggleAnchor.transform.SetParent(gui.m_container, false)", integration)
         self.assertIn("_chestToggle.SetIsOnWithoutNotify(enabled)", integration)
@@ -422,8 +451,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         hide_patch = integration[integration.index("internal static class InventoryGuiHidePatch"):]
         self.assertIn("private static void Prefix()", hide_patch)
         self.assertIn("InventoryIntegration.SortClosingChest();", hide_patch)
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        self.assertIn('Both(typeof(InventoryGui), "Hide", Type.EmptyTypes, typeof(InventoryGuiHidePatch))', installer)
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        self.assertIn('Both(typeof(InventoryGui), "Hide", false, typeof(void), Type.EmptyTypes, typeof(InventoryGuiHidePatch))', installer)
         close_start = integration.index("internal static void SortClosingChest()")
         close_end = integration.index("internal static void OnInventoryHidden()", close_start)
         close_body = integration[close_start:close_end]
@@ -487,16 +516,16 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("item != null", protection)
         self.assertIn('HarmonyPatch(typeof(InventoryGui), "OnRightClickItem"', protection)
         self.assertIn('Prefix(typeof(InventoryGui), "OnRightClickItem"',
-                      (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8"))
-        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "OnRightClickItem"',
+                      (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8"))
+        self.assertIn("HarmonyTargetManifest.Validate(failures)",
                       (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8"))
 
     def test_open_container_shortcut_uses_open_target_without_closing_inventory(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
         executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         self.assertIn("var openContainer = CurrentOpenContainer(gui)", action)
         self.assertIn("gui.IsContainerOpen()", action)
         self.assertIn('AccessTools.Field(typeof(InventoryGui), "m_currentContainer")', action)
@@ -506,8 +535,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('[HarmonyPatch(typeof(InventoryGui), "Update")]', action)
         self.assertIn("return !RuntimeContext.Compatibility.IsCompatible || StorageAction.HandleOpenContainerShortcut(__instance)", action)
         self.assertIn("return false;", action[action.index("internal static bool HandleOpenContainerShortcut"):action.index("internal static bool IsLocalOpenTarget")])
-        self.assertIn('Both(typeof(InventoryGui), "Update"', installer)
-        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "Update")', gate)
+        self.assertIn('Both(typeof(InventoryGui), "Update", false, typeof(void)', installer)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
         self.assertIn('RequireMethod(failures, typeof(InventoryGui), "IsContainerOpen")', gate)
         self.assertIn('RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string))', gate)
         self.assertIn('RequireMethod(failures, typeof(SplitDialog), "get_IsActive")', gate)
@@ -592,7 +621,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipLeasePolicy.NextOwnerRevision(handle.ResourceOwnerRevision)", ownership)
         self.assertIn("zdo.OwnerRevision == expectedOwnerRevision", ownership)
         self.assertIn("OwnershipLeaseManager.Update()", ownership)
-        self.assertIn('Postfix(typeof(ZNet), "Update"', (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8"))
+        self.assertIn('Postfix(typeof(ZNet), "Update"', (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8"))
         self.assertIn("OwnershipLeasePolicy.Decide", ownership)
         self.assertIn("zdo.SetOwner(decision.TargetOwner)", ownership)
         self.assertIn("ForceSendZDO(zdo.m_uid)", ownership)
@@ -609,8 +638,8 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_build_ownership_lease_is_sliding_scoped_and_preemptible(self):
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
 
         self.assertIn("BuildingLeaseSeconds = 30f", ownership)
         self.assertIn("OwnershipLeasePurpose.Building", ownership)
@@ -636,8 +665,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("requesterSession != acquiredSession", (ROOT / "src" / "Stackmaster.Core" / "OwnershipLeasePolicy.cs").read_text(encoding="utf-8"))
         self.assertIn("Leases.Remove(lease.Acquisition.Id)", ownership)
         self.assertIn("never set owner 0", ownership)
-        self.assertIn('Postfix(typeof(Container), "RPC_RequestOpen"', installer)
-        self.assertIn('RequireMethod(failures, typeof(Container), "RPC_RequestOpen", typeof(long), typeof(long))', gate)
+        self.assertIn('Postfix(typeof(Container), "RPC_RequestOpen", false, typeof(void)', installer)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
 
     def test_all_terminal_paths_release_only_exact_stackmaster_acquisitions(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
@@ -663,7 +692,7 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_timeout_disconnect_disable_and_hot_unload_keep_ownership_cleanup_safe(self):
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         plugin = PLUGIN.read_text(encoding="utf-8")
 
         self.assertIn("TimedOutAcquisitionHandle", ownership)
@@ -815,8 +844,8 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_manual_item_exit_clears_only_after_confirmed_external_removal_and_hotkey_prunes_orphans(self):
         lifecycle = (PLUGIN_DIR / "ProtectionLifecycle.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ProtectionState.cs").read_text(encoding="utf-8")
@@ -834,7 +863,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("attempt.Protection.Unprotect(attempt.Record)", lifecycle)
         self.assertIn("InventoryIntegration.RefreshProtectionOverlays()", lifecycle)
         self.assertNotIn('Patch(typeof(Inventory), "MoveItemToThis"', installer)
-        self.assertIn('RequireMethod(failures, typeof(InventoryGui), "OnDropOutside")', gate)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_dragInventory")', gate)
         self.assertIn("protection.Reconcile(candidates, pruneUnresolved)", snapshots)
         self.assertIn("if (pruneUnresolved)", core)
@@ -863,8 +892,8 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_nearby_resource_paths_are_exact_fresh_and_fail_closed(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         self.assertIn("GroupBy", core)
         self.assertIn("shortages.Count == 0 ? tentative", core)
         # HarmonyX binds unannotated patch arguments by the original parameter name.
@@ -908,11 +937,11 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_crafting_is_one_click_reserved_then_one_vanilla_bar_with_full_cleanup(self):
         action = (PLUGIN_DIR / "CraftingPreflightAction.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
         inventory = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
         storage = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
 
         self.assertIn('Transactional(typeof(InventoryGui), "OnCraftPressed"', installer)
@@ -964,7 +993,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
 
         # Display/cost discovery decodes ZDO inventory bytes into a detached Inventory and
         # contains no ownership request of any kind.
@@ -1136,10 +1165,10 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_build_hud_uses_aggregate_nearby_totals_and_matching_availability_color(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
-        self.assertIn('Postfix(typeof(Hud), "SetupPieceInfo", new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch))', installer)
-        self.assertIn('RequireMethod(failures, typeof(Hud), "SetupPieceInfo", typeof(Piece))', gate)
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        self.assertIn('Postfix(typeof(Hud), "SetupPieceInfo", false, typeof(void), new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch))', installer)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
         self.assertIn('RequireField(failures, typeof(Hud), "m_requirementItems")', gate)
         self.assertIn("internal static class NearbyBuildHudPatch", nearby)
         build = nearby[nearby.index("internal static class NearbyBuildHudPatch"):nearby.index("internal static class RequirementAmountTextFitter")]
@@ -1163,11 +1192,12 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_crafting_hud_uses_aggregate_nearby_totals_for_every_station_path(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
-        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", new[]', installer)
-        self.assertIn('typeof(UnityEngine.Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int)', installer)
-        self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement", typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int))', gate)
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]', installer)
+        self.assertIn('typeof(Transform), typeof(Piece.Requirement), typeof(Player), typeof(bool), typeof(int), typeof(int)', installer)
+        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]', gate)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
         self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "get_instance")', gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_selectedRecipe")', gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_reqList")', gate)
@@ -1218,12 +1248,12 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_requirement_text_restores_vanilla_state_for_reused_rows_and_disable_paths(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
-        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8")
+        installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         section = nearby[
             nearby.index("internal static class RequirementAmountTextFitter"):
             nearby.index("internal static class NearbyFirstRequiredItemPatch")
         ]
-        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", new[]', installer)
+        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]', installer)
         self.assertIn("internal static void Prefix([HarmonyArgument(0)] Transform elementRoot)", section)
         self.assertIn("RequirementAmountTextFitter.PrepareForVanilla(elementRoot)", section)
         self.assertIn("FontSize = label.fontSize", section)
@@ -1239,7 +1269,7 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_crafting_requirement_hook_matches_static_current_game_surface(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
-        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         section = nearby[
             nearby.index("internal static class NearbyCraftingHudPatch"):
             nearby.index("internal static class NearbyFirstRequiredItemPatch")
@@ -1249,7 +1279,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RequirementsField.GetValue(inventoryGui) as List<Piece.Requirement>", section)
         self.assertNotIn("InventoryGui __instance,", section)
         self.assertNotIn("___m_reqList", section)
-        self.assertIn('RequireStaticMethod(failures, typeof(InventoryGui), "SetupRequirement"', gate)
+        self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]', gate)
+        self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
         self.assertIn("method.IsStatic == mustBeStatic", (PLUGIN_DIR / "RuntimeContractValidator.cs").read_text(encoding="utf-8"))
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):

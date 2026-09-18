@@ -47,7 +47,20 @@ namespace Stackmaster
             bool declaredOnly,
             params Type[] parameters)
         {
-            var matches = FindMethods(type, name, mustBeStatic, declaredOnly, parameters);
+            return ResolveExactMethod(type, name, mustBeStatic, declaredOnly, null, parameters);
+        }
+
+        internal static MethodInfo ResolveExactMethod(
+            Type type,
+            string name,
+            bool mustBeStatic,
+            bool declaredOnly,
+            Type returnType,
+            params Type[] parameters)
+        {
+            var matches = FindMethods(type, name, mustBeStatic, declaredOnly, parameters)
+                .Where(method => returnType == null || method.ReturnType == returnType)
+                .ToArray();
             if (matches.Length == 0) throw new MissingMethodException(type.FullName, Describe(type, name, parameters));
             if (matches.Length > 1) throw new AmbiguousMatchException(Describe(type, name, parameters));
             return matches[0];

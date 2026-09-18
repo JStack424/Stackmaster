@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.4
+
+Harmony-target manifest correction and release-gate hardening with no gameplay or configuration changes. This build supersedes 1.1.3.
+
+- Fixed startup patch preflight for `InventoryGui.SetupRequirement(Transform, Requirement, Player, bool, int, int)`: the compatibility gate correctly validated this Valheim API as `static`, but the separate patch installer incorrectly searched for an instance method.
+- Replaced the duplicated target declarations with one canonical Harmony target manifest consumed by both compatibility validation and patch preparation. Each descriptor pins the declaring type, exact overload, static/instance shape, return type, and patch entrypoints.
+- Added fail-closed Harmony patch-signature validation for original arguments, `__instance`, `__result`, `__state`, `__exception`, and injected fields before any patch is installed.
+- Added the release-gating `HarmonyTargetManifestReleaseGate`, which resolves all 32 patch operations against the pinned Valheim assemblies and proves `PatchInstaller.Prepare()` returns those exact resolved `MethodInfo` objects. Packaging now runs the complete build/test gate itself and refuses to create a ZIP if this check fails.
+- Runtime identity, version, SHA-256, and MVID remain diagnostic-only. All Stackmaster 1.1.0 gameplay and settings remain unchanged, including the rule that modifier + right-click never clears protection.
+
 ## 1.1.3
 
 Compatibility-gate static-method correction with no gameplay or configuration changes. This build supersedes 1.1.2.

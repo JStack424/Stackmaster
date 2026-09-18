@@ -21,7 +21,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
 CODE_REVISION_FILE = ROOT / "RELEASE_CODE_REVISION"
 EXPECTED = (
@@ -134,6 +134,10 @@ def verify_zip(path: Path) -> dict[str, bytes]:
     return files
 
 
+def run_release_gate() -> None:
+    subprocess.check_call([str(ROOT / "scripts" / "build.sh")], cwd=ROOT)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / f"JStack424-Stackmaster-{VERSION}.zip")
@@ -147,6 +151,10 @@ def main() -> int:
             print(f"{sha256(data)}  {name}")
         print(f"{sha256(args.verify_only.read_bytes())}  {args.verify_only.name}")
         return 0
+
+    # Packaging is itself a release gate: it cannot reuse an old DLL without first
+    # resolving every canonical Harmony target and patch signature against the pinned game assemblies.
+    run_release_gate()
 
     if run_git("status", "--porcelain", "--untracked-files=normal"):
         raise RuntimeError("refusing to package a dirty or uncommitted working tree")
