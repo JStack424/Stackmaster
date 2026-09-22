@@ -117,6 +117,30 @@ namespace Stackmaster.Compatibility.Tests
             contract.MethodReadsFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onSelected");
 
+            // Stackmaster debits the prepared plan before letting vanilla create output,
+            // then suppresses these exact vanilla charging calls. Keep this a structural
+            // release contract so a changed overload or crafting lifecycle fails closed.
+            contract.MethodCalls(
+                "InventoryGui", "DoCrafting", "System.Void", new[] { "Player" },
+                "Inventory", "RemoveItem", "System.Void",
+                new[] { "System.String", "System.Int32", "System.Int32", "System.Boolean" });
+            contract.MethodCalls(
+                "InventoryGui", "DoCrafting", "System.Void", new[] { "Player" },
+                "Player", "ConsumeResources", "System.Void",
+                new[] { "Requirement[]", "System.Int32", "System.Int32", "System.Int32" });
+            contract.MethodCallPrecedes(
+                "InventoryGui", "DoCrafting", "System.Void", new[] { "Player" },
+                "Inventory", "AddItem", "ItemData",
+                new[] { "System.String", "System.Int32", "System.Int32", "System.Int32", "System.Int64", "System.String", "Vector2i", "System.Boolean", "System.Boolean", "System.Boolean" },
+                "Inventory", "RemoveItem", "System.Void",
+                new[] { "System.String", "System.Int32", "System.Int32", "System.Boolean" });
+            contract.MethodCallPrecedes(
+                "InventoryGui", "DoCrafting", "System.Void", new[] { "Player" },
+                "Inventory", "AddItem", "ItemData",
+                new[] { "System.String", "System.Int32", "System.Int32", "System.Int32", "System.Int64", "System.String", "Vector2i", "System.Boolean", "System.Boolean", "System.Boolean" },
+                "Player", "ConsumeResources", "System.Void",
+                new[] { "Requirement[]", "System.Int32", "System.Int32", "System.Int32" });
+
             using var utilsStream = File.OpenRead(Path.GetFullPath(args[1]));
             using var utilsPe = new PEReader(utilsStream);
             var utilsContract = new Contract(utilsPe.GetMetadataReader(), utilsPe);
@@ -700,6 +724,28 @@ namespace Stackmaster.Compatibility.Tests
                 var target = FindMethodHandle(targetType, targetName, targetReturn, targetParameters);
                 RequireInstructionToken(source, new byte[] { 0x28, 0x6f }, MetadataTokens.GetToken(target),
                     sourceType + "." + sourceName + " calls " + targetType + "." + targetName);
+            }
+
+            internal void MethodCallPrecedes(
+                string sourceType, string sourceName, string sourceReturn, string[] sourceParameters,
+                string firstType, string firstName, string firstReturn, string[] firstParameters,
+                string secondType, string secondName, string secondReturn, string[] secondParameters)
+            {
+                var source = FindMethodHandle(sourceType, sourceName, sourceReturn, sourceParameters);
+                var first = FindMethodHandle(firstType, firstName, firstReturn, firstParameters);
+                var second = FindMethodHandle(secondType, secondName, secondReturn, secondParameters);
+                var il = MethodIl(source);
+                var firstOffsets = FindCallOffsets(il, MetadataTokens.GetToken(first));
+                var secondOffsets = FindCallOffsets(il, MetadataTokens.GetToken(second));
+                if (firstOffsets.Count == 0 || secondOffsets.Count == 0 || firstOffsets.Min() >= secondOffsets.Min())
+                {
+                    throw new InvalidOperationException(sourceType + "." + sourceName +
+                        " must call " + firstType + "." + firstName + " before " +
+                        secondType + "." + secondName);
+                }
+                _passed++;
+                Console.WriteLine("PASS IL " + sourceType + "." + sourceName + " calls " +
+                                  firstType + "." + firstName + " before " + secondType + "." + secondName);
             }
 
             private void RequireInstructionToken(MethodDefinitionHandle source, byte[] opcodes, int token, string label)

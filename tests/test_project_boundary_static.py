@@ -84,6 +84,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("HarmonyPatchCompatibility.Validate(original, prefix, postfix, finalizer)", manifest)
         self.assertIn("tests/Stackmaster.Compatibility.Tests/Stackmaster.Compatibility.Tests.csproj", build)
         self.assertIn("run_release_gate()", package)
+        self.assertIn("TEST_ONLY = True", package)
+        self.assertIn('f"JStack424-Stackmaster-{VERSION}-test.zip"', package)
+        self.assertIn('output filename must end with -test.zip', package)
         self.assertLess(package.index("run_release_gate()", package.index("def main")),
                         package.index('run_git("status"', package.index("def main")))
 
@@ -1068,6 +1071,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(rollback_context.index("NearbyResourceService.Rollback"), rollback_context.index("ReleaseReservations"))
         self.assertIn("var actualRemoved = before - after", nearby)
         self.assertIn("clone.m_stack = actualRemoved", nearby)
+        self.assertIn("TryCaptureOwnedPlan(", nearby)
+        self.assertIn("source.Requirements,", nearby)
+        self.assertIn("var liveInventory = handle.Container.GetInventory()", nearby)
+        self.assertIn("var mutableHandle = new ContainerHandle(", nearby)
+        self.assertIn("new NearbyResourceCapture(freshScope, mutableHandles", nearby)
+        self.assertIn("var handles = mutableCapture.Containers.ToArray()", nearby)
+        self.assertIn("ReferenceEquals(runtime.Inventory, runtime.Container.Container.GetInventory())", nearby)
+        self.assertIn("prepared crafting source was not the live container inventory", nearby)
+        self.assertNotIn("var liveCapture = Capture(player, prepared.SourcePlan.Scope);", nearby)
         ordinary_begin = nearby.index("private static bool TryBeginTransaction(")
         self.assertLess(nearby.index("TryCaptureOwnedPlan", ordinary_begin), nearby.index("ExecuteWithRollback", ordinary_begin))
         self.assertIn("CancelRemaining", ownership)
@@ -1099,6 +1111,23 @@ class ProjectBoundaryTests(unittest.TestCase):
             'RequireField(failures, typeof(ZDOVars), "s_items")',
         ):
             self.assertIn(signature, gate)
+
+    def test_crafting_exact_debit_is_one_shot_journaled_and_fail_closed(self):
+        debit = (ROOT / "src" / "Stackmaster.Core" / "ExactResourceDebit.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        tests = (ROOT / "tests" / "Stackmaster.Tests" / "Program.cs").read_text(encoding="utf-8")
+
+        self.assertIn("_applied || _finished", debit)
+        self.assertIn("attempt.RemovedUnits != step.Quantity", debit)
+        self.assertIn("RemovedUnits != ExpectedUnits", debit)
+        self.assertIn("Only a complete exact debit can be committed", debit)
+        self.assertIn("for (var index = _receipts.Count - 1; index >= 0; index--)", debit)
+        self.assertIn("var exactDebit = new ExactResourceDebit<RemovedResource>(plan)", nearby)
+        self.assertIn("foreach (var receipt in exactDebit.Receipts)", nearby)
+        self.assertIn("CraftingExactDebitConsumesPlayerAndSelectedChest", tests)
+        self.assertIn("CraftingExactDebitCannotDoubleCharge", tests)
+        self.assertIn("CraftingIncompleteDebitCannotCommitFreeOutput", tests)
+        self.assertIn("CraftingCancellationRollsBackExactDebit", tests)
 
     def test_read_only_snapshot_null_regression_and_hud_paths_fail_open(self):
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")

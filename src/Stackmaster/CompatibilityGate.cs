@@ -88,7 +88,9 @@ namespace Stackmaster
             RequireMethod(failures, typeof(Inventory), "RemoveAll");
             RequireMethod(failures, typeof(Inventory), "CountItems", typeof(string), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(ItemDrop.ItemData), typeof(int));
+            RequireMethod(failures, typeof(Inventory), "RemoveItem", typeof(string), typeof(int), typeof(int), typeof(bool));
             RequireMethod(failures, typeof(Inventory), "AddItem", typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool));
+            RequireMethod(failures, typeof(Player), "ConsumeResources", typeof(Piece.Requirement[]), typeof(int), typeof(int), typeof(int));
             RequireMethod(failures, typeof(ItemDrop.ItemData), "Clone");
             RequireMethod(failures, typeof(ItemDrop.ItemData), "GetWeight", typeof(int));
             RequireMethod(failures, typeof(Piece.Requirement), "GetAmount", typeof(int));

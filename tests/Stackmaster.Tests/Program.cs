@@ -76,6 +76,10 @@ internal static class Program
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
             ResourcePlanNormalizesDuplicateRequirements,
             ResourcePlanDoesNotDoubleConsume,
+            CraftingExactDebitConsumesPlayerAndSelectedChest,
+            CraftingExactDebitCannotDoubleCharge,
+            CraftingIncompleteDebitCannotCommitFreeOutput,
+            CraftingCancellationRollsBackExactDebit,
             ResourcePlanHonorsExactQualityAndMultiplierTotals,
             ResourcePlanIsAllOrNothingAcrossDifferentMaterials,
             ExpeditionClickRequiresEveryConfiguredModifier,
@@ -1194,6 +1198,123 @@ internal static class Program
         SequenceEqual(new[] { 25, 25 }, plan.Steps.Select(step => step.Quantity), "only the needed chest remainder is used");
     }
 
+    private static void CraftingExactDebitConsumesPlayerAndSelectedChest()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 5) },
+            Resource("player", "player-wood", "Wood", 1, 2, 0, 0),
+            Resource("selected-chest", "selected-wood", "Wood", 1, 3, 1, 0),
+            Resource("unselected-chest", "unselected-wood", "Wood", 1, 50, 2, 0));
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["player-wood"] = 2,
+            ["selected-wood"] = 3,
+            ["unselected-wood"] = 50
+        };
+        var debit = new ExactResourceDebit<FakeDebitReceipt>(plan);
+
+        True(debit.TryApply(step => Debit(stock, step), out var failure), failure ?? "exact debit failed");
+        Equal(5, debit.RemovedUnits, "remote craft removes the complete exact cost");
+        Equal(0, stock["player-wood"], "remote craft removes its player-carried share");
+        Equal(0, stock["selected-wood"], "remote craft removes its selected-chest share");
+        Equal(50, stock["unselected-wood"], "remote craft never touches an unselected chest");
+        debit.Commit();
+    }
+
+    private static void CraftingExactDebitCannotDoubleCharge()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Resin", 4) },
+            Resource("player", "player-resin", "Resin", 1, 1, 0, 0),
+            Resource("selected-chest", "chest-resin", "Resin", 1, 3, 1, 0));
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["player-resin"] = 1,
+            ["chest-resin"] = 3
+        };
+        var debit = new ExactResourceDebit<FakeDebitReceipt>(plan);
+        True(debit.TryApply(step => Debit(stock, step), out var failure), failure ?? "exact debit failed");
+        Throws<InvalidOperationException>(() => debit.TryApply(step => Debit(stock, step), out _),
+            "the same prepared craft cannot debit twice");
+        Equal(0, stock["player-resin"], "duplicate suppression leaves the one player charge intact");
+        Equal(0, stock["chest-resin"], "duplicate suppression leaves the one chest charge intact");
+        debit.Commit();
+    }
+
+    private static void CraftingIncompleteDebitCannotCommitFreeOutput()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("Stone", 5) },
+            Resource("player", "player-stone", "Stone", 1, 2, 0, 0),
+            Resource("selected-chest", "chest-stone", "Stone", 1, 3, 1, 0));
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["player-stone"] = 2,
+            ["chest-stone"] = 3
+        };
+        var debit = new ExactResourceDebit<FakeDebitReceipt>(plan);
+        var applied = debit.TryApply(step =>
+        {
+            if (step.StackId != "chest-stone") return Debit(stock, step);
+            stock[step.StackId] -= 2;
+            return ResourceDebitAttempt<FakeDebitReceipt>.FailureAfterMutation(
+                2,
+                new FakeDebitReceipt(step.StackId, 2),
+                "selected chest could not provide the exact planned quantity");
+        }, out var failure);
+
+        True(!applied, "a partial selected-chest debit fails closed");
+        True(failure != null && failure.Contains("exact planned quantity", StringComparison.Ordinal),
+            "the partial debit reports the exact failure");
+        Throws<InvalidOperationException>(debit.Commit,
+            "an incomplete charge cannot be committed after output");
+        True(debit.Rollback(receipt => Restore(stock, receipt)), "the incomplete charge rolls back");
+        Equal(2, stock["player-stone"], "failed craft restores the player share");
+        Equal(3, stock["chest-stone"], "failed craft restores the chest share");
+    }
+
+    private static void CraftingCancellationRollsBackExactDebit()
+    {
+        var plan = ResourcePlan(
+            new[] { new ResourceRequirement("FineWood", 6) },
+            Resource("player", "player-finewood", "FineWood", 1, 1, 0, 0),
+            Resource("selected-chest", "chest-finewood", "FineWood", 1, 5, 1, 0));
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["player-finewood"] = 1,
+            ["chest-finewood"] = 5
+        };
+        var debit = new ExactResourceDebit<FakeDebitReceipt>(plan);
+        True(debit.TryApply(step => Debit(stock, step), out var failure), failure ?? "exact debit failed");
+        True(debit.Rollback(receipt => Restore(stock, receipt)), "cancel restores every journaled mutation");
+        Equal(1, stock["player-finewood"], "cancel restores the player inventory exactly");
+        Equal(5, stock["chest-finewood"], "cancel restores the selected chest exactly");
+        True(!debit.Rollback(receipt => Restore(stock, receipt)), "rollback cannot apply twice");
+        Equal(6, stock.Values.Sum(), "double rollback cannot duplicate resources");
+    }
+
+    private static ResourceDebitAttempt<FakeDebitReceipt> Debit(
+        IDictionary<string, int> stock,
+        ResourceWithdrawalStep step)
+    {
+        var available = stock[step.StackId];
+        var removed = Math.Min(available, step.Quantity);
+        stock[step.StackId] = available - removed;
+        var receipt = new FakeDebitReceipt(step.StackId, removed);
+        return removed == step.Quantity
+            ? ResourceDebitAttempt<FakeDebitReceipt>.Success(removed, receipt)
+            : ResourceDebitAttempt<FakeDebitReceipt>.FailureAfterMutation(
+                removed,
+                receipt,
+                "fake inventory could not satisfy the exact debit");
+    }
+
+    private static bool Restore(IDictionary<string, int> stock, FakeDebitReceipt receipt)
+    {
+        stock[receipt.StackId] += receipt.Quantity;
+        return true;
+    }
+
     private static void ResourcePlanHonorsExactQualityAndMultiplierTotals()
     {
         var plan = ResourcePlan(
@@ -2038,6 +2159,18 @@ internal static class Program
         Equal(quantity, step.Quantity, "replenishment quantity");
     }
 
+    private sealed class FakeDebitReceipt
+    {
+        internal FakeDebitReceipt(string stackId, int quantity)
+        {
+            StackId = stackId;
+            Quantity = quantity;
+        }
+
+        internal string StackId { get; }
+        internal int Quantity { get; }
+    }
+
     private sealed class FakeEquipmentReferences
     {
         internal FakeEquipmentReferences(FakeRollbackItem primary, FakeRollbackItem secondary)
@@ -2172,6 +2305,19 @@ internal static class Program
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new Exception(message + ": expected " + expected + ", got " + actual);
+    }
+
+    private static void Throws<TException>(Action action, string message) where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+        throw new Exception(message);
     }
 
     private static void SequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual, string message)

@@ -295,6 +295,7 @@ namespace Stackmaster
             NearbyResourceCapture capture,
             ResourceWithdrawalPlan plan,
             ContainerHandle[] requiredHandles,
+            bool requiresOwnershipTransfer,
             ItemDrop.ItemData selectedIngredient,
             int selectedAmount,
             int selectedExtraAmount)
@@ -303,6 +304,7 @@ namespace Stackmaster
             Capture = capture;
             Plan = plan;
             RequiredHandles = requiredHandles;
+            RequiresOwnershipTransfer = requiresOwnershipTransfer;
             SelectedIngredient = selectedIngredient;
             SelectedAmount = selectedAmount;
             SelectedExtraAmount = selectedExtraAmount;
@@ -312,6 +314,7 @@ namespace Stackmaster
         internal NearbyResourceCapture Capture { get; }
         internal ResourceWithdrawalPlan Plan { get; }
         internal ContainerHandle[] RequiredHandles { get; }
+        internal bool RequiresOwnershipTransfer { get; }
         internal ItemDrop.ItemData SelectedIngredient { get; }
         internal int SelectedAmount { get; }
         internal int SelectedExtraAmount { get; }
@@ -594,7 +597,15 @@ namespace Stackmaster
                 return false;
             }
 
-            planned = new CraftingResourcePlan(requirements, capture, plan, handles, selected, amount, extraAmount);
+            planned = new CraftingResourcePlan(
+                requirements,
+                capture,
+                plan,
+                handles,
+                handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()),
+                selected,
+                amount,
+                extraAmount);
             return true;
         }
 
@@ -612,43 +623,37 @@ namespace Stackmaster
                 return false;
             }
 
-            var freshCapture = Capture(player, true, true);
-            ResourceWithdrawalPlan freshPlan;
-            if (!Planner.TryPlanWithMinimumContainers(source.Requirements, freshCapture.Stacks, PlayerInventoryId, out freshPlan))
+            // Planning and HUD reads intentionally use detached ZDO-decoded inventories. Once
+            // ownership is ready, a craft must switch to the live Container inventories before
+            // reserving or removing anything. Mutating the detached planning snapshots would make
+            // the crafted output real while every chest debit disappeared with the snapshot.
+            NearbyResourceCapture mutableCapture;
+            ResourceWithdrawalPlan mutablePlan;
+            if (!TryCaptureOwnedPlan(
+                    player,
+                    source.Requirements,
+                    true,
+                    source.Capture,
+                    source.Plan,
+                    source.RequiredHandles,
+                    source.RequiresOwnershipTransfer,
+                    out mutableCapture,
+                    out mutablePlan,
+                    out failure))
             {
-                failure = "the refreshed minimum-container search exceeded its safe bound";
                 return false;
             }
-            if (!freshPlan.IsSatisfiable || freshPlan.PlannedUnits != freshPlan.RequiredUnits ||
-                !SameWithdrawalPlan(source.Plan, freshPlan))
+            if (!SameWithdrawalPlan(source.Plan, mutablePlan))
             {
                 failure = "nearby or carried materials changed before the craft could be reserved";
                 return false;
             }
 
-            ContainerHandle[] handles;
-            if (!TryResolveRequiredContainers(player, freshPlan, freshCapture, out handles, out failure)) return false;
-            if (!new HashSet<string>(source.RequiredHandles.Select(handle => handle.Id), StringComparer.Ordinal)
-                    .SetEquals(handles.Select(handle => handle.Id)))
-            {
-                failure = "the exact minimum container plan changed before reservation";
-                return false;
-            }
-            if (handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
-            {
-                failure = "required container ownership changed before reservation";
-                return false;
-            }
-            if (!RevalidateContainers(player, freshPlan, freshCapture, out failure) ||
-                !RevalidateStacks(freshPlan, freshCapture, true, out failure))
-            {
-                return false;
-            }
-
+            var handles = mutableCapture.Containers.ToArray();
             IReadOnlyList<ContainerReservation> reservations;
-            if (!TryReserveContainers(player, freshCapture.Scope, handles, true, out reservations, out failure)) return false;
-            if (!RevalidateReservedContainers(player, freshCapture.Scope, reservations, out failure) ||
-                !RevalidateStacks(freshPlan, freshCapture, true, out failure))
+            if (!TryReserveContainers(player, mutableCapture.Scope, handles, true, out reservations, out failure)) return false;
+            if (!RevalidateReservedContainers(player, mutableCapture.Scope, reservations, out failure) ||
+                !RevalidateStacks(mutablePlan, mutableCapture, true, out failure))
             {
                 ReleaseReservations(reservations);
                 return false;
@@ -656,8 +661,8 @@ namespace Stackmaster
 
             prepared = new PreparedCraftingResources(
                 source,
-                freshCapture,
-                freshPlan,
+                mutableCapture,
+                mutablePlan,
                 handles,
                 reservations,
                 CraftingInventorySignature(player, handles));
@@ -1252,6 +1257,7 @@ namespace Stackmaster
             }
             var resourceStacks = new List<ResourceStack>();
             var runtimeStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
+            var mutableHandles = new List<ContainerHandle>(requiredIds.Count);
             AddInventory(resourceStacks, runtimeStacks, PlayerInventoryId, player.GetInventory(), null, 0, matchWorldLevel);
 
             var inventoryOrder = 1;
@@ -1278,17 +1284,36 @@ namespace Stackmaster
                     failure = "required container state changed during ownership transfer";
                     return false;
                 }
+                var zdo = handle.NetworkView.GetZDO();
+                var liveInventory = handle.Container.GetInventory();
+                if (zdo == null || liveInventory == null)
+                {
+                    failure = "required live container inventory disappeared before consumption";
+                    return false;
+                }
+                var mutableHandle = new ContainerHandle(
+                    handle.Id,
+                    handle.Container,
+                    handle.NetworkView,
+                    handle.Snapshot,
+                    liveInventory,
+                    zdo.DataRevision,
+                    zdo.m_uid,
+                    zdo.OwnerRevision,
+                    zdo.GetOwner(),
+                    true);
+                mutableHandles.Add(mutableHandle);
                 AddInventory(
                     resourceStacks,
                     runtimeStacks,
-                    handle.Id,
-                    handle.Container.GetInventory(),
-                    handle,
+                    mutableHandle.Id,
+                    liveInventory,
+                    mutableHandle,
                     inventoryOrder++,
                     matchWorldLevel);
             }
 
-            mutableCapture = new NearbyResourceCapture(freshScope, requiredHandles, resourceStacks, runtimeStacks);
+            mutableCapture = new NearbyResourceCapture(freshScope, mutableHandles, resourceStacks, runtimeStacks);
             if (!Planner.TryPlanWithMinimumContainers(
                     requirements,
                     mutableCapture.Stacks,
@@ -1628,63 +1653,110 @@ namespace Stackmaster
             failure = null;
             var transactionScope = capture != null ? capture.Scope : null;
             var reservationByContainer = reservations.ToDictionary(item => item.Container);
-            foreach (var step in plan.Steps)
+            var exactDebit = new ExactResourceDebit<RemovedResource>(plan);
+            string debitFailure;
+            bool success;
+            try
             {
-                var runtime = capture.RuntimeStacks[step.StackId];
-                ContainerReservation reservation = null;
-                if (runtime.Container != null)
+                success = exactDebit.TryApply(step =>
                 {
-                    if (!reservationByContainer.TryGetValue(runtime.Container.Container, out reservation) ||
-                        !ReservationMatches(player, transactionScope, reservation))
+                    RuntimeResourceStack runtime;
+                    if (!capture.RuntimeStacks.TryGetValue(step.StackId, out runtime))
                     {
-                        failure = "required container reservation changed before resource removal";
-                        return false;
+                        return ResourceDebitAttempt<RemovedResource>.FailureWithoutMutation(
+                            "planned resource stack disappeared before removal");
                     }
-                }
 
-                var clone = runtime.Item.Clone();
-                clone.m_stack = step.Quantity;
-                var position = runtime.Item.m_gridPos;
-                var before = TotalUnits(runtime.Inventory);
-                bool success;
-                Exception removalException = null;
-                try
-                {
-                    success = runtime.Inventory.RemoveItem(runtime.Item, step.Quantity);
-                }
-                catch (Exception exception)
-                {
-                    success = false;
-                    removalException = exception;
-                }
-                var after = TotalUnits(runtime.Inventory);
-                var actualRemoved = before - after;
-                if (actualRemoved > 0 && actualRemoved <= before)
-                {
-                    clone.m_stack = actualRemoved;
-                    removed.Add(new RemovedResource(runtime.Inventory, clone, position, actualRemoved));
-                }
-                if (removalException != null)
-                {
-                    throw new InvalidOperationException("inventory removal threw after possible mutation", removalException);
-                }
-                if (!success || actualRemoved != step.Quantity)
-                {
-                    failure = actualRemoved < 0
-                        ? "resource removal produced an invalid inventory delta"
-                        : "resource removal failed; rollback is required";
-                    return false;
-                }
-                if (reservation != null)
-                {
-                    if (!reservation.AdvanceDataRevisionAfterMutation() || !ReservationMatches(player, transactionScope, reservation))
+                    ContainerReservation reservation = null;
+                    if (runtime.Container != null)
                     {
-                        failure = "required container reservation changed after resource removal";
-                        return false;
+                        // Detached ZDO snapshots are valid only for discovery and planning. A
+                        // prepared transaction must point at the owned Container's live inventory;
+                        // otherwise removing from it changes only a throwaway copy and grants a
+                        // free crafted item.
+                        if (!ReferenceEquals(runtime.Inventory, runtime.Container.Container.GetInventory()))
+                        {
+                            return ResourceDebitAttempt<RemovedResource>.FailureWithoutMutation(
+                                "prepared crafting source was not the live container inventory");
+                        }
+                        if (!reservationByContainer.TryGetValue(runtime.Container.Container, out reservation) ||
+                            !ReservationMatches(player, transactionScope, reservation))
+                        {
+                            return ResourceDebitAttempt<RemovedResource>.FailureWithoutMutation(
+                                "required container reservation changed before resource removal");
+                        }
                     }
+
+                    var clone = runtime.Item.Clone();
+                    clone.m_stack = step.Quantity;
+                    var position = runtime.Item.m_gridPos;
+                    var before = TotalUnits(runtime.Inventory);
+                    bool removedExactly;
+                    Exception removalException = null;
+                    try
+                    {
+                        removedExactly = runtime.Inventory.RemoveItem(runtime.Item, step.Quantity);
+                    }
+                    catch (Exception exception)
+                    {
+                        removedExactly = false;
+                        removalException = exception;
+                    }
+                    var after = TotalUnits(runtime.Inventory);
+                    var actualRemoved = before - after;
+                    RemovedResource receipt = null;
+                    if (actualRemoved > 0 && actualRemoved <= before)
+                    {
+                        clone.m_stack = actualRemoved;
+                        receipt = new RemovedResource(runtime.Inventory, clone, position, actualRemoved);
+                    }
+
+                    string stepFailure = null;
+                    if (removalException != null)
+                    {
+                        stepFailure = "inventory removal threw " + removalException.GetType().Name +
+                            " after a possible mutation; rollback is required";
+                    }
+                    else if (!removedExactly || actualRemoved != step.Quantity)
+                    {
+                        stepFailure = actualRemoved < 0
+                            ? "resource removal produced an invalid inventory delta"
+                            : "resource removal failed; rollback is required";
+                    }
+                    else if (reservation != null)
+                    {
+                        try
+                        {
+                            if (!reservation.AdvanceDataRevisionAfterMutation() ||
+                                !ReservationMatches(player, transactionScope, reservation))
+                            {
+                                stepFailure = "required container reservation changed after resource removal";
+                            }
+                        }
+                        catch (Exception exception)
+                        {
+                            stepFailure = "container reservation validation threw " + exception.GetType().Name +
+                                " after resource removal; rollback is required";
+                        }
+                    }
+
+                    return stepFailure == null
+                        ? ResourceDebitAttempt<RemovedResource>.Success(actualRemoved, receipt)
+                        : receipt == null
+                            ? ResourceDebitAttempt<RemovedResource>.FailureWithoutMutation(stepFailure)
+                            : ResourceDebitAttempt<RemovedResource>.FailureAfterMutation(actualRemoved, receipt, stepFailure);
+                }, out debitFailure);
+            }
+            finally
+            {
+                foreach (var receipt in exactDebit.Receipts)
+                {
+                    removed.Add(receipt);
                 }
             }
-            return true;
+
+            failure = debitFailure;
+            return success;
         }
 
         internal static bool ReservationMatches(Player player, StorageScope transactionScope, ContainerReservation reservation)
