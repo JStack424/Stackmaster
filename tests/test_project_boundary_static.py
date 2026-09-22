@@ -84,9 +84,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("HarmonyPatchCompatibility.Validate(original, prefix, postfix, finalizer)", manifest)
         self.assertIn("tests/Stackmaster.Compatibility.Tests/Stackmaster.Compatibility.Tests.csproj", build)
         self.assertIn("run_release_gate()", package)
-        self.assertIn("TEST_ONLY = True", package)
-        self.assertIn('f"JStack424-Stackmaster-{VERSION}-test.zip"', package)
-        self.assertIn('output filename must end with -test.zip', package)
+        self.assertNotIn("TEST_ONLY", package)
+        self.assertIn('f"JStack424-Stackmaster-{VERSION}.zip"', package)
+        self.assertNotIn('output filename must end with -test.zip', package)
         self.assertLess(package.index("run_release_gate()", package.index("def main")),
                         package.index('run_git("status"', package.index("def main")))
 

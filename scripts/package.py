@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Build and verify the deterministic Stackmaster test-candidate ZIP.
+"""Build and verify the deterministic Thunderstore Stackmaster release ZIP.
 
-The script has no upload capability. Version 1.1.5 is intentionally test-only:
-it packages only an explicit allowlist from a clean committed checkout and the
-already-built Release plugin DLL, and refuses a production-style output name.
+The script has no upload capability. It packages only an explicit allowlist from
+a clean committed checkout and the already-built Release plugin DLL.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
 VERSION = "1.1.5"
-TEST_ONLY = True
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
 CODE_REVISION_FILE = ROOT / "RELEASE_CODE_REVISION"
 EXPECTED = (
@@ -142,7 +140,7 @@ def run_release_gate() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / f"JStack424-Stackmaster-{VERSION}-test.zip")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / f"JStack424-Stackmaster-{VERSION}.zip")
     parser.add_argument("--verify-only", type=Path)
     args = parser.parse_args()
 
@@ -153,9 +151,6 @@ def main() -> int:
             print(f"{sha256(data)}  {name}")
         print(f"{sha256(args.verify_only.read_bytes())}  {args.verify_only.name}")
         return 0
-
-    if TEST_ONLY and not args.output.name.lower().endswith("-test.zip"):
-        raise ValueError("version 1.1.5 is test-only; output filename must end with -test.zip")
 
     # Packaging is itself a release gate: it cannot reuse an old DLL without first
     # resolving every canonical Harmony target and patch signature against the pinned game assemblies.

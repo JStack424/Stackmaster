@@ -2,7 +2,7 @@
 
 ## 1.1.5
 
-Fail-closed repair for chest-backed crafting transactions. This is a test candidate and must pass live validation before release.
+Public release of the live-tested, fail-closed repair for chest-backed crafting transactions.
 
 - Fixed remote crafting so prepared withdrawals are recaptured from each selected owned `Container.GetInventory()` rather than from detached ZDO inventory snapshots used only for read-only discovery and planning.
 - The prepared transaction now requires the live owned-inventory plan to match the original exact plan, reserves and revalidates only selected chests, and rejects any detached inventory identity before removal.
@@ -10,6 +10,7 @@ Fail-closed repair for chest-backed crafting transactions. This is a test candid
 - Preserved vanilla charge suppression after Stackmaster's exact debit, so successful remote crafts pay once—not zero times or twice. Storage-disabled and NoCost modes remain vanilla.
 - Added regressions for mixed player/chest debit, selected-chest-only mutation, duplicate-charge prevention, incomplete-debit rejection, and exact cancellation/failure rollback.
 - Strengthened the pinned Valheim release gate to verify that successful-output crafting still reaches the exact string-based `Inventory.RemoveItem` overload and `Player.ConsumeResources`, after the output-add call shape Stackmaster's transaction depends on.
+- Live-tested the corrected chest-backed crafting debit in Valheim before promoting this exact gameplay candidate to production.
 
 ## 1.1.4
 
