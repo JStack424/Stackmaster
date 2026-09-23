@@ -402,11 +402,29 @@ namespace Stackmaster
             typeof(Inventory),
             "AddItem",
             new[] { typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool) });
-        private static int _cachedFrame = -1;
-        private static Player _cachedPlayer;
-        private static string _cachedScopeSignature;
-        private static bool _cachedMatchWorldLevel;
-        private static NearbyResourceCapture _cachedCapture;
+        private static readonly MethodInfo HaveRequirementItemsMethod = AccessTools.DeclaredMethod(
+            typeof(Player),
+            "HaveRequirementItems",
+            new[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) });
+        private sealed class DisplayCaptureEpoch
+        {
+            internal Player Player;
+            internal bool MatchWorldLevel;
+            internal StorageScopeKind ScopeKind;
+            internal string StructuralScopeSignature;
+            internal ScopePoint PlayerPosition;
+            internal double MembershipStabilityDistance;
+            internal double CapturedAtSeconds;
+            internal IReadOnlyList<ContainerHandle> Containers;
+            internal IReadOnlyList<ResourceStack> ChestStacks;
+            internal IReadOnlyDictionary<string, RuntimeResourceStack> ChestRuntimeStacks;
+            internal string PlayerInventorySignature;
+            internal NearbyResourceCapture Capture;
+        }
+
+        // Display-only callers share one short, complete snapshot epoch. Fresh action-time
+        // captures never consult or populate this cache.
+        private static DisplayCaptureEpoch _displayEpoch;
 
         internal static bool HasPendingReservationReleases => PendingReservationReleases.Count > 0;
 
@@ -424,11 +442,7 @@ namespace Stackmaster
 
         internal static void ResetCaches()
         {
-            _cachedFrame = -1;
-            _cachedPlayer = null;
-            _cachedScopeSignature = null;
-            _cachedMatchWorldLevel = false;
-            _cachedCapture = null;
+            _displayEpoch = null;
         }
 
         internal static bool HasPieceRequirements(Player player, Piece piece, bool fresh)
@@ -560,52 +574,24 @@ namespace Stackmaster
 
             // This is deliberately independent from Capture(): no container discovery, scope
             // signature, ownership, reservation, ZDO revision, or shared-state input is retained.
-            // Both the craft-button and DoCrafting hooks call it afresh against the live player
-            // inventory. If the player cannot still pay alone, the guarded storage path remains.
-            var playerStacks = new List<ResourceStack>();
-            AddInventory(
-                playerStacks,
-                new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal),
-                PlayerInventoryId,
-                player.GetInventory(),
-                null,
-                0,
-                true);
-
-            var requirements = recipe.m_requireOnlyOneIngredient
-                ? PlayerInventoryOneIngredientRequirements(player, recipe, qualityLevel, craftMultiplier)
-                : RecipeRequirements(player, recipe, qualityLevel, craftMultiplier);
-            return CraftingResourcePathPolicy.SelectForPlayerInventory(
-                       scope.Kind,
-                       requirements,
-                       playerStacks,
-                       recipe.m_requireOnlyOneIngredient) == CraftingResourcePath.VanillaPlayerInventory;
-        }
-
-        private static IReadOnlyList<ResourceRequirement> PlayerInventoryOneIngredientRequirements(
-            Player player,
-            Recipe recipe,
-            int qualityLevel,
-            int craftMultiplier)
-        {
-            var alternatives = new List<ResourceRequirement>();
-            var station = player.GetCurrentCraftingStation();
-            foreach (var requirement in recipe.m_resources ?? Array.Empty<Piece.Requirement>())
+            // Ask Valheim itself whether the live player inventory can pay the complete craft so
+            // Stackmaster cannot diverge on quality-tier or one-ingredient semantics. The context
+            // keeps our HaveRequirementItems/GetFirstRequiredItem postfixes entirely vanilla.
+            var vanillaSatisfied = false;
+            VanillaPlayerCraftContext.Begin();
+            try
             {
-                if (!AppliesAtStation(requirement, station) || requirement.m_resItem == null)
-                {
-                    continue;
-                }
-                var required = checked(requirement.GetAmount(qualityLevel) * craftMultiplier);
-                if (required <= 0) continue;
-                var name = requirement.m_resItem.m_itemData.m_shared.m_name;
-                var maxQuality = requirement.m_resItem.m_itemData.m_shared.m_maxQuality;
-                for (var quality = 1; quality <= maxQuality; quality++)
-                {
-                    alternatives.Add(new ResourceRequirement(name, required, quality));
-                }
+                vanillaSatisfied = HaveRequirementItemsMethod != null &&
+                    (bool)HaveRequirementItemsMethod.Invoke(
+                        player,
+                        new object[] { recipe, false, qualityLevel, craftMultiplier });
             }
-            return alternatives;
+            finally
+            {
+                VanillaPlayerCraftContext.End();
+            }
+            return CraftingResourcePathPolicy.Select(scope.Kind, vanillaSatisfied) ==
+                   CraftingResourcePath.VanillaPlayerInventory;
         }
 
         internal static bool TryBeginPieceTransaction(Player player, Piece piece, out string failure)
@@ -1157,13 +1143,27 @@ namespace Stackmaster
         private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)
         {
             var scope = StorageScopeProvider.Resolve(player);
-            if (!fresh && _cachedCapture != null && _cachedFrame == Time.frameCount &&
-                ReferenceEquals(_cachedPlayer, player) && _cachedMatchWorldLevel == matchWorldLevel &&
-                string.Equals(_cachedScopeSignature, scope.Signature, StringComparison.Ordinal))
+            if (fresh)
             {
-                return _cachedCapture;
+                // Every action path remains synchronous and authoritative. Never let a display
+                // epoch supply ownership, reservations, mutation planning, or debit validation.
+                return CaptureComplete(player, matchWorldLevel, scope, false);
             }
 
+            NearbyResourceCapture cached;
+            if (TryReuseDisplayEpoch(player, matchWorldLevel, scope, out cached))
+            {
+                return cached;
+            }
+            return CaptureComplete(player, matchWorldLevel, scope, true);
+        }
+
+        private static NearbyResourceCapture CaptureComplete(
+            Player player,
+            bool matchWorldLevel,
+            StorageScope scope,
+            bool publishDisplayEpoch)
+        {
             var catalog = new CompatibilityCatalog();
             // Resource accounting must inspect the complete active scope. Returning a partial
             // workbench mesh would advertise materials that an exact transaction cannot honor.
@@ -1173,22 +1173,121 @@ namespace Stackmaster
                                  handle.ResourceInventory != null &&
                                  handle.NetworkView != null && handle.NetworkView.IsValid())
                 .ToList();
+            var capture = BuildCapture(player, matchWorldLevel, scope, containers, null, null);
+            if (publishDisplayEpoch)
+            {
+                var playerPosition = scope.Plan.PlayerPosition;
+                _displayEpoch = new DisplayCaptureEpoch
+                {
+                    Player = player,
+                    MatchWorldLevel = matchWorldLevel,
+                    ScopeKind = scope.Kind,
+                    StructuralScopeSignature = DisplayStructuralScopeSignature(scope),
+                    PlayerPosition = playerPosition,
+                    MembershipStabilityDistance = discovery.MembershipStabilityDistance,
+                    CapturedAtSeconds = Time.realtimeSinceStartupAsDouble,
+                    Containers = containers,
+                    ChestStacks = capture.Stacks
+                        .Where(stack => !string.Equals(stack.InventoryId, PlayerInventoryId, StringComparison.Ordinal))
+                        .ToArray(),
+                    ChestRuntimeStacks = capture.RuntimeStacks
+                        .Where(pair => pair.Value != null && pair.Value.Container != null)
+                        .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                    PlayerInventorySignature = PlayerInventorySignature(player),
+                    Capture = capture
+                };
+            }
+            return capture;
+        }
+
+        private static bool TryReuseDisplayEpoch(
+            Player player,
+            bool matchWorldLevel,
+            StorageScope scope,
+            out NearbyResourceCapture capture)
+        {
+            capture = null;
+            var epoch = _displayEpoch;
+            if (epoch == null || !ReferenceEquals(epoch.Player, player) ||
+                epoch.MatchWorldLevel != matchWorldLevel ||
+                !DisplayCaptureEpochPolicy.CanReuseScope(
+                    epoch.ScopeKind,
+                    epoch.StructuralScopeSignature,
+                    epoch.PlayerPosition,
+                    epoch.MembershipStabilityDistance,
+                    epoch.CapturedAtSeconds,
+                    scope.Kind,
+                    DisplayStructuralScopeSignature(scope),
+                    scope.Plan.PlayerPosition,
+                    Time.realtimeSinceStartupAsDouble) ||
+                epoch.Containers == null ||
+                epoch.Containers.Any(handle => !ContainerDiscovery.IsResourceHandleCurrent(player, scope, handle)))
+            {
+                return false;
+            }
+
+            var playerSignature = PlayerInventorySignature(player);
+            if (string.Equals(epoch.PlayerInventorySignature, playerSignature, StringComparison.Ordinal))
+            {
+                capture = epoch.Capture;
+                return capture != null;
+            }
+
+            // A pickup or other carried-inventory change invalidates only the player portion.
+            // Reuse the exact validated detached chest summaries without scene discovery or
+            // Inventory.Load, then atomically publish the newly combined complete capture.
+            capture = BuildCapture(
+                player,
+                matchWorldLevel,
+                scope,
+                epoch.Containers,
+                epoch.ChestStacks,
+                epoch.ChestRuntimeStacks);
+            epoch.PlayerInventorySignature = playerSignature;
+            epoch.Capture = capture;
+            return true;
+        }
+
+        private static NearbyResourceCapture BuildCapture(
+            Player player,
+            bool matchWorldLevel,
+            StorageScope scope,
+            IReadOnlyList<ContainerHandle> containers,
+            IReadOnlyList<ResourceStack> cachedChestStacks,
+            IReadOnlyDictionary<string, RuntimeResourceStack> cachedChestRuntimeStacks)
+        {
             var resourceStacks = new List<ResourceStack>();
             var runtimeStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
             AddInventory(resourceStacks, runtimeStacks, PlayerInventoryId, player.GetInventory(), null, 0, matchWorldLevel);
-            for (var index = 0; index < containers.Count; index++)
+            if (cachedChestStacks != null && cachedChestRuntimeStacks != null)
             {
-                var handle = containers[index];
-                AddInventory(resourceStacks, runtimeStacks, handle.Id, handle.ResourceInventory, handle, index + 1, matchWorldLevel);
+                resourceStacks.AddRange(cachedChestStacks);
+                foreach (var pair in cachedChestRuntimeStacks) runtimeStacks.Add(pair.Key, pair.Value);
             }
+            else
+            {
+                for (var index = 0; index < containers.Count; index++)
+                {
+                    var handle = containers[index];
+                    AddInventory(resourceStacks, runtimeStacks, handle.Id, handle.ResourceInventory, handle, index + 1, matchWorldLevel);
+                }
+            }
+            return new NearbyResourceCapture(scope, containers, resourceStacks, runtimeStacks);
+        }
 
-            var capture = new NearbyResourceCapture(scope, containers, resourceStacks, runtimeStacks);
-            _cachedFrame = Time.frameCount;
-            _cachedPlayer = player;
-            _cachedScopeSignature = scope.Signature;
-            _cachedMatchWorldLevel = matchWorldLevel;
-            _cachedCapture = capture;
-            return capture;
+        private static string DisplayStructuralScopeSignature(StorageScope scope)
+        {
+            if (scope == null) return "unavailable";
+            return scope.Kind == StorageScopeKind.NearbyRadius
+                ? scope.Kind + ":" + scope.Plan.FallbackRadius.ToString("R", CultureInfo.InvariantCulture)
+                : scope.Signature;
+        }
+
+        private static string PlayerInventorySignature(Player player)
+        {
+            var parts = new List<string>();
+            AppendInventorySignature(parts, PlayerInventoryId, player == null ? null : player.GetInventory());
+            return string.Join("|", parts);
         }
 
         private static void AddInventory(
@@ -1379,6 +1478,7 @@ namespace Stackmaster
                     zdo.m_uid,
                     zdo.OwnerRevision,
                     zdo.GetOwner(),
+                    null,
                     true);
                 mutableHandles.Add(mutableHandle);
                 AddInventory(

@@ -1128,13 +1128,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         player_only_end = nearby.index("internal static bool TryBeginPieceTransaction", player_only_start)
         player_only = nearby[player_only_start:player_only_end]
         self.assertIn("scope.Kind != StorageScopeKind.NearbyRadius", player_only)
-        self.assertIn("player.GetInventory()", player_only)
-        self.assertIn("PlayerInventoryOneIngredientRequirements", player_only)
-        self.assertIn("AddInventory(", player_only)
-        self.assertIn("true);", player_only)
-        self.assertIn("CraftingResourcePathPolicy.SelectForPlayerInventory", player_only)
+        self.assertIn("HaveRequirementItemsMethod.Invoke", player_only)
+        self.assertIn("VanillaPlayerCraftContext.Begin()", player_only)
+        self.assertIn("finally", player_only)
+        self.assertIn("VanillaPlayerCraftContext.End()", player_only)
+        self.assertIn("CraftingResourcePathPolicy.Select(scope.Kind, vanillaSatisfied)", player_only)
         self.assertIn("CraftingResourcePath.VanillaPlayerInventory", player_only)
         self.assertNotIn("Capture(player", player_only)
+        self.assertNotIn("AddInventory(", player_only)
         self.assertNotIn("ContainerDiscovery", player_only)
         self.assertNotIn("ContainerHandle", player_only)
         self.assertNotIn("Ownership", player_only)
@@ -1165,6 +1166,55 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RevalidateStacks", nearby)
         self.assertIn("ResourceTransactionContext.Begin", nearby)
         self.assertIn("ResourceTransactionContext.Rollback", nearby)
+
+    def test_display_capture_epoch_is_bounded_exactly_invalidated_and_never_serves_actions(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "DisplayCaptureEpochPolicy.cs").read_text(encoding="utf-8")
+        tests = (ROOT / "tests" / "Stackmaster.Tests" / "Program.cs").read_text(encoding="utf-8")
+
+        self.assertIn("MaximumAgeSeconds = 0.20", policy)
+        self.assertIn("nowSeconds >= capturedAtSeconds + MaximumAgeSeconds", policy)
+        self.assertIn("movedSquared < membershipStabilityDistance * membershipStabilityDistance", policy)
+        self.assertIn("PayloadMatches", policy)
+        self.assertIn("expected[index] != current[index]", policy)
+        self.assertIn("MembershipStabilityDistance", discovery)
+        self.assertIn("Math.Abs(candidate.Distance - scope.Plan.FallbackRadius)", discovery)
+        self.assertIn("DisplayCaptureEpochPolicy.PayloadMatches(handle.ResourcePayload, payload)", discovery)
+        for exact_signal in (
+            "zdo.m_uid != handle.ResourceZdoId",
+            "zdo.DataRevision != handle.ResourceDataRevision",
+            "zdo.OwnerRevision != handle.ResourceOwnerRevision",
+            "zdo.GetOwner() != handle.ResourceOwner",
+            "!TryCheckAccess(player, handle.Container",
+        ):
+            self.assertIn(exact_signal, discovery)
+
+        capture_start = nearby.index("private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)")
+        capture_end = nearby.index("private static void AddInventory", capture_start)
+        capture = nearby[capture_start:capture_end]
+        self.assertIn("if (fresh)", capture)
+        self.assertIn("return CaptureComplete(player, matchWorldLevel, scope, false)", capture)
+        self.assertIn("TryReuseDisplayEpoch", capture)
+        self.assertIn("return CaptureComplete(player, matchWorldLevel, scope, true)", capture)
+        self.assertIn("PlayerInventorySignature", capture)
+        self.assertIn("epoch.ChestStacks", capture)
+        self.assertIn("epoch.ChestRuntimeStacks", capture)
+        self.assertIn("ContainerDiscovery.IsResourceHandleCurrent", capture)
+        self.assertNotIn("ClaimOwnership", capture)
+        self.assertNotIn("SetInUse", capture)
+        self.assertNotIn("ExecuteWithRollback", capture)
+
+        # Every mutation/preparation entrypoint still requests a fresh capture.
+        self.assertIn("var capture = Capture(player, true, true);", nearby)
+        self.assertIn("var readOnlyCapture = Capture(player, matchWorldLevel, true);", nearby)
+        self.assertIn("Capture(player, true, fresh)", nearby)
+        self.assertIn("DisplayEpochReusesMultipleCallersWithinBound", tests)
+        self.assertIn("DisplayEpochExpiresAtHardBound", tests)
+        self.assertIn("DisplayEpochFallbackMovementRespectsMembershipMargin", tests)
+        self.assertIn("DisplayEpochWorkbenchReuseRequiresStableTopology", tests)
+        self.assertIn("DisplayEpochPayloadComparisonIsExact", tests)
+        self.assertIn("PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla", tests)
 
     def test_crafting_exact_debit_is_one_shot_journaled_and_fail_closed(self):
         debit = (ROOT / "src" / "Stackmaster.Core" / "ExactResourceDebit.cs").read_text(encoding="utf-8")

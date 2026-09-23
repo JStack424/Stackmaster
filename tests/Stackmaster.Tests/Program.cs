@@ -82,6 +82,12 @@ internal static class Program
             PlayerOnlyBypassHonorsCompleteNormalizedCost,
             PlayerOnlyBypassHonorsExactUpgradeQuality,
             PlayerOnlyBypassRequiresOneCompleteIngredientQualityTier,
+            PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla,
+            DisplayEpochReusesMultipleCallersWithinBound,
+            DisplayEpochExpiresAtHardBound,
+            DisplayEpochFallbackMovementRespectsMembershipMargin,
+            DisplayEpochWorkbenchReuseRequiresStableTopology,
+            DisplayEpochPayloadComparisonIsExact,
             CraftingExactDebitConsumesPlayerAndSelectedChest,
             CraftingExactDebitCannotDoubleCharge,
             CraftingIncompleteDebitCannotCommitFreeOutput,
@@ -1320,6 +1326,130 @@ internal static class Program
                 completeTier,
                 requireOnlyOneIngredient: true),
             "one complete valid quality tier permits the vanilla player-only path");
+    }
+
+    private static void PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla()
+    {
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.Select(
+                StorageScopeKind.NearbyRadius,
+                playerInventorySatisfiesFullCost: false),
+            "a vanilla rejection, including split incompatible quality tiers, cannot enter the bypass");
+        Equal(
+            CraftingResourcePath.VanillaPlayerInventory,
+            CraftingResourcePathPolicy.Select(
+                StorageScopeKind.NearbyRadius,
+                playerInventorySatisfiesFullCost: true),
+            "only Valheim's own complete player-inventory result permits the bypass");
+    }
+
+    private static void DisplayEpochReusesMultipleCallersWithinBound()
+    {
+        var reusable = DisplayCaptureEpochPolicy.CanReuseScope(
+            StorageScopeKind.NearbyRadius,
+            "NearbyRadius:20",
+            P(0, 0, 0),
+            membershipStabilityDistance: 4,
+            capturedAtSeconds: 10,
+            StorageScopeKind.NearbyRadius,
+            "NearbyRadius:20",
+            P(0, 0, 0),
+            nowSeconds: 10.05);
+        True(reusable, "multiple display callers share one complete epoch inside the hard age bound");
+    }
+
+    private static void DisplayEpochExpiresAtHardBound()
+    {
+        True(!DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 4,
+                capturedAtSeconds: 10,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                nowSeconds: 10 + DisplayCaptureEpochPolicy.MaximumAgeSeconds),
+            "the display epoch is never reused at or beyond its hard maximum age");
+    }
+
+    private static void DisplayEpochFallbackMovementRespectsMembershipMargin()
+    {
+        True(DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 2,
+                capturedAtSeconds: 5,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(1.99, 0, 0),
+                nowSeconds: 5.1),
+            "movement strictly inside the proven nearest-boundary margin preserves membership");
+        True(!DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 2,
+                capturedAtSeconds: 5,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(2, 0, 0),
+                nowSeconds: 5.1),
+            "movement reaching the nearest boundary forces a complete refresh");
+        True(!DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 2,
+                capturedAtSeconds: 5,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:25",
+                P(0, 0, 0),
+                nowSeconds: 5.1),
+            "a radius change invalidates the complete snapshot");
+    }
+
+    private static void DisplayEpochWorkbenchReuseRequiresStableTopology()
+    {
+        True(DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.WorkbenchMesh,
+                "WorkbenchMesh:a|b",
+                P(0, 0, 0),
+                membershipStabilityDistance: 0,
+                capturedAtSeconds: 7,
+                StorageScopeKind.WorkbenchMesh,
+                "WorkbenchMesh:a|b",
+                P(40, 0, 40),
+                nowSeconds: 7.1),
+            "player movement does not change a stable connected workbench mesh");
+        True(!DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.WorkbenchMesh,
+                "WorkbenchMesh:a|b",
+                P(0, 0, 0),
+                membershipStabilityDistance: 0,
+                capturedAtSeconds: 7,
+                StorageScopeKind.WorkbenchMesh,
+                "WorkbenchMesh:a|c",
+                P(0, 0, 0),
+                nowSeconds: 7.1),
+            "a workbench topology change forces a complete refresh");
+    }
+
+    private static void DisplayEpochPayloadComparisonIsExact()
+    {
+        var expected = new byte[] { 1, 2, 3, 4 };
+        True(DisplayCaptureEpochPolicy.PayloadMatches(expected, new byte[] { 1, 2, 3, 4 }),
+            "byte-identical serialized inventory payloads can reuse decoded summaries");
+        True(!DisplayCaptureEpochPolicy.PayloadMatches(expected, new byte[] { 1, 2, 3, 5 }),
+            "a payload change invalidates reuse even when its length is unchanged");
+        True(!DisplayCaptureEpochPolicy.PayloadMatches(expected, new byte[] { 1, 2, 3 }),
+            "a payload length change invalidates reuse");
+        True(DisplayCaptureEpochPolicy.PayloadMatches(null!, null!),
+            "two absent serialized inventories compare exactly");
+        True(!DisplayCaptureEpochPolicy.PayloadMatches(null!, Array.Empty<byte>()),
+            "an absent payload is distinct from an explicitly empty payload");
     }
 
     private static void CraftingExactDebitConsumesPlayerAndSelectedChest()

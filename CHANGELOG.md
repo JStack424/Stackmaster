@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.7 (local test candidate)
+
+Bounded display-snapshot reuse to reduce hammer and crafting-menu frame drops without weakening action-time correctness.
+
+- Build-grid, selected-piece HUD, and crafting/upgrade requirement displays now share one complete read-only nearby-resource capture for at most 200 ms instead of repeating scene-wide container discovery, ZDO inventory decode, detached `Inventory.Load`, metadata hydration, and stack aggregation every rendered frame. In a stable open menu this bounds complete display captures to about five per second; live in-game frame-time improvement is not yet measured.
+- A display epoch is published only after full-scope discovery completes. Every build, craft, upgrade, expedition-kit, ownership, reservation, planning, debit, and rollback path still performs its own fresh synchronous capture and cannot read or populate the display cache.
+- Fallback-radius reuse is allowed only while player movement remains strictly inside the shortest proven distance to any container membership boundary. Reaching that boundary, changing the radius, changing workbench topology, or changing scope kind forces full rediscovery.
+- Before every reuse, each cached chest must still match its exact container/network identity, active scope membership, access result, ZDO identity, data revision, owner revision, owner, and serialized inventory payload byte-for-byte. A chest change therefore invalidates detached decode and stack-summary reuse.
+- Player inventory is fingerprinted independently. Pickups, consumption, drops, movement between slots, quality changes, and world-level changes rebuild the player portion immediately while retaining only already-validated chest summaries.
+- Tightened the 1.1.6 outside-workbench player-only crafting bypass to ask Valheim's own `HaveRequirementItems` implementation for the live complete cost, preventing Stackmaster from entering the bypass on any ordinary ingredient quality combination vanilla would reject. Chest-needed and workbench-mesh crafts remain guarded.
+- Added deterministic policy and source-contract regressions for bounded age, cross-caller sharing, movement boundaries, workbench topology, exact payload invalidation, player inventory refresh, forced-fresh action isolation, guarded chest/workbench crafts, the 1.1.6 multiplayer fallback path, and quality-tier safety.
+- This candidate still requires live performance and multiplayer validation before productionization.
+
 ## 1.1.6 (local test candidate)
 
 Narrow player-inventory crafting bypass outside workbench coverage.
