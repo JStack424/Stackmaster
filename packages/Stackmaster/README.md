@@ -6,7 +6,7 @@ Stackmaster by **JStack424** brings inventory sorting, automatic chest depositin
 
 ## About this project
 
-I'm a Valheim-loving software engineer with an interest in mild game design. I built Stackmaster with the assistance of AI as a personal quality-of-life project: smooth out the frustrating bits, preserve the developers' intended experience, and never make progression feel cheesed. I didn't set out to build a widely used mod, but people are using it now, so if you find a bug or rough edge, please share it through [GitHub Issues](https://github.com/JStack424/Stackmaster/issues).
+I'm a Valheim-loving software engineer with an interest in mild game design. I built Stackmaster with the assistance of AI as a personal quality-of-life project: smooth out the frustrating bits, preserve the developers' intended experience, and never make progression feel cheesed. I didn't set out to build a widely used mod, but it's been lovely to see people enjoying it. If you've been using Stackmaster and enjoy it, please share any issues or requests through [GitHub Issues](https://github.com/JStack424/Stackmaster/issues). I keep playing, testing, and looking for further improvements, so I'll take thoughtful ideas into account. No promises that every request will become a feature—I'm trying to make my own experience better, and hopefully yours too.
 
 ## Vanilla-plus by design
 
