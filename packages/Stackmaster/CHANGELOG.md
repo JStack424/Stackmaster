@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.6 (local test candidate)
+
+Narrow player-inventory crafting bypass outside workbench coverage.
+
+- When the player is outside every connected workbench mesh and the live player inventory alone satisfies the complete current recipe cost, Stackmaster now leaves validation, ingredient selection, and debit entirely to vanilla instead of creating a nearby-storage preflight.
+- The player-only decision is recomputed at both craft start and completion and honors upgrades, multi-craft quantities, world-level requirements, duplicate requirements, and one-of ingredient recipes without combining incompatible quality tiers.
+- Because this path creates no Stackmaster intent, scope signature, reservation, ownership request, prepared transaction, or removal suppression, nearby-player movement and unrelated shared-storage or workbench-topology churn cannot cancel a craft that never needed chest materials.
+- Crafts that need even one chest item, all workbench-mesh crafts, and unresolved scopes remain on the existing guarded Stackmaster path with exact planning, ownership, reservations, revision and identity checks, debit journaling, rollback, and cleanup unchanged.
+- This candidate still requires live multiplayer validation before productionization.
+
 ## 1.1.5
 
 Public release of the live-tested, fail-closed repair for chest-backed crafting transactions.
