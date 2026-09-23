@@ -2,14 +2,14 @@
 
 ## 1.1.8 (local test candidate)
 
-Removed the Stackmaster-specific pickup hitch introduced by per-piece chest revalidation during Valheim's hammer rebuild.
+Reduced Stackmaster display-cache overhead around carried-inventory changes without weakening action-time validation.
 
-- Traced the live trigger through vanilla `Player.OnInventoryChanged`: every pickup updates known recipes, rebuilds the active hammer's available-piece table, invokes `Player.HaveRequirements(Piece, CanBuild)` once per build piece, and recreates the placement ghost.
-- The 1.1.7 display epoch avoided repeated scene discovery and detached `Inventory.Load`, but every `HaveRequirements` reuse still synchronously rechecked every cached chest's access, network/ZDO identity, revisions, owner, and complete serialized payload before comparing the player-inventory signature. One pickup therefore multiplied chest validation by build-piece count.
-- A valid display epoch now treats its already-validated detached chest snapshot as immutable for the remainder of its hard 200 ms lifetime. Player inventory changes rebuild only the player contribution once; all later requirement queries in the same vanilla rebuild burst reuse the resulting combined capture.
+- A valid display epoch now treats its already-validated detached chest snapshot as immutable for the remainder of its hard 200 ms lifetime. If the player inventory changes, the next Stackmaster display query rebuilds only the player contribution once; later display queries in that epoch reuse the newly combined capture instead of rechecking every cached chest.
 - Expiration, workbench structural-topology changes, and fallback-radius membership-boundary movement still force a complete fresh capture. Every action, ownership, reservation, debit, rollback, and cleanup path remains fresh, synchronous, and unable to consume display cache state.
-- Added a 250-call pickup/build-grid burst regression proving chest-side work remains fixed at the one published epoch while the player contribution refreshes immediately, plus pinned Valheim IL checks for the complete pickup-to-build-grid/placement-ghost call path.
-- This candidate still requires live performance and multiplayer validation before productionization. Vanilla still enumerates known recipes and build pieces and destroys/recreates the placement ghost after an inventory change; Stackmaster no longer multiplies that unavoidable work by the number of nearby chests.
+- Removed the obsolete serialized-payload copy and chest-revalidation helper that no longer participate in display reuse.
+- Corrected the pinned Valheim call-path proof: `Player.OnInventoryChanged` updates known recipes and available pieces, then recreates the placement ghost. Its recipe check uses discovery mode, and its piece checks use `IsKnown` or `CanAlmostBuild`; Stackmaster intentionally skips all three. The pickup path itself does not call Stackmaster's expensive `CanBuild` branch.
+- Added exact pinned-IL checks for the requirement-mode constants and the real `CanBuild` callers, plus a regression proving that display queries after a player-inventory change refresh the player slice only once without repeating chest-side work.
+- This candidate implements the requested cache rule but is not a proven complete fix for the reported hitch. Vanilla still scans inventory/recipes and, while a hammer is active, destroys and recreates the placement ghost after an inventory change. Live comparison against 1.1.7 and 1.1.5 is required before productionization.
 
 ## 1.1.7 (local test candidate)
 

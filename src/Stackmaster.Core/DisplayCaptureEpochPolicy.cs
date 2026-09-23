@@ -69,17 +69,6 @@ namespace Stackmaster.Core
             return movedSquared < membershipStabilityDistance * membershipStabilityDistance;
         }
 
-        public static bool PayloadMatches(byte[] expected, byte[] current)
-        {
-            if (ReferenceEquals(expected, current)) return true;
-            if (expected == null || current == null || expected.Length != current.Length) return false;
-            for (var index = 0; index < expected.Length; index++)
-            {
-                if (expected[index] != current[index]) return false;
-            }
-            return true;
-        }
-
         private static double DistanceSquared3D(ScopePoint first, ScopePoint second)
         {
             var x = first.X - second.X;

@@ -1241,14 +1241,11 @@ namespace Stackmaster
                 return true;
             }
 
-            // Player.OnInventoryChanged rebuilds every available hammer piece and invokes
-            // HaveRequirements once per piece. The complete chest snapshot was already checked
-            // while this display epoch was published, and its lifetime is hard-capped at 200 ms.
-            // Rechecking access, ZDO revisions, owner state, and exact serialized payload bytes
-            // for every piece turns one pickup into pieces x containers synchronous work.
-            // A pickup therefore refreshes only the player slice; every call in the rebuild burst
-            // shares the same detached chest summaries. Scope/topology/boundary checks still run
-            // for every caller, and every action path still captures and validates fresh.
+            // The complete chest snapshot was already validated while this display epoch was
+            // published, and its lifetime is hard-capped at 200 ms. A changed player inventory
+            // therefore refreshes only the player slice; later display queries in the same epoch
+            // share the detached chest summaries. Scope/topology/boundary checks still run for
+            // every caller, and every action path still captures and validates fresh.
             capture = BuildCapture(
                 player,
                 matchWorldLevel,
@@ -1491,7 +1488,6 @@ namespace Stackmaster
                     zdo.m_uid,
                     zdo.OwnerRevision,
                     zdo.GetOwner(),
-                    null,
                     true);
                 mutableHandles.Add(mutableHandle);
                 AddInventory(

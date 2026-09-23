@@ -50,7 +50,10 @@ namespace Stackmaster.Compatibility.Tests
                 ("InventoryGui", "SetupRequirement", new[] { "UnityEngine.Transform", "Requirement", "Player", "System.Boolean", "System.Int32", "System.Int32" }),
                 ("InventoryGui", "get_instance", Array.Empty<string>()),
                 ("Hud", "SetupPieceInfo", new[] { "Piece" }),
+                ("Hud", "UpdatePieceBuildStatus", new[] { "System.Collections.Generic.List`1<Piece>", "Player" }),
+                ("Hud", "UpdatePieceBuildStatusAll", new[] { "System.Collections.Generic.List`1<Piece>", "Player" }),
                 ("BuildUi", "OnSelectPiece", new[] { "Piece" }),
+                ("BuildUiPieceButton", "UpdateRequirements", Array.Empty<string>()),
                 ("InventoryGrid", "UpdateInventory", new[] { "Inventory", "Player", "ItemData" }),
                 ("InventoryGrid", "OnLeftDown", new[] { "UIInputHandler" }),
                 ("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }),
@@ -92,9 +95,15 @@ namespace Stackmaster.Compatibility.Tests
             };
             foreach (var method in methods) contract.Method(method.Type, method.Name, method.Parameters);
 
-            // A pickup synchronously rebuilds known recipes and, while a build tool is active,
-            // every available piece before recreating the placement ghost. Stackmaster's
-            // HaveRequirements postfix therefore runs once per build piece in this burst.
+            // Pin the real inventory-change path and its requirement modes. Pickup does rebuild
+            // recipes/pieces and the placement ghost, but its piece checks are IsKnown (1) and
+            // CanAlmostBuild (2), never Stackmaster's CanBuild (0) branch.
+            contract.EnumValues("Player", "RequirementMode", new Dictionary<string, int>
+            {
+                ["CanBuild"] = 0,
+                ["IsKnown"] = 1,
+                ["CanAlmostBuild"] = 2
+            });
             contract.MethodCalls(
                 "Player", "OnInventoryChanged", "System.Void", Array.Empty<string>(),
                 "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>());
@@ -102,22 +111,48 @@ namespace Stackmaster.Compatibility.Tests
                 "Player", "OnInventoryChanged", "System.Void", Array.Empty<string>(),
                 "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>());
             contract.MethodCalls(
-                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
-                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" });
-            contract.MethodCalls(
-                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
-                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>());
-            contract.MethodCalls(
                 "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>(),
                 "PieceTable", "UpdateAvailable", "System.Void",
                 new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" });
             contract.MethodCalls(
-                "PieceTable", "UpdateAvailable", "System.Void",
-                new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" },
-                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" });
-            contract.MethodCalls(
                 "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>(),
                 "Player", "SetupPlacementGhost", "System.Void", Array.Empty<string>());
+            contract.MethodCallPrecedes(
+                "Player", "OnInventoryChanged", "System.Void", Array.Empty<string>(),
+                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
+                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>());
+            contract.MethodCallPrecedes(
+                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>(),
+                "PieceTable", "UpdateAvailable", "System.Void",
+                new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" },
+                "Player", "SetupPlacementGhost", "System.Void", Array.Empty<string>());
+            contract.MethodCallsWithImmediateInt32Constant(
+                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" }, 1);
+            contract.MethodCallHasPrefix(
+                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
+                "Player", "HaveRequirements", "System.Boolean",
+                new[] { "Recipe", "System.Boolean", "System.Int32", "System.Int32" },
+                new byte[] { 0x17, 0x16, 0x17 });
+            contract.MethodCallsWithImmediateInt32Constant(
+                "PieceTable", "UpdateAvailable", "System.Void",
+                new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" },
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" }, 2);
+
+            // Pin the actual CanBuild callers whose display queries may coincide with an inventory
+            // change on a later UI/update step; these are distinct from OnInventoryChanged itself.
+            contract.MethodCallsWithImmediateInt32Constant(
+                "Player", "UpdatePlacement", "System.Void", new[] { "System.Boolean", "System.Single" },
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" }, 0);
+            contract.MethodCallsWithImmediateInt32Constant(
+                "BuildUiPieceButton", "UpdateRequirements", "System.Void", Array.Empty<string>(),
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" }, 0);
+            contract.MethodCallsWithImmediateInt32Constant(
+                "Hud", "UpdatePieceBuildStatus", "System.Void", new[] { "System.Collections.Generic.List`1<Piece>", "Player" },
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" }, 0);
+            contract.MethodCallsWithImmediateInt32Constant(
+                "Hud", "UpdatePieceBuildStatusAll", "System.Void", new[] { "System.Collections.Generic.List`1<Piece>", "Player" },
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" }, 0);
 
             contract.Method("ZDOMan", "GetSessionID", "System.Int64", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
             contract.Method("GameCamera", "InFreeFly", "System.Boolean", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
@@ -756,6 +791,46 @@ namespace Stackmaster.Compatibility.Tests
                 var target = FindMethodHandle(targetType, targetName, targetReturn, targetParameters);
                 RequireInstructionToken(source, new byte[] { 0x28, 0x6f }, MetadataTokens.GetToken(target),
                     sourceType + "." + sourceName + " calls " + targetType + "." + targetName);
+            }
+
+            internal void MethodCallsWithImmediateInt32Constant(
+                string sourceType, string sourceName, string sourceReturn, string[] sourceParameters,
+                string targetType, string targetName, string targetReturn, string[] targetParameters,
+                int expectedConstant)
+            {
+                if (expectedConstant < 0 || expectedConstant > 8)
+                    throw new ArgumentOutOfRangeException(nameof(expectedConstant));
+                var source = FindMethodHandle(sourceType, sourceName, sourceReturn, sourceParameters);
+                var target = FindMethodHandle(targetType, targetName, targetReturn, targetParameters);
+                var il = MethodIl(source);
+                var constantOpcode = (byte)(0x16 + expectedConstant);
+                var found = FindCallOffsets(il, MetadataTokens.GetToken(target))
+                    .Any(offset => offset > 0 && il[offset - 1] == constantOpcode);
+                if (!found)
+                    throw new InvalidOperationException(sourceType + "." + sourceName + " must call " +
+                        targetType + "." + targetName + " with immediate integer " + expectedConstant);
+                _passed++;
+                Console.WriteLine("PASS IL " + sourceType + "." + sourceName + " calls " +
+                                  targetType + "." + targetName + " with immediate integer " + expectedConstant);
+            }
+
+            internal void MethodCallHasPrefix(
+                string sourceType, string sourceName, string sourceReturn, string[] sourceParameters,
+                string targetType, string targetName, string targetReturn, string[] targetParameters,
+                byte[] expectedPrefix)
+            {
+                var source = FindMethodHandle(sourceType, sourceName, sourceReturn, sourceParameters);
+                var target = FindMethodHandle(targetType, targetName, targetReturn, targetParameters);
+                var il = MethodIl(source);
+                var found = FindCallOffsets(il, MetadataTokens.GetToken(target)).Any(offset =>
+                    offset >= expectedPrefix.Length &&
+                    il.Skip(offset - expectedPrefix.Length).Take(expectedPrefix.Length).SequenceEqual(expectedPrefix));
+                if (!found)
+                    throw new InvalidOperationException(sourceType + "." + sourceName + " call prefix for " +
+                        targetType + "." + targetName + " changed");
+                _passed++;
+                Console.WriteLine("PASS IL " + sourceType + "." + sourceName + " calls " +
+                                  targetType + "." + targetName + " with pinned argument prefix");
             }
 
             internal void MethodCallPrecedes(

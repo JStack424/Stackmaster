@@ -23,7 +23,6 @@ namespace Stackmaster
             ZDOID resourceZdoId,
             ushort resourceOwnerRevision,
             long resourceOwner,
-            byte[] resourcePayload,
             bool resourceReadable)
         {
             Id = id;
@@ -35,7 +34,6 @@ namespace Stackmaster
             ResourceZdoId = resourceZdoId;
             ResourceOwnerRevision = resourceOwnerRevision;
             ResourceOwner = resourceOwner;
-            ResourcePayload = resourcePayload;
             ResourceReadable = resourceReadable;
         }
 
@@ -50,9 +48,6 @@ namespace Stackmaster
         internal ZDOID ResourceZdoId { get; }
         internal ushort ResourceOwnerRevision { get; }
         internal long ResourceOwner { get; }
-        // Exact copy of the serialized inventory payload used to create ResourceInventory.
-        // Display-cache reuse compares it byte-for-byte as well as checking ZDO revisions.
-        internal byte[] ResourcePayload { get; }
         internal bool ResourceReadable { get; }
     }
 
@@ -318,10 +313,9 @@ namespace Stackmaster
             // vanilla chests. Revision-before/after equality rejects a torn network snapshot.
             Inventory resourceInventory = null;
             uint resourceDataRevision = 0;
-            byte[] resourcePayload = null;
             string resourceFailure = null;
             var resourceDecoded = resourceReadOnly && isVanilla && viewValid && zdo != null &&
-                TryReadSerializedInventory(container, zdo, out resourceInventory, out resourceDataRevision, out resourcePayload, out resourceFailure);
+                TryReadSerializedInventory(container, zdo, out resourceInventory, out resourceDataRevision, out resourceFailure);
             var readPlan = ResourceSnapshotPolicy.Evaluate(
                 resourceReadOnly,
                 isKnown,
@@ -375,7 +369,6 @@ namespace Stackmaster
                 zdo != null ? zdo.m_uid : default(ZDOID),
                 zdo != null ? zdo.OwnerRevision : (ushort)0,
                 zdo != null ? zdo.GetOwner() : 0L,
-                resourceReadable ? resourcePayload : null,
                 resourceReadable);
         }
 
@@ -384,12 +377,10 @@ namespace Stackmaster
             ZDO zdo,
             out Inventory inventory,
             out uint dataRevision,
-            out byte[] payload,
             out string failure)
         {
             inventory = null;
             dataRevision = 0;
-            payload = null;
             failure = null;
             try
             {
@@ -440,46 +431,11 @@ namespace Stackmaster
 
                 inventory = snapshot;
                 dataRevision = after;
-                payload = bytes == null ? null : (byte[])bytes.Clone();
                 return true;
             }
             catch (Exception exception)
             {
                 failure = exception.Message;
-                return false;
-            }
-        }
-
-        internal static bool IsResourceHandleCurrent(Player player, StorageScope scope, ContainerHandle handle)
-        {
-            if (player == null || scope == null || handle == null || !handle.ResourceReadable ||
-                handle.Container == null || handle.Container.GetType() != typeof(Container) ||
-                handle.Container.gameObject == null || !handle.Container.gameObject.activeInHierarchy ||
-                handle.NetworkView == null || !handle.NetworkView.IsValid() ||
-                !ReferenceEquals(handle.NetworkView, NetworkViewField.GetValue(handle.Container)) ||
-                !scope.Contains(handle.Container.transform.position))
-            {
-                return false;
-            }
-
-            try
-            {
-                var zdo = handle.NetworkView.GetZDO();
-                if (zdo == null || zdo.m_uid != handle.ResourceZdoId ||
-                    zdo.DataRevision != handle.ResourceDataRevision ||
-                    zdo.OwnerRevision != handle.ResourceOwnerRevision ||
-                    zdo.GetOwner() != handle.ResourceOwner ||
-                    !TryCheckAccess(player, handle.Container, out _))
-                {
-                    return false;
-                }
-
-                var payload = zdo.GetByteArray(ZDOVars.s_items, null);
-                return zdo.DataRevision == handle.ResourceDataRevision &&
-                       DisplayCaptureEpochPolicy.PayloadMatches(handle.ResourcePayload, payload);
-            }
-            catch
-            {
                 return false;
             }
         }

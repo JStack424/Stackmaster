@@ -84,11 +84,10 @@ internal static class Program
             PlayerOnlyBypassRequiresOneCompleteIngredientQualityTier,
             PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla,
             DisplayEpochReusesMultipleCallersWithinBound,
-            PickupBuildBurstRefreshesPlayerWithoutChestWork,
+            DisplayQueriesAfterPlayerChangeRefreshPlayerWithoutChestWork,
             DisplayEpochExpiresAtHardBound,
             DisplayEpochFallbackMovementRespectsMembershipMargin,
             DisplayEpochWorkbenchReuseRequiresStableTopology,
-            DisplayEpochPayloadComparisonIsExact,
             CraftingExactDebitConsumesPlayerAndSelectedChest,
             CraftingExactDebitCannotDoubleCharge,
             CraftingIncompleteDebitCannotCommitFreeOutput,
@@ -1360,7 +1359,7 @@ internal static class Program
         True(reusable, "multiple display callers share one complete epoch inside the hard age bound");
     }
 
-    private static void PickupBuildBurstRefreshesPlayerWithoutChestWork()
+    private static void DisplayQueriesAfterPlayerChangeRefreshPlayerWithoutChestWork()
     {
         const string structuralScope = "NearbyRadius:20";
         var capturedAt = 10.0;
@@ -1368,9 +1367,9 @@ internal static class Program
         var chestCaptures = 1;
         var playerRefreshes = 0;
 
-        // One pickup changes the player inventory before Valheim rebuilds every available
-        // hammer piece. Model 250 HaveRequirements calls in that synchronous rebuild burst.
-        for (var call = 0; call < 250; call++)
+        // Model several display surfaces querying after a carried-inventory change. The first
+        // refreshes the player slice; the rest reuse the newly combined capture.
+        for (var call = 0; call < 4; call++)
         {
             var scopeReusable = DisplayCaptureEpochPolicy.CanReuseScope(
                 StorageScopeKind.NearbyRadius,
@@ -1395,9 +1394,9 @@ internal static class Program
         }
 
         Equal(1, chestCaptures,
-            "pickup build-grid burst keeps chest-side work bounded to the published epoch");
+            "display queries after a player change do not repeat chest-side work inside the epoch");
         Equal(1, playerRefreshes,
-            "pickup build-grid burst refreshes the changed player contribution immediately and once");
+            "display queries refresh the changed player contribution immediately and once");
 
         var secondPickup = DisplayCaptureEpochPolicy.SelectReuse(
             scopeReusable: true,
@@ -1490,21 +1489,6 @@ internal static class Program
                 P(0, 0, 0),
                 nowSeconds: 7.1),
             "a workbench topology change forces a complete refresh");
-    }
-
-    private static void DisplayEpochPayloadComparisonIsExact()
-    {
-        var expected = new byte[] { 1, 2, 3, 4 };
-        True(DisplayCaptureEpochPolicy.PayloadMatches(expected, new byte[] { 1, 2, 3, 4 }),
-            "byte-identical serialized inventory payloads can reuse decoded summaries");
-        True(!DisplayCaptureEpochPolicy.PayloadMatches(expected, new byte[] { 1, 2, 3, 5 }),
-            "a payload change invalidates reuse even when its length is unchanged");
-        True(!DisplayCaptureEpochPolicy.PayloadMatches(expected, new byte[] { 1, 2, 3 }),
-            "a payload length change invalidates reuse");
-        True(DisplayCaptureEpochPolicy.PayloadMatches(null!, null!),
-            "two absent serialized inventories compare exactly");
-        True(!DisplayCaptureEpochPolicy.PayloadMatches(null!, Array.Empty<byte>()),
-            "an absent payload is distinct from an explicitly empty payload");
     }
 
     private static void CraftingExactDebitConsumesPlayerAndSelectedChest()

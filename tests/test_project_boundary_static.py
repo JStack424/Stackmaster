@@ -1176,20 +1176,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("MaximumAgeSeconds = 0.20", policy)
         self.assertIn("nowSeconds >= capturedAtSeconds + MaximumAgeSeconds", policy)
         self.assertIn("movedSquared < membershipStabilityDistance * membershipStabilityDistance", policy)
-        self.assertIn("PayloadMatches", policy)
-        self.assertIn("expected[index] != current[index]", policy)
         self.assertIn("MembershipStabilityDistance", discovery)
         self.assertIn("Math.Abs(candidate.Distance - scope.Plan.FallbackRadius)", discovery)
-        self.assertIn("DisplayCaptureEpochPolicy.PayloadMatches(handle.ResourcePayload, payload)", discovery)
-        for exact_signal in (
-            "zdo.m_uid != handle.ResourceZdoId",
-            "zdo.DataRevision != handle.ResourceDataRevision",
-            "zdo.OwnerRevision != handle.ResourceOwnerRevision",
-            "zdo.GetOwner() != handle.ResourceOwner",
-            "!TryCheckAccess(player, handle.Container",
-        ):
-            self.assertIn(exact_signal, discovery)
-
         capture_start = nearby.index("private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)")
         capture_end = nearby.index("private static void AddInventory", capture_start)
         capture = nearby[capture_start:capture_end]
@@ -1214,13 +1202,17 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("var readOnlyCapture = Capture(player, matchWorldLevel, true);", nearby)
         self.assertIn("Capture(player, true, fresh)", nearby)
         self.assertIn("DisplayEpochReusesMultipleCallersWithinBound", tests)
-        self.assertIn("PickupBuildBurstRefreshesPlayerWithoutChestWork", tests)
+        self.assertIn("DisplayQueriesAfterPlayerChangeRefreshPlayerWithoutChestWork", tests)
         self.assertIn("DisplayCaptureEpochPolicy.SelectReuse", tests)
         self.assertIn("Equal(1, chestCaptures", tests)
         self.assertIn("DisplayEpochExpiresAtHardBound", tests)
+
+        recipe_postfix = nearby[nearby.index("internal static void RecipePostfix"):nearby.index("internal static void PiecePostfix")]
+        piece_postfix = nearby[nearby.index("internal static void PiecePostfix"):nearby.index("internal static class NearbyBuildHudPatch")]
+        self.assertIn("discover ||", recipe_postfix)
+        self.assertIn("mode != Player.RequirementMode.CanBuild", piece_postfix)
         self.assertIn("DisplayEpochFallbackMovementRespectsMembershipMargin", tests)
         self.assertIn("DisplayEpochWorkbenchReuseRequiresStableTopology", tests)
-        self.assertIn("DisplayEpochPayloadComparisonIsExact", tests)
         self.assertIn("PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla", tests)
 
     def test_crafting_exact_debit_is_one_shot_journaled_and_fail_closed(self):
