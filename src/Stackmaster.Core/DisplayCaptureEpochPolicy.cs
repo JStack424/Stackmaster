@@ -2,6 +2,13 @@ using System;
 
 namespace Stackmaster.Core
 {
+    public enum DisplayCaptureReuseKind
+    {
+        RecaptureAll,
+        ReuseComplete,
+        RefreshPlayerOnly
+    }
+
     /// <summary>
     /// Pure reuse rules for a short-lived, display-only nearby-resource snapshot.
     /// Mutation/action paths never enter this policy.
@@ -9,6 +16,20 @@ namespace Stackmaster.Core
     public static class DisplayCaptureEpochPolicy
     {
         public const double MaximumAgeSeconds = 0.20;
+
+        public static DisplayCaptureReuseKind SelectReuse(
+            bool scopeReusable,
+            string cachedPlayerInventorySignature,
+            string currentPlayerInventorySignature)
+        {
+            if (!scopeReusable) return DisplayCaptureReuseKind.RecaptureAll;
+            return string.Equals(
+                    cachedPlayerInventorySignature,
+                    currentPlayerInventorySignature,
+                    StringComparison.Ordinal)
+                ? DisplayCaptureReuseKind.ReuseComplete
+                : DisplayCaptureReuseKind.RefreshPlayerOnly;
+        }
 
         public static bool CanReuseScope(
             StorageScopeKind cachedKind,

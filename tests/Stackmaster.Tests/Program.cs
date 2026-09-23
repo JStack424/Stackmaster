@@ -84,6 +84,7 @@ internal static class Program
             PlayerOnlyBypassRequiresOneCompleteIngredientQualityTier,
             PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla,
             DisplayEpochReusesMultipleCallersWithinBound,
+            PickupBuildBurstRefreshesPlayerWithoutChestWork,
             DisplayEpochExpiresAtHardBound,
             DisplayEpochFallbackMovementRespectsMembershipMargin,
             DisplayEpochWorkbenchReuseRequiresStableTopology,
@@ -1357,6 +1358,60 @@ internal static class Program
             P(0, 0, 0),
             nowSeconds: 10.05);
         True(reusable, "multiple display callers share one complete epoch inside the hard age bound");
+    }
+
+    private static void PickupBuildBurstRefreshesPlayerWithoutChestWork()
+    {
+        const string structuralScope = "NearbyRadius:20";
+        var capturedAt = 10.0;
+        var cachedPlayerSignature = "player:wood=10";
+        var chestCaptures = 1;
+        var playerRefreshes = 0;
+
+        // One pickup changes the player inventory before Valheim rebuilds every available
+        // hammer piece. Model 250 HaveRequirements calls in that synchronous rebuild burst.
+        for (var call = 0; call < 250; call++)
+        {
+            var scopeReusable = DisplayCaptureEpochPolicy.CanReuseScope(
+                StorageScopeKind.NearbyRadius,
+                structuralScope,
+                P(0, 0, 0),
+                membershipStabilityDistance: 4,
+                capturedAtSeconds: capturedAt,
+                StorageScopeKind.NearbyRadius,
+                structuralScope,
+                P(0, 0, 0),
+                nowSeconds: 10.05);
+            var decision = DisplayCaptureEpochPolicy.SelectReuse(
+                scopeReusable,
+                cachedPlayerSignature,
+                currentPlayerInventorySignature: "player:wood=11");
+            if (decision == DisplayCaptureReuseKind.RecaptureAll) chestCaptures++;
+            if (decision == DisplayCaptureReuseKind.RefreshPlayerOnly)
+            {
+                playerRefreshes++;
+                cachedPlayerSignature = "player:wood=11";
+            }
+        }
+
+        Equal(1, chestCaptures,
+            "pickup build-grid burst keeps chest-side work bounded to the published epoch");
+        Equal(1, playerRefreshes,
+            "pickup build-grid burst refreshes the changed player contribution immediately and once");
+
+        var secondPickup = DisplayCaptureEpochPolicy.SelectReuse(
+            scopeReusable: true,
+            cachedPlayerSignature,
+            currentPlayerInventorySignature: "player:wood=12");
+        Equal(DisplayCaptureReuseKind.RefreshPlayerOnly, secondPickup,
+            "a later player inventory mutation refreshes the player contribution inside the same epoch");
+
+        var expired = DisplayCaptureEpochPolicy.SelectReuse(
+            scopeReusable: false,
+            cachedPlayerSignature,
+            currentPlayerInventorySignature: "player:wood=13");
+        Equal(DisplayCaptureReuseKind.RecaptureAll, expired,
+            "an expired or unsafe scope still forces a complete chest recapture");
     }
 
     private static void DisplayEpochExpiresAtHardBound()

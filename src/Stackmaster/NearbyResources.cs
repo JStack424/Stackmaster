@@ -1210,32 +1210,45 @@ namespace Stackmaster
             var epoch = _displayEpoch;
             if (epoch == null || !ReferenceEquals(epoch.Player, player) ||
                 epoch.MatchWorldLevel != matchWorldLevel ||
-                !DisplayCaptureEpochPolicy.CanReuseScope(
-                    epoch.ScopeKind,
-                    epoch.StructuralScopeSignature,
-                    epoch.PlayerPosition,
-                    epoch.MembershipStabilityDistance,
-                    epoch.CapturedAtSeconds,
-                    scope.Kind,
-                    DisplayStructuralScopeSignature(scope),
-                    scope.Plan.PlayerPosition,
-                    Time.realtimeSinceStartupAsDouble) ||
-                epoch.Containers == null ||
-                epoch.Containers.Any(handle => !ContainerDiscovery.IsResourceHandleCurrent(player, scope, handle)))
+                epoch.Containers == null || epoch.ChestStacks == null ||
+                epoch.ChestRuntimeStacks == null || epoch.Capture == null)
             {
                 return false;
             }
 
+            var scopeReusable = DisplayCaptureEpochPolicy.CanReuseScope(
+                epoch.ScopeKind,
+                epoch.StructuralScopeSignature,
+                epoch.PlayerPosition,
+                epoch.MembershipStabilityDistance,
+                epoch.CapturedAtSeconds,
+                scope.Kind,
+                DisplayStructuralScopeSignature(scope),
+                scope.Plan.PlayerPosition,
+                Time.realtimeSinceStartupAsDouble);
             var playerSignature = PlayerInventorySignature(player);
-            if (string.Equals(epoch.PlayerInventorySignature, playerSignature, StringComparison.Ordinal))
+            var reuse = DisplayCaptureEpochPolicy.SelectReuse(
+                scopeReusable,
+                epoch.PlayerInventorySignature,
+                playerSignature);
+            if (reuse == DisplayCaptureReuseKind.RecaptureAll)
+            {
+                return false;
+            }
+            if (reuse == DisplayCaptureReuseKind.ReuseComplete)
             {
                 capture = epoch.Capture;
-                return capture != null;
+                return true;
             }
 
-            // A pickup or other carried-inventory change invalidates only the player portion.
-            // Reuse the exact validated detached chest summaries without scene discovery or
-            // Inventory.Load, then atomically publish the newly combined complete capture.
+            // Player.OnInventoryChanged rebuilds every available hammer piece and invokes
+            // HaveRequirements once per piece. The complete chest snapshot was already checked
+            // while this display epoch was published, and its lifetime is hard-capped at 200 ms.
+            // Rechecking access, ZDO revisions, owner state, and exact serialized payload bytes
+            // for every piece turns one pickup into pieces x containers synchronous work.
+            // A pickup therefore refreshes only the player slice; every call in the rebuild burst
+            // shares the same detached chest summaries. Scope/topology/boundary checks still run
+            // for every caller, and every action path still captures and validates fresh.
             capture = BuildCapture(
                 player,
                 matchWorldLevel,

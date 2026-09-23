@@ -72,6 +72,11 @@ namespace Stackmaster.Compatibility.Tests
                 ("ZNet", "Update", Array.Empty<string>()),
                 ("Player", "HaveRequirementItems", new[] { "Recipe", "System.Boolean", "System.Int32", "System.Int32" }),
                 ("Player", "HaveRequirements", new[] { "Piece", "RequirementMode" }),
+                ("Player", "OnInventoryChanged", Array.Empty<string>()),
+                ("Player", "UpdateKnownRecipesList", Array.Empty<string>()),
+                ("Player", "UpdateAvailablePiecesList", Array.Empty<string>()),
+                ("Player", "SetupPlacementGhost", Array.Empty<string>()),
+                ("PieceTable", "UpdateAvailable", new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" }),
                 ("Player", "GetFirstRequiredItem", new[] { "Inventory", "Recipe", "System.Int32", "System.Int32&", "System.Int32&", "System.Int32" }),
                 ("Player", "UpdatePlacement", new[] { "System.Boolean", "System.Single" }),
                 ("Player", "TryPlacePiece", new[] { "Piece" }),
@@ -86,6 +91,33 @@ namespace Stackmaster.Compatibility.Tests
                 ("ZDO", "GetPrefab", Array.Empty<string>())
             };
             foreach (var method in methods) contract.Method(method.Type, method.Name, method.Parameters);
+
+            // A pickup synchronously rebuilds known recipes and, while a build tool is active,
+            // every available piece before recreating the placement ghost. Stackmaster's
+            // HaveRequirements postfix therefore runs once per build piece in this burst.
+            contract.MethodCalls(
+                "Player", "OnInventoryChanged", "System.Void", Array.Empty<string>(),
+                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>());
+            contract.MethodCalls(
+                "Player", "OnInventoryChanged", "System.Void", Array.Empty<string>(),
+                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>());
+            contract.MethodCalls(
+                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" });
+            contract.MethodCalls(
+                "Player", "UpdateKnownRecipesList", "System.Void", Array.Empty<string>(),
+                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>());
+            contract.MethodCalls(
+                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>(),
+                "PieceTable", "UpdateAvailable", "System.Void",
+                new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" });
+            contract.MethodCalls(
+                "PieceTable", "UpdateAvailable", "System.Void",
+                new[] { "System.Collections.Generic.HashSet`1<System.String>", "Player", "System.Boolean", "System.Boolean" },
+                "Player", "HaveRequirements", "System.Boolean", new[] { "Piece", "RequirementMode" });
+            contract.MethodCalls(
+                "Player", "UpdateAvailablePiecesList", "System.Void", Array.Empty<string>(),
+                "Player", "SetupPlacementGhost", "System.Void", Array.Empty<string>());
 
             contract.Method("ZDOMan", "GetSessionID", "System.Int64", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
             contract.Method("GameCamera", "InFreeFly", "System.Boolean", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);

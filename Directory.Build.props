@@ -7,10 +7,10 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PathMap>$(MSBuildThisFileDirectory)=/_/Stackmaster/</PathMap>
-    <StackmasterVersion>1.1.7</StackmasterVersion>
+    <StackmasterVersion>1.1.8</StackmasterVersion>
     <Version>$(StackmasterVersion)</Version>
-    <AssemblyVersion>1.1.7.0</AssemblyVersion>
-    <FileVersion>1.1.7.0</FileVersion>
+    <AssemblyVersion>1.1.8.0</AssemblyVersion>
+    <FileVersion>1.1.8.0</FileVersion>
     <Authors>JStack424</Authors>
     <RepositoryUrl>https://github.com/JStack424/Stackmaster</RepositoryUrl>
   </PropertyGroup>
