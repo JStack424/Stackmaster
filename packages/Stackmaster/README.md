@@ -4,15 +4,38 @@
 
 Stackmaster by **JStack424** combines automatic inventory sorting, deliberate nearby-storage depositing, protected-stack replenishment, storage-aware requirement totals, expedition-kit withdrawal, and optional nearby-chest material use for building and crafting in one Valheim workflow.
 
+## About this project
+
+I'm a Valheim-loving software engineer with an interest in mild game design. I built Stackmaster with the assistance of AI as a personal quality-of-life project: smooth out the frustrating bits, preserve the developers' intended experience, and never make progression feel cheesed. I didn't set out to build a widely used mod, but people are using it now, so if you find a bug or rough edge, please share it through [GitHub Issues](https://github.com/JStack424/Stackmaster/issues).
+
 ## Vanilla-plus by design
 
-Stackmaster is built to preserve the vanilla experience. It adds no gameplay advantage: no free resources, extra carrying capacity, powers, cheats, or progression shortcuts. Instead, it removes repetitive container rummaging so you can spend more time adventuring and building immersive spaces. Put a pantry behind real doors and cook at the nearby station without fetching every ingredient by hand, or unload a mining haul into its organized storage without visiting every chest one by one.
+Stackmaster removes repetitive container management without adding free resources, carrying capacity, powers, cheats, or progression shortcuts. Storage actions stay deliberate: nothing leaves your backpack just because you walk near a base, and every build or craft still consumes real materials from your inventory or accessible storage.
 
-Convenience stays deliberate. Auto-deposit works only when you look at or interact with a chest and press `Left Alt + E`; simply walking near your base never empties your backpack.
+## TL;DR
 
-> **Test candidate status:** Stackmaster 1.1.7 is a local performance and multiplayer test candidate. Requirement displays now share one complete read-only nearby-resource capture for no more than 200 ms, reducing stable open-menu scene scans and detached chest decodes from every rendered frame to about five complete captures per second. Each reuse still checks exact scope safety, access, chest/network identity, ZDO data and owner revisions, owner, serialized inventory bytes, and live player-inventory state; fallback-radius movement can reuse only inside the nearest proven membership boundary. Build, craft, upgrade, expedition-kit, ownership, reservation, debit, and rollback paths always capture fresh and cannot use this display cache. The 1.1.6 player-only fallback is retained and now defers its complete-cost verdict to Valheim itself, including ordinary quality-tier semantics. Stackmaster 1.1.5 remains the current production-ready build until this candidate passes live testing and is separately approved. Live frame-time improvement has not yet been measured; broader multiplayer, dedicated-server, workbench-extension, manual-access-preemption, and load/unload edge-case testing remains incomplete. Back up valuable characters and worlds and report any item loss, duplication, free output, crash, blocked chest, synchronization disagreement, or stale requirement total.
+- Automatically sort your backpack and opted-in vanilla chests.
+- Press `Left Alt + E` at a chest to deposit matching items and refill protected stacks.
+- Build and craft using materials from accessible storage in your active base or nearby radius.
+- See complete player-plus-storage requirement totals and pull expedition kits directly from the build menu.
 
-## Features
+## Controls
+
+| Control | Behavior |
+| --- | --- |
+| Open inventory | Sort movable player slots when player Auto-sort is enabled. Opened vanilla chests follow their own **Auto-sort chest** setting on open and close. |
+| `Left Alt` + left-click an unprotected item | Protect it immediately, with no restocking target or dialog. |
+| `Left Alt` + left-click any protected item | Fully unprotect it and clear its restocking target. |
+| `Left Alt` + right-click a stackable item | Open the restocking quantity dialog. Confirming protects the item and adds or edits its target; canceling preserves the previous state. |
+| `Left Alt` + right-click a non-stackable item | Leave its protection unchanged. Non-stackable items cannot have restocking targets. |
+| Ordinary inventory clicks | Keep Valheim's normal left- and right-click behavior. |
+| `Left Alt + E` while targeting a vanilla container | Deposit matching items and replenish protected targets. |
+| `Left Alt + E` while a vanilla chest is open | Run the same action using that chest as the target without closing it. |
+| `Left Alt` + click a build piece | Withdraw one complete expedition kit for that piece from eligible storage without closing the build menu. |
+
+The modifier follows the configured storage-action shortcut, which uses `Left Alt + E` by default. Version 1.1.7 supports keyboard and mouse; controller-specific controls are not included yet.
+
+## Detailed mechanics
 
 - **Inventory sorting**
   - Sorts movable backpack slots alphabetically whenever the inventory opens.
@@ -62,20 +85,6 @@ Convenience stays deliberate. Auto-deposit works only when you look at or intera
   - Shows compact totals, shortages, meaningful skips, and incomplete-search notices.
   - Disables all item-changing behavior if its runtime compatibility checks fail.
 
-## Controls
-
-- **Open inventory:** Sort movable player slots when the player-inventory Auto-sort checkbox is enabled. An opened vanilla chest follows its own **Auto-sort chest** checkbox on both open and close.
-- **Left Alt + left-click an unprotected item:** Protect it immediately with no restocking target and no dialog.
-- **Left Alt + left-click any protected item:** Fully unprotect it and clear any restocking target immediately.
-- **Left Alt + right-click a stackable item:** Open the restocking quantity dialog. Confirming protects the item and adds or edits its target; canceling preserves its exact prior protection and target state.
-- **Left Alt + right-click a non-stackable item:** Leave its protection state unchanged; non-stackable items cannot have restocking targets.
-- **Ordinary inventory clicks:** Keep Valheim's normal left- and right-click behavior.
-- **Left Alt + E while targeting a vanilla container:** Deposit matching items and replenish protected targets.
-- **Left Alt + E while a vanilla chest is open:** Run the same action using that chest as the target without closing it.
-- **Left Alt-click a build piece in the build menu:** Withdraw one complete expedition kit for that piece from eligible storage without closing the menu. If the configured storage-action shortcut uses different modifiers, use those modifiers instead.
-
-Version 1.1.7 supports keyboard and mouse. Controller-specific controls are not included yet.
-
 ## Configuration
 
 Stackmaster has exactly six settings:
@@ -96,6 +105,8 @@ Install with r2modman, Thunderstore Mod Manager, or another Thunderstore-compati
 For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, then place `Stackmaster.dll` in `BepInEx/plugins/Stackmaster/`.
 
 ## Compatibility and support
+
+> **Test candidate status:** Stackmaster 1.1.7 is a local performance and multiplayer test candidate. Requirement displays now share one complete read-only nearby-resource capture for no more than 200 ms, reducing stable open-menu scene scans and detached chest decodes from every rendered frame to about five complete captures per second. Each reuse still checks exact scope safety, access, chest/network identity, ZDO data and owner revisions, owner, serialized inventory bytes, and live player-inventory state; fallback-radius movement can reuse only inside the nearest proven membership boundary. Build, craft, upgrade, expedition-kit, ownership, reservation, debit, and rollback paths always capture fresh and cannot use this display cache. The 1.1.6 player-only fallback is retained and now defers its complete-cost verdict to Valheim itself, including ordinary quality-tier semantics. Stackmaster 1.1.5 remains the current production-ready build until this candidate passes live testing and is separately approved. Live frame-time improvement has not yet been measured; broader multiplayer, dedicated-server, workbench-extension, manual-access-preemption, and load/unload edge-case testing remains incomplete. Back up valuable characters and worlds and report any item loss, duplication, free output, crash, blocked chest, synchronization disagreement, or stale requirement total.
 
 Stackmaster 1.1.7 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
 
