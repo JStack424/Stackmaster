@@ -123,6 +123,16 @@ namespace Stackmaster
                 Cancel("a newer crafting intent replaced the pending craft", false);
             }
 
+            // Outside every workbench mesh, a craft the live player inventory can pay in
+            // full has no shared-storage state to protect. Keep it entirely on Valheim's
+            // native path so movement, nearby players, containers, and topology cannot
+            // invalidate a Stackmaster preflight that the craft never needed.
+            if (ShouldUseVanillaPlayerInventory(gui))
+            {
+                VanillaPlayerCraftContext.Begin();
+                return true;
+            }
+
             CraftingIntent intent;
             if (!TryCaptureIntent(gui, out intent)) return true;
 
@@ -165,6 +175,7 @@ namespace Stackmaster
 
         internal static void AfterVanillaStart(InventoryGui gui)
         {
+            VanillaPlayerCraftContext.End();
             if (!Lifecycle.Matches(_generation) || Lifecycle.Phase != CraftingActionPhase.Reserved ||
                 _intent == null || !ReferenceEquals(gui, _intent.Gui))
             {
@@ -188,6 +199,7 @@ namespace Stackmaster
 
         internal static Exception Finalizer(Exception exception)
         {
+            VanillaPlayerCraftContext.End();
             if (exception != null && Lifecycle.IsActive)
             {
                 Cancel("craft start threw " + exception.GetType().Name, true);
@@ -384,6 +396,25 @@ namespace Stackmaster
                 return false;
             }
             return NearbyResourceService.TryPrepareCraftingResources(_intent.Player, _plan, out _prepared, out failure);
+        }
+
+        private static bool ShouldUseVanillaPlayerInventory(InventoryGui gui)
+        {
+            var player = Player.m_localPlayer;
+            var selected = SelectedRecipeField.GetValue(gui);
+            var recipe = selected == null ? null : SelectedRecipeProperty.GetValue(selected, null) as Recipe;
+            if (player == null || selected == null || recipe == null) return false;
+            var upgrade = SelectedUpgradeItemProperty.GetValue(selected, null) as ItemDrop.ItemData;
+            var quality = upgrade == null ? 1 : upgrade.m_quality + 1;
+            var multi = upgrade == null &&
+                (ZInput.GetButton("AltPlace") || ZInput.GetButton("JoyLStick") ||
+                 (bool)TouchMultiCraftingField.GetValue(gui));
+            var multiplier = multi ? Math.Max(1, (int)MultiCraftAmountField.GetValue(gui)) : 1;
+            return NearbyResourceService.ShouldUseVanillaPlayerInventoryCraft(
+                player,
+                recipe,
+                quality,
+                multiplier);
         }
 
         private static bool TryCaptureIntent(InventoryGui gui, out CraftingIntent intent)

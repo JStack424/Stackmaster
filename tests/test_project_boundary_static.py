@@ -1112,6 +1112,60 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(signature, gate)
 
+    def test_outside_workbench_player_only_crafting_stays_vanilla_and_chest_crafting_stays_guarded(self):
+        action = (PLUGIN_DIR / "CraftingPreflightAction.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "CraftingResourcePathPolicy.cs").read_text(encoding="utf-8")
+        tests = (ROOT / "tests" / "Stackmaster.Tests" / "Program.cs").read_text(encoding="utf-8")
+
+        self.assertIn("scopeKind == StorageScopeKind.NearbyRadius && playerInventorySatisfiesFullCost", policy)
+        self.assertIn("OutsideWorkbenchPlayerOnlyCraftIgnoresUnrelatedStateChurn", tests)
+        self.assertIn("OutsideWorkbenchCraftWithInventoryShortageKeepsGuardedTransaction", tests)
+        self.assertIn("WorkbenchCraftWithPlayerMaterialsKeepsGuardedTransaction", tests)
+
+        player_only_start = nearby.index("internal static bool ShouldUseVanillaPlayerInventoryCraft(")
+        player_only_end = nearby.index("internal static bool TryBeginPieceTransaction", player_only_start)
+        player_only = nearby[player_only_start:player_only_end]
+        self.assertIn("scope.Kind != StorageScopeKind.NearbyRadius", player_only)
+        self.assertIn("player.GetInventory()", player_only)
+        self.assertIn("PlayerInventoryOneIngredientRequirements", player_only)
+        self.assertIn("AddInventory(", player_only)
+        self.assertIn("true);", player_only)
+        self.assertIn("CraftingResourcePathPolicy.SelectForPlayerInventory", player_only)
+        self.assertIn("CraftingResourcePath.VanillaPlayerInventory", player_only)
+        self.assertNotIn("Capture(player", player_only)
+        self.assertNotIn("ContainerDiscovery", player_only)
+        self.assertNotIn("ContainerHandle", player_only)
+        self.assertNotIn("Ownership", player_only)
+        self.assertNotIn("Reservation", player_only)
+
+        bypass = action.index("if (ShouldUseVanillaPlayerInventory(gui))")
+        preflight = action.index("NearbyResourceService.TryPlanCraftingResources(")
+        self.assertLess(bypass, preflight)
+        self.assertIn("VanillaPlayerCraftContext.Begin()", action[bypass:preflight])
+        self.assertIn("VanillaPlayerCraftContext.End()", action)
+
+        crafting_patch = nearby[nearby.index("internal static class NearbyCraftingActionPatch"):nearby.index("internal static class NearbyBuildingActionPatch")]
+        finish_bypass = crafting_patch.index("ShouldUseVanillaPlayerInventoryCraft(")
+        guarded_begin = crafting_patch.index("TryBeginPreparedTransaction(")
+        guarded_fallback = crafting_patch.index("TryBeginRecipeTransaction(")
+        self.assertLess(guarded_begin, finish_bypass)
+        self.assertLess(finish_bypass, guarded_fallback)
+        self.assertIn("!handledPrepared && NearbyResourceService.ShouldUseVanillaPlayerInventoryCraft", crafting_patch)
+        self.assertIn("VanillaPlayerCraftContext.Begin()", crafting_patch[guarded_begin:guarded_fallback])
+        self.assertIn("ResourceActionContext.Restore(__state)", crafting_patch[guarded_begin:guarded_fallback])
+        self.assertGreaterEqual(crafting_patch.count("VanillaPlayerCraftContext.End()"), 2)
+
+        self.assertGreaterEqual(nearby.count("VanillaPlayerCraftContext.Active"), 2)
+        self.assertIn('TryCleanup("Vanilla player-craft context cleanup", VanillaPlayerCraftContext.End)', runtime)
+        self.assertIn("TryPrepareCraftingResources", action)
+        self.assertIn("TryBeginPreparedCraftingTransaction", nearby)
+        self.assertIn("RevalidateReservedContainers", nearby)
+        self.assertIn("RevalidateStacks", nearby)
+        self.assertIn("ResourceTransactionContext.Begin", nearby)
+        self.assertIn("ResourceTransactionContext.Rollback", nearby)
+
     def test_crafting_exact_debit_is_one_shot_journaled_and_fail_closed(self):
         debit = (ROOT / "src" / "Stackmaster.Core" / "ExactResourceDebit.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")

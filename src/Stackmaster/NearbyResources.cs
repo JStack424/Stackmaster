@@ -44,6 +44,24 @@ namespace Stackmaster
         }
     }
 
+    internal static class VanillaPlayerCraftContext
+    {
+        [ThreadStatic]
+        private static bool _active;
+
+        internal static bool Active => _active;
+
+        internal static void Begin()
+        {
+            _active = true;
+        }
+
+        internal static void End()
+        {
+            _active = false;
+        }
+    }
+
     internal sealed class RemovedResource
     {
         internal RemovedResource(Inventory inventory, ItemDrop.ItemData item, Vector2i position, int quantity)
@@ -528,6 +546,66 @@ namespace Stackmaster
 
             var requirements = RecipeRequirements(player, recipe, qualityLevel, craftMultiplier);
             return requirements.Count == 0 || Plan(player, requirements, true, fresh).IsSatisfiable;
+        }
+
+        internal static bool ShouldUseVanillaPlayerInventoryCraft(
+            Player player,
+            Recipe recipe,
+            int qualityLevel,
+            int craftMultiplier)
+        {
+            if (player == null || recipe == null || craftMultiplier <= 0) return false;
+            var scope = StorageScopeProvider.Resolve(player);
+            if (scope == null || scope.Kind != StorageScopeKind.NearbyRadius) return false;
+
+            // This is deliberately independent from Capture(): no container discovery, scope
+            // signature, ownership, reservation, ZDO revision, or shared-state input is retained.
+            // Both the craft-button and DoCrafting hooks call it afresh against the live player
+            // inventory. If the player cannot still pay alone, the guarded storage path remains.
+            var playerStacks = new List<ResourceStack>();
+            AddInventory(
+                playerStacks,
+                new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal),
+                PlayerInventoryId,
+                player.GetInventory(),
+                null,
+                0,
+                true);
+
+            var requirements = recipe.m_requireOnlyOneIngredient
+                ? PlayerInventoryOneIngredientRequirements(player, recipe, qualityLevel, craftMultiplier)
+                : RecipeRequirements(player, recipe, qualityLevel, craftMultiplier);
+            return CraftingResourcePathPolicy.SelectForPlayerInventory(
+                       scope.Kind,
+                       requirements,
+                       playerStacks,
+                       recipe.m_requireOnlyOneIngredient) == CraftingResourcePath.VanillaPlayerInventory;
+        }
+
+        private static IReadOnlyList<ResourceRequirement> PlayerInventoryOneIngredientRequirements(
+            Player player,
+            Recipe recipe,
+            int qualityLevel,
+            int craftMultiplier)
+        {
+            var alternatives = new List<ResourceRequirement>();
+            var station = player.GetCurrentCraftingStation();
+            foreach (var requirement in recipe.m_resources ?? Array.Empty<Piece.Requirement>())
+            {
+                if (!AppliesAtStation(requirement, station) || requirement.m_resItem == null)
+                {
+                    continue;
+                }
+                var required = checked(requirement.GetAmount(qualityLevel) * craftMultiplier);
+                if (required <= 0) continue;
+                var name = requirement.m_resItem.m_itemData.m_shared.m_name;
+                var maxQuality = requirement.m_resItem.m_itemData.m_shared.m_maxQuality;
+                for (var quality = 1; quality <= maxQuality; quality++)
+                {
+                    alternatives.Add(new ResourceRequirement(name, required, quality));
+                }
+            }
+            return alternatives;
         }
 
         internal static bool TryBeginPieceTransaction(Player player, Piece piece, out string failure)
@@ -2077,7 +2155,7 @@ namespace Stackmaster
             var vanillaResult = __result;
             try
             {
-                if (!RuntimeContext.Compatibility.IsCompatible || discover ||
+                if (!RuntimeContext.Compatibility.IsCompatible || discover || VanillaPlayerCraftContext.Active ||
                     RuntimeContext.Plugin == null || !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value)
                 {
                     return;
@@ -2541,8 +2619,8 @@ namespace Stackmaster
             var vanillaExtraAmount = extraAmount;
             try
             {
-                if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
-                    !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value ||
+                if (!RuntimeContext.Compatibility.IsCompatible || VanillaPlayerCraftContext.Active ||
+                    RuntimeContext.Plugin == null || !RuntimeContext.Plugin.CraftingFromNearbyChestsEnabled.Value ||
                     !ReferenceEquals(inventory, __instance.GetInventory()) || recipe == null || !recipe.m_requireOnlyOneIngredient)
                 {
                     return;
@@ -2637,6 +2715,24 @@ namespace Stackmaster
             {
                 return true;
             }
+
+            // Only a craft that began without a guarded preflight may finish on the narrow
+            // player-only path. An active or mismatched prepared transaction stays guarded
+            // and fail-closed even if the player's inventory changed during the craft bar.
+            if (!handledPrepared && NearbyResourceService.ShouldUseVanillaPlayerInventoryCraft(
+                    player,
+                    ___m_craftRecipe,
+                    qualityLevel,
+                    multiplier))
+            {
+                // Let every nested vanilla requirement/ingredient/removal call stay vanilla.
+                // No Stackmaster transaction is active and no shared-state signature survives
+                // across the crafting bar for this player-funded fallback-scope craft.
+                VanillaPlayerCraftContext.Begin();
+                ResourceActionContext.Restore(__state);
+                return true;
+            }
+
             if (!handledPrepared && NearbyResourceService.TryBeginRecipeTransaction(player, ___m_craftRecipe, qualityLevel, multiplier, out failure))
             {
                 return true;
@@ -2654,12 +2750,14 @@ namespace Stackmaster
 
         internal static void Postfix(ResourceActionKind __state)
         {
+            VanillaPlayerCraftContext.End();
             ResourceTransactionContext.Complete(ResourceActionKind.Crafting);
             ResourceActionContext.Restore(__state);
         }
 
         internal static Exception Finalizer(Exception __exception, ResourceActionKind __state)
         {
+            VanillaPlayerCraftContext.End();
             if (__exception != null)
             {
                 ResourceTransactionContext.Rollback();

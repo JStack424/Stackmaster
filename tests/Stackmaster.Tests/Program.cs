@@ -76,6 +76,12 @@ internal static class Program
             ResourcePlanConsumesExactlyFiftyAcrossPartialStacks,
             ResourcePlanNormalizesDuplicateRequirements,
             ResourcePlanDoesNotDoubleConsume,
+            OutsideWorkbenchPlayerOnlyCraftIgnoresUnrelatedStateChurn,
+            OutsideWorkbenchCraftWithInventoryShortageKeepsGuardedTransaction,
+            WorkbenchCraftWithPlayerMaterialsKeepsGuardedTransaction,
+            PlayerOnlyBypassHonorsCompleteNormalizedCost,
+            PlayerOnlyBypassHonorsExactUpgradeQuality,
+            PlayerOnlyBypassRequiresOneCompleteIngredientQualityTier,
             CraftingExactDebitConsumesPlayerAndSelectedChest,
             CraftingExactDebitCannotDoubleCharge,
             CraftingIncompleteDebitCannotCommitFreeOutput,
@@ -1196,6 +1202,124 @@ internal static class Program
         Equal(50, plan.RequiredUnits, "required units are the exact combined cost");
         Equal(50, plan.PlannedUnits, "plan never consumes the cost twice");
         SequenceEqual(new[] { 25, 25 }, plan.Steps.Select(step => step.Quantity), "only the needed chest remainder is used");
+    }
+
+    private static void OutsideWorkbenchPlayerOnlyCraftIgnoresUnrelatedStateChurn()
+    {
+        var before = CraftingResourcePathPolicy.Select(
+            StorageScopeKind.NearbyRadius,
+            playerInventorySatisfiesFullCost: true);
+        var afterUnrelatedMultiplayerChurn = CraftingResourcePathPolicy.Select(
+            StorageScopeKind.NearbyRadius,
+            playerInventorySatisfiesFullCost: true);
+
+        Equal(CraftingResourcePath.VanillaPlayerInventory, before,
+            "a fully player-funded craft outside every workbench starts on vanilla inventory");
+        Equal(before, afterUnrelatedMultiplayerChurn,
+            "unrelated multiplayer or shared-storage churn cannot alter the player-only path");
+    }
+
+    private static void OutsideWorkbenchCraftWithInventoryShortageKeepsGuardedTransaction()
+    {
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.Select(
+                StorageScopeKind.NearbyRadius,
+                playerInventorySatisfiesFullCost: false),
+            "outside-workbench craft requiring any chest stock remains fail-closed and guarded");
+    }
+
+    private static void WorkbenchCraftWithPlayerMaterialsKeepsGuardedTransaction()
+    {
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.Select(
+                StorageScopeKind.WorkbenchMesh,
+                playerInventorySatisfiesFullCost: true),
+            "the narrow bypass does not change workbench-mesh transaction behavior");
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.Select(
+                StorageScopeKind.Unavailable,
+                playerInventorySatisfiesFullCost: true),
+            "an unresolved scope never enters the bypass");
+    }
+
+    private static void PlayerOnlyBypassHonorsCompleteNormalizedCost()
+    {
+        var requirements = new[]
+        {
+            new ResourceRequirement("Wood", 6),
+            new ResourceRequirement("Wood", 6),
+            new ResourceRequirement("Stone", 3)
+        };
+        var insufficientMultiCraftInventory = new[]
+        {
+            Resource("player", "wood", "Wood", 1, 11, 0, 0),
+            Resource("player", "stone", "Stone", 1, 3, 0, 1)
+        };
+
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.SelectForPlayerInventory(
+                StorageScopeKind.NearbyRadius,
+                requirements,
+                insufficientMultiCraftInventory,
+                requireOnlyOneIngredient: false),
+            "duplicate and already-multiplied recipe costs are normalized before bypass eligibility");
+    }
+
+    private static void PlayerOnlyBypassHonorsExactUpgradeQuality()
+    {
+        var qualityTwoCost = new[] { new ResourceRequirement("Iron", 4, quality: 2) };
+        var wrongQualityInventory = new[]
+        {
+            Resource("player", "iron-q1", "Iron", 1, 99, 0, 0)
+        };
+
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.SelectForPlayerInventory(
+                StorageScopeKind.NearbyRadius,
+                qualityTwoCost,
+                wrongQualityInventory,
+                requireOnlyOneIngredient: false),
+            "upgrade bypass does not count a different item quality toward the exact cost");
+    }
+
+    private static void PlayerOnlyBypassRequiresOneCompleteIngredientQualityTier()
+    {
+        var oneOfAlternatives = new[]
+        {
+            new ResourceRequirement("Meat", 6, quality: 1),
+            new ResourceRequirement("Meat", 6, quality: 2)
+        };
+        var splitQualities = new[]
+        {
+            Resource("player", "meat-q1", "Meat", 1, 3, 0, 0),
+            Resource("player", "meat-q2", "Meat", 2, 3, 0, 1)
+        };
+        var completeTier = new[]
+        {
+            Resource("player", "meat-q2", "Meat", 2, 6, 0, 0)
+        };
+
+        Equal(
+            CraftingResourcePath.GuardedNearbyStorage,
+            CraftingResourcePathPolicy.SelectForPlayerInventory(
+                StorageScopeKind.NearbyRadius,
+                oneOfAlternatives,
+                splitQualities,
+                requireOnlyOneIngredient: true),
+            "one-of bypass cannot aggregate incompatible qualities into one ingredient payment");
+        Equal(
+            CraftingResourcePath.VanillaPlayerInventory,
+            CraftingResourcePathPolicy.SelectForPlayerInventory(
+                StorageScopeKind.NearbyRadius,
+                oneOfAlternatives,
+                completeTier,
+                requireOnlyOneIngredient: true),
+            "one complete valid quality tier permits the vanilla player-only path");
     }
 
     private static void CraftingExactDebitConsumesPlayerAndSelectedChest()

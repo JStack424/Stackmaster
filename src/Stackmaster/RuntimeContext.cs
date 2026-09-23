@@ -69,6 +69,7 @@ namespace Stackmaster
                 NearbyResourceService.DiscardEndedSessionState();
                 OwnershipCoordinator.DiscardEndedSessionState();
                 ResourceActionContext.Reset();
+                VanillaPlayerCraftContext.End();
                 StorageAction.RearmSession();
                 NearbyResourceOwnership.RearmSession();
                 ExpeditionKitAction.RearmSession();
@@ -134,6 +135,7 @@ namespace Stackmaster
                     NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown);
                 completedSafely &= TryCleanup("Ownership shutdown", () => OwnershipCoordinator.Shutdown(reason));
                 completedSafely &= TryCleanup("Resource action context cleanup", ResourceActionContext.Reset);
+                completedSafely &= TryCleanup("Vanilla player-craft context cleanup", VanillaPlayerCraftContext.End);
                 completedSafely &= TryCleanup("Inventory session cleanup", InventoryIntegration.OnSessionDisconnected);
                 completedSafely &= TryCleanup("Chest-sort preference session cleanup", ChestSortPreferences.Shutdown);
                 completedSafely &= TryCleanup("Storage scope cleanup", StorageScopeProvider.Reset);
@@ -180,6 +182,7 @@ namespace Stackmaster
             NearbyCraftingHudPatch.ResetCache();
             NearbyHudFailOpen.ResetSession();
             ResourceActionContext.Reset();
+            VanillaPlayerCraftContext.End();
             _lifecycle.ShutDown();
             _disconnectingNetwork = null;
             _disconnectCleanupCompleted = false;
