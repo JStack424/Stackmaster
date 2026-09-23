@@ -2,7 +2,7 @@
 
 > Turn a messy Viking inventory into a tidy, adventure-ready loadout.
 
-Stackmaster by **JStack424** combines automatic inventory sorting, deliberate nearby-storage depositing, protected-stack replenishment, storage-aware requirement totals, expedition-kit withdrawal, and optional nearby-chest material use for building and crafting in one Valheim workflow.
+Stackmaster by **JStack424** brings inventory sorting, automatic chest depositing, and building and crafting from nearby storage into one Valheim workflow.
 
 ## About this project
 
@@ -15,22 +15,34 @@ Stackmaster removes repetitive container management without adding free resource
 ## TL;DR
 
 - Automatically sort your backpack and opted-in vanilla chests.
-- Press `Left Alt + E` at a chest to deposit matching items and refill protected stacks.
-- Build and craft using materials from accessible storage in your active base or nearby radius.
-- See complete player-plus-storage requirement totals and pull expedition kits directly from the build menu.
+- Deposit matching items into nearby storage with one deliberate shortcut.
+- Build and craft using materials from accessible chests.
 
 ## Controls
 
+### Inventory
+
 | Control | Behavior |
 | --- | --- |
-| Open inventory | Sort movable player slots when player Auto-sort is enabled. Opened vanilla chests follow their own **Auto-sort chest** setting on open and close. |
+| Open inventory | Sort movable player slots when player Auto-sort is enabled. |
 | `Left Alt` + left-click an unprotected item | Protect it immediately, with no restocking target or dialog. |
 | `Left Alt` + left-click any protected item | Fully unprotect it and clear its restocking target. |
 | `Left Alt` + right-click a stackable item | Open the restocking quantity dialog. Confirming protects the item and adds or edits its target; canceling preserves the previous state. |
 | `Left Alt` + right-click a non-stackable item | Leave its protection unchanged. Non-stackable items cannot have restocking targets. |
 | Ordinary inventory clicks | Keep Valheim's normal left- and right-click behavior. |
+
+### Chests
+
+| Control | Behavior |
+| --- | --- |
+| Open or close a vanilla chest | Sort that chest when its **Auto-sort chest** setting is enabled. |
 | `Left Alt + E` while targeting a vanilla container | Deposit matching items and replenish protected targets. |
 | `Left Alt + E` while a vanilla chest is open | Run the same action using that chest as the target without closing it. |
+
+### Build menu
+
+| Control | Behavior |
+| --- | --- |
 | `Left Alt` + click a build piece | Withdraw one complete expedition kit for that piece from eligible storage without closing the build menu. |
 
 The modifier follows the configured storage-action shortcut, which uses `Left Alt + E` by default. Version 1.1.7 supports keyboard and mouse; controller-specific controls are not included yet.
