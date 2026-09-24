@@ -72,7 +72,7 @@ namespace Stackmaster
                 VanillaPlayerCraftContext.End();
                 StorageAction.RearmSession();
                 NearbyResourceOwnership.RearmSession();
-                ExpeditionKitAction.RearmSession();
+                QuickGrabMaterialsAction.RearmSession();
                 ChestSortPreferences.Initialize();
                 StorageScopeProvider.Reset();
                 NearbyResourceService.ResetCaches();
@@ -127,7 +127,7 @@ namespace Stackmaster
                 // Roll back mutations and clear logical reservations before handing any exact
                 // acquired ZDO back to vanilla. Every stage runs even if another stage fails.
                 completedSafely &= TryCleanup("Resource transaction shutdown", ResourceTransactionContext.Shutdown);
-                completedSafely &= TryCleanup("Expedition-kit shutdown", ExpeditionKitAction.Shutdown);
+                completedSafely &= TryCleanup("Quick-grab shutdown", QuickGrabMaterialsAction.Shutdown);
                 completedSafely &= TryCleanup("Storage-action shutdown", StorageAction.Shutdown);
                 completedSafely &= TryCleanup("Crafting preflight shutdown", () => CraftingPreflightAction.Shutdown(reason));
                 completedSafely &= TryCleanup("Nearby-resource ownership shutdown", NearbyResourceOwnership.Shutdown);
@@ -171,7 +171,7 @@ namespace Stackmaster
 
         internal static void Shutdown()
         {
-            ExpeditionKitAction.Shutdown();
+            QuickGrabMaterialsAction.Shutdown();
             StorageAction.Shutdown();
             CraftingPreflightAction.Shutdown("plugin shutdown");
             NearbyResourceOwnership.Shutdown();

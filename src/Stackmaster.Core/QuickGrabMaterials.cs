@@ -6,11 +6,11 @@ using System.Linq;
 namespace Stackmaster.Core
 {
     /// <summary>
-    /// Pure input policy for the build-menu expedition shortcut. An ordinary click is never
+    /// Pure input policy for the build-menu quick-grab shortcut. An ordinary click is never
     /// intercepted unless the configured shortcut has at least one modifier and every configured
     /// modifier is currently held.
     /// </summary>
-    public static class ExpeditionClickPolicy
+    public static class QuickGrabClickPolicy
     {
         public static bool ShouldIntercept(
             bool runtimeCompatible,
@@ -33,7 +33,7 @@ namespace Stackmaster.Core
     /// visited by their total stock of that ingredient (largest first), with stable identity and
     /// slot tie-breakers. Player-held stock is intentionally absent from this policy.
     /// </summary>
-    public sealed class ExpeditionKitWithdrawalPlanner
+    public sealed class QuickGrabMaterialsWithdrawalPlanner
     {
         public ResourceWithdrawalPlan Plan(
             IEnumerable<ResourceRequirement> requirements,
@@ -112,7 +112,7 @@ namespace Stackmaster.Core
 
             if (shortages.Count > 0)
             {
-                // A kit is indivisible. Keep diagnostic shortages but expose no executable steps.
+                // A piece-specific material grab is indivisible. Keep diagnostic shortages but expose no executable steps.
                 return new ResourceWithdrawalPlan(normalized, Array.Empty<ResourceWithdrawalStep>(), shortages);
             }
             return new ResourceWithdrawalPlan(normalized, steps, shortages);
@@ -144,9 +144,9 @@ namespace Stackmaster.Core
         }
     }
 
-    public sealed class ExpeditionCargoStack
+    public sealed class QuickGrabCargoStack
     {
-        public ExpeditionCargoStack(
+        public QuickGrabCargoStack(
             string sourceStackId,
             string compatibilityKey,
             int quantity,
@@ -172,9 +172,9 @@ namespace Stackmaster.Core
         public double AddedWeight { get; }
     }
 
-    public sealed class ExpeditionDestinationStep
+    public sealed class QuickGrabDestinationStep
     {
-        public ExpeditionDestinationStep(
+        public QuickGrabDestinationStep(
             string sourceStackId,
             string compatibilityKey,
             int destinationSlot,
@@ -195,36 +195,36 @@ namespace Stackmaster.Core
         public int Quantity { get; }
     }
 
-    public sealed class ExpeditionCapacityPlan
+    public sealed class QuickGrabCapacityPlan
     {
-        public ExpeditionCapacityPlan(
+        public QuickGrabCapacityPlan(
             bool fitsSlots,
             bool fitsWeight,
             double addedWeight,
-            IEnumerable<ExpeditionDestinationStep> steps)
+            IEnumerable<QuickGrabDestinationStep> steps)
         {
             FitsSlots = fitsSlots;
             FitsWeight = fitsWeight;
             AddedWeight = addedWeight;
-            Steps = new ReadOnlyCollection<ExpeditionDestinationStep>((steps ?? Array.Empty<ExpeditionDestinationStep>()).ToList());
+            Steps = new ReadOnlyCollection<QuickGrabDestinationStep>((steps ?? Array.Empty<QuickGrabDestinationStep>()).ToList());
         }
 
         public bool FitsSlots { get; }
         public bool FitsWeight { get; }
         public bool IsFeasible => FitsSlots && FitsWeight;
         public double AddedWeight { get; }
-        public IReadOnlyList<ExpeditionDestinationStep> Steps { get; }
+        public IReadOnlyList<QuickGrabDestinationStep> Steps { get; }
     }
 
     /// <summary>
     /// Simulates exact stacking and slot use before any chest is changed. Cargo order is retained
     /// so the runtime can execute and compensate the same deterministic transfer sequence.
     /// </summary>
-    public sealed class ExpeditionCapacityPlanner
+    public sealed class QuickGrabCapacityPlanner
     {
-        public ExpeditionCapacityPlan Plan(
+        public QuickGrabCapacityPlan Plan(
             InventorySnapshot player,
-            IEnumerable<ExpeditionCargoStack> cargo,
+            IEnumerable<QuickGrabCargoStack> cargo,
             double currentWeight,
             double maxCarryWeight)
         {
@@ -241,7 +241,7 @@ namespace Stackmaster.Core
             {
                 slots[item.Slot] = new VirtualSlot(item.CompatibilityKey, item.Quantity, item.MaxStack);
             }
-            var steps = new List<ExpeditionDestinationStep>();
+            var steps = new List<QuickGrabDestinationStep>();
             var fitsSlots = true;
 
             foreach (var source in incoming)
@@ -254,7 +254,7 @@ namespace Stackmaster.Core
                     var available = destination.MaxStack - destination.Quantity;
                     if (available <= 0) continue;
                     var moved = Math.Min(available, remaining);
-                    steps.Add(new ExpeditionDestinationStep(
+                    steps.Add(new QuickGrabDestinationStep(
                         source.SourceStackId,
                         source.CompatibilityKey,
                         slot,
@@ -273,7 +273,7 @@ namespace Stackmaster.Core
                         break;
                     }
                     var moved = Math.Min(source.MaxStack, remaining);
-                    steps.Add(new ExpeditionDestinationStep(
+                    steps.Add(new QuickGrabDestinationStep(
                         source.SourceStackId,
                         source.CompatibilityKey,
                         emptySlot,
@@ -288,9 +288,9 @@ namespace Stackmaster.Core
 
             if (!fitsSlots || !fitsWeight)
             {
-                return new ExpeditionCapacityPlan(fitsSlots, fitsWeight, addedWeight, Array.Empty<ExpeditionDestinationStep>());
+                return new QuickGrabCapacityPlan(fitsSlots, fitsWeight, addedWeight, Array.Empty<QuickGrabDestinationStep>());
             }
-            return new ExpeditionCapacityPlan(true, true, addedWeight, steps);
+            return new QuickGrabCapacityPlan(true, true, addedWeight, steps);
         }
 
         private sealed class VirtualSlot

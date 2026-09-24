@@ -1135,7 +1135,7 @@ namespace Stackmaster
             return !requirement.m_upgraderResource;
         }
 
-        internal static NearbyResourceCapture CaptureForExpedition(Player player, bool matchWorldLevel, bool fresh)
+        internal static NearbyResourceCapture CaptureForQuickGrab(Player player, bool matchWorldLevel, bool fresh)
         {
             return Capture(player, matchWorldLevel, fresh);
         }

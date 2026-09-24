@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Stackmaster
 {
-    internal static class ExpeditionKitClickPatch
+    internal static class QuickGrabMaterialsClickPatch
     {
         internal static bool Prefix([HarmonyArgument(0)] Piece piece)
         {
@@ -27,7 +27,7 @@ namespace Stackmaster
                 var modifierStates = modifiers.Select(Input.GetKey).ToArray();
                 var hasMaterialRecipe = piece != null && (piece.m_resources ?? Array.Empty<Piece.Requirement>())
                     .Any(requirement => requirement != null && requirement.m_resItem != null && requirement.m_amount > 0);
-                if (!ExpeditionClickPolicy.ShouldIntercept(
+                if (!QuickGrabClickPolicy.ShouldIntercept(
                         RuntimeContext.Compatibility.IsCompatible,
                         player != null,
                         hasMaterialRecipe,
@@ -37,26 +37,26 @@ namespace Stackmaster
                 }
 
                 // Suppress BuildUi.OnSelectPiece: no selection change, button sound, or
-                // Hud.CloseBuildUi. Every modified click is one independent complete-kit request.
+                // Hud.CloseBuildUi. Every modified click is one independent complete-material request.
                 intercepting = true;
-                ExpeditionKitAction.Begin(player, piece);
+                QuickGrabMaterialsAction.Begin(player, piece);
                 return false;
             }
             catch (Exception exception)
             {
-                NearbyHudFailOpen.ReportOnce("expedition-kit click", exception);
+                NearbyHudFailOpen.ReportOnce("quick-grab click", exception);
                 // Once the configured modified click is recognized, every outcome stays on
-                // the expedition path so an internal failure cannot select the piece/close the menu.
+                // the quick-grab path so an internal failure cannot select the piece/close the menu.
                 return !intercepting;
             }
         }
     }
 
-    internal sealed class ExpeditionInventoryBackup
+    internal sealed class QuickGrabInventoryBackup
     {
         private readonly IdentityPreservingInventoryBackup<ItemDrop.ItemData, ItemDrop.ItemData> _items;
 
-        internal ExpeditionInventoryBackup(Inventory inventory, bool preserveItemIdentity)
+        internal QuickGrabInventoryBackup(Inventory inventory, bool preserveItemIdentity)
         {
             Inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             var ordered = inventory.GetAllItems()
@@ -75,16 +75,16 @@ namespace Stackmaster
         internal Inventory Inventory { get; }
         internal int TotalUnits { get; }
 
-        internal ExpeditionSnapshotRestoreTarget PrepareRestore()
-            => new ExpeditionSnapshotRestoreTarget(
+        internal QuickGrabSnapshotRestoreTarget PrepareRestore()
+            => new QuickGrabSnapshotRestoreTarget(
                 Inventory,
                 _items.PrepareRestore(snapshot => snapshot.Clone()),
                 TotalUnits);
     }
 
-    internal sealed class ExpeditionSnapshotRestoreTarget
+    internal sealed class QuickGrabSnapshotRestoreTarget
     {
-        internal ExpeditionSnapshotRestoreTarget(
+        internal QuickGrabSnapshotRestoreTarget(
             Inventory inventory,
             IdentityPreservingInventoryRestorePlan<ItemDrop.ItemData, ItemDrop.ItemData> items,
             int totalUnits)
@@ -99,9 +99,9 @@ namespace Stackmaster
         internal int TotalUnits { get; }
     }
 
-    internal sealed class CompletedExpeditionMove
+    internal sealed class CompletedQuickGrabMove
     {
-        internal CompletedExpeditionMove(
+        internal CompletedQuickGrabMove(
             RuntimeResourceStack source,
             ItemDrop.ItemData sourceClone,
             Vector2i sourcePosition,
@@ -128,11 +128,11 @@ namespace Stackmaster
         internal ContainerReservation Reservation { get; }
     }
 
-    internal static class ExpeditionKitAction
+    internal static class QuickGrabMaterialsAction
     {
         private const float OwnershipTimeoutSeconds = 2f;
-        private static readonly ExpeditionKitWithdrawalPlanner WithdrawalPlanner = new ExpeditionKitWithdrawalPlanner();
-        private static readonly ExpeditionCapacityPlanner CapacityPlanner = new ExpeditionCapacityPlanner();
+        private static readonly QuickGrabMaterialsWithdrawalPlanner WithdrawalPlanner = new QuickGrabMaterialsWithdrawalPlanner();
+        private static readonly QuickGrabCapacityPlanner CapacityPlanner = new QuickGrabCapacityPlanner();
         private static readonly MethodInfo AddItemAtMethod = AccessTools.DeclaredMethod(
             typeof(Inventory),
             "AddItem",
@@ -149,7 +149,7 @@ namespace Stackmaster
                 return;
             }
 
-            // Every recognized click represents another complete kit. Serialize queued clicks so
+            // Every recognized click represents another complete set of materials. Serialize queued clicks so
             // each gets a fresh storage, capacity, ownership, and transaction decision.
             PendingRequests.Enqueue(Tuple.Create(player, piece));
             StartNext();
@@ -192,7 +192,7 @@ namespace Stackmaster
                     return;
                 }
 
-                ExpeditionCapacityPlan ignoredCapacity;
+                QuickGrabCapacityPlan ignoredCapacity;
                 if (!TryPlanCapacity(player, capture, plan, out ignoredCapacity, out failure))
                 {
                     ShowFailure(failure);
@@ -217,13 +217,13 @@ namespace Stackmaster
                     return;
                 }
 
-                RuntimeContext.ShowTopLeft("Stackmaster: checking expedition-kit storage…");
+                RuntimeContext.ShowTopLeft("Stackmaster: checking storage for materials…");
                 RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(player, piece, plan, unowned, generation));
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit action stopped safely: " + exception);
-                RuntimeContext.ShowCenter("Stackmaster stopped safely; no expedition kit was added.");
+                RuntimeContext.Plugin?.Log.LogError("Quick-grab action stopped safely: " + exception);
+                RuntimeContext.ShowCenter("Stackmaster stopped safely; no materials were grabbed.");
                 Complete(generation);
             }
         }
@@ -273,8 +273,8 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership setup failed safely: " + exception);
-                RuntimeContext.ShowCenter("Stackmaster could not safely acquire the expedition kit; nothing was moved.");
+                RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership setup failed safely: " + exception);
+                RuntimeContext.ShowCenter("Stackmaster could not safely grab the required materials; nothing was moved.");
                 Complete(generation);
                 yield break;
             }
@@ -295,8 +295,8 @@ namespace Stackmaster
                     catch (Exception exception)
                     {
                         refreshFailed = true;
-                        RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership refresh failed safely: " + exception);
-                        RuntimeContext.ShowCenter("Stackmaster could not safely acquire the expedition kit; nothing was moved.");
+                        RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership refresh failed safely: " + exception);
+                        RuntimeContext.ShowCenter("Stackmaster could not safely grab the required materials; nothing was moved.");
                     }
                     if (refreshFailed) yield break;
                     yield return null;
@@ -333,8 +333,8 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership failed safely: " + exception);
-                    RuntimeContext.ShowCenter("Stackmaster could not safely acquire the expedition kit; nothing was moved.");
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership failed safely: " + exception);
+                    RuntimeContext.ShowCenter("Stackmaster could not safely grab the required materials; nothing was moved.");
                 }
             }
             finally
@@ -347,18 +347,18 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership timeout cleanup failed: " + exception);
-                    DisableAfterFatalFailure("Stackmaster could not finish expedition-kit ownership timeout cleanup.");
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership timeout cleanup failed: " + exception);
+                    DisableAfterFatalFailure("Stackmaster could not finish quick-grab ownership timeout cleanup.");
                 }
 
                 try
                 {
-                    OwnershipLeaseManager.ReleaseBatch(ownership, "expedition-kit action ended");
+                    OwnershipLeaseManager.ReleaseBatch(ownership, "quick-grab action ended");
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership release failed safely: " + exception);
-                    DisableAfterFatalFailure("Stackmaster could not hand expedition-kit ownership to cleanup.");
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership release failed safely: " + exception);
+                    DisableAfterFatalFailure("Stackmaster could not hand quick-grab ownership to cleanup.");
                 }
                 finally
                 {
@@ -368,8 +368,8 @@ namespace Stackmaster
                     }
                     catch (Exception exception)
                     {
-                        RuntimeContext.Plugin?.Log.LogError("Expedition-kit ownership teardown failed safely: " + exception);
-                        DisableAfterFatalFailure("Stackmaster could not finish expedition-kit ownership teardown.");
+                        RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership teardown failed safely: " + exception);
+                        DisableAfterFatalFailure("Stackmaster could not finish quick-grab ownership teardown.");
                     }
                     finally
                     {
@@ -394,7 +394,7 @@ namespace Stackmaster
             ContainerHandle[] handles;
             string failure;
             if (!TryPrepare(player, piece, out requirements, out capture, out plan, out handles, out failure) ||
-                !ExpeditionKitWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan))
+                !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan))
             {
                 ShowFailure(failure ?? "nearby materials changed before transfer");
                 return;
@@ -413,7 +413,7 @@ namespace Stackmaster
                 return;
             }
             if (!TryPrepare(player, piece, out requirements, out capture, out plan, out handles, out failure) ||
-                !ExpeditionKitWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan) ||
+                !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan) ||
                 handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
             {
                 ShowFailure(failure ?? "nearby materials changed during transfer preparation");
@@ -435,7 +435,7 @@ namespace Stackmaster
 
             try
             {
-                ExpeditionCapacityPlan capacity;
+                QuickGrabCapacityPlan capacity;
                 if (!NearbyResourceService.RevalidateReservedContainers(player, capture.Scope, reservations, out failure) ||
                     !NearbyResourceService.RevalidateStacks(plan, capture, true, out failure) ||
                     !TryPlanCapacity(player, capture, plan, out capacity, out failure))
@@ -457,22 +457,22 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit cache refresh failed after commit: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab cache refresh failed after commit: " + exception);
                 }
                 try
                 {
-                    RuntimeContext.ShowTopLeft("Stackmaster: expedition kit added (" +
+                    RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials (" +
                         plan.RequiredUnits.ToString(CultureInfo.InvariantCulture) + " items).");
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit success notification failed after commit: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab success notification failed after commit: " + exception);
                 }
             }
             finally
             {
                 // Reservation cleanup never touches a pre-existing successful-build lease. The
-                // outer ownership batch releases only ownership acquired by this kit click.
+                // outer ownership batch releases only ownership acquired by this quick-grab click.
                 var reservationsReleased = false;
                 try
                 {
@@ -480,11 +480,11 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit reservation cleanup threw: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab reservation cleanup threw: " + exception);
                 }
                 if (!reservationsReleased)
                 {
-                    DisableAfterFatalFailure("Stackmaster could not fully release an expedition-kit reservation.");
+                    DisableAfterFatalFailure("Stackmaster could not fully release a quick-grab reservation.");
                 }
             }
         }
@@ -515,13 +515,13 @@ namespace Stackmaster
                 failure = "this build piece has no material recipe";
                 return false;
             }
-            capture = NearbyResourceService.CaptureForExpedition(player, true, true);
+            capture = NearbyResourceService.CaptureForQuickGrab(player, true, true);
             plan = WithdrawalPlanner.Plan(
                 requirements,
                 capture.Stacks.Where(stack => !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal)));
             if (!plan.IsSatisfiable || plan.PlannedUnits != plan.RequiredUnits)
             {
-                failure = "nearby storage does not contain one complete additional kit";
+                failure = "nearby storage does not contain all required materials for this build piece";
                 return false;
             }
             if (!NearbyResourceService.TryResolveRequiredContainers(player, plan, capture, out handles, out failure))
@@ -535,24 +535,24 @@ namespace Stackmaster
             Player player,
             NearbyResourceCapture capture,
             ResourceWithdrawalPlan withdrawal,
-            out ExpeditionCapacityPlan plan,
+            out QuickGrabCapacityPlan plan,
             out string failure)
         {
             failure = null;
             var catalog = new CompatibilityCatalog();
             var playerInventory = player.GetInventory();
             var playerSnapshot = InventorySnapshots.CaptureInventory("player", playerInventory, catalog);
-            var cargo = new List<ExpeditionCargoStack>(withdrawal.Steps.Count);
+            var cargo = new List<QuickGrabCargoStack>(withdrawal.Steps.Count);
             foreach (var step in withdrawal.Steps)
             {
                 RuntimeResourceStack runtime;
                 if (!capture.RuntimeStacks.TryGetValue(step.StackId, out runtime) || runtime.Item == null || runtime.Item.m_shared == null)
                 {
                     plan = null;
-                    failure = "planned expedition material disappeared";
+                    failure = "planned quick-grab material disappeared";
                     return false;
                 }
-                cargo.Add(new ExpeditionCargoStack(
+                cargo.Add(new QuickGrabCargoStack(
                     step.StackId,
                     catalog.KeyFor(runtime.Item),
                     step.Quantity,
@@ -567,12 +567,12 @@ namespace Stackmaster
                 player.GetMaxCarryWeight());
             if (!plan.FitsWeight)
             {
-                failure = "the complete expedition kit is too heavy";
+                failure = "the required materials are too heavy";
                 return false;
             }
             if (!plan.FitsSlots)
             {
-                failure = "the complete expedition kit does not fit in inventory";
+                failure = "the required materials do not fit in inventory";
                 return false;
             }
             return true;
@@ -582,7 +582,7 @@ namespace Stackmaster
             Player player,
             NearbyResourceCapture capture,
             ResourceWithdrawalPlan withdrawal,
-            ExpeditionCapacityPlan capacity,
+            QuickGrabCapacityPlan capacity,
             IReadOnlyList<ContainerReservation> reservations,
             out string failure)
         {
@@ -594,14 +594,14 @@ namespace Stackmaster
             foreach (var source in withdrawal.Steps) catalog.KeyFor(capture.RuntimeStacks[source.StackId].Item);
 
             var reservationByContainer = reservations.ToDictionary(reservation => reservation.Container);
-            var backups = new List<ExpeditionInventoryBackup>
+            var backups = new List<QuickGrabInventoryBackup>
             {
-                new ExpeditionInventoryBackup(playerInventory, preserveItemIdentity: true)
+                new QuickGrabInventoryBackup(playerInventory, preserveItemIdentity: true)
             };
-            backups.AddRange(reservations.Select(reservation => new ExpeditionInventoryBackup(
+            backups.AddRange(reservations.Select(reservation => new QuickGrabInventoryBackup(
                 reservation.Container.GetInventory(),
                 preserveItemIdentity: false)));
-            var completed = new List<CompletedExpeditionMove>();
+            var completed = new List<CompletedQuickGrabMove>();
             var sourceMoved = new Dictionary<string, int>(StringComparer.Ordinal);
 
             try
@@ -611,7 +611,7 @@ namespace Stackmaster
                 RuntimeResourceStack runtime;
                 if (!capture.RuntimeStacks.TryGetValue(step.SourceStackId, out runtime) || runtime.Container == null)
                 {
-                    failure = "planned expedition source disappeared";
+                    failure = "planned quick-grab source disappeared";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
                 ContainerReservation reservation;
@@ -629,7 +629,7 @@ namespace Stackmaster
                     sourceItem.m_stack < step.Quantity ||
                     !string.Equals(catalog.KeyFor(sourceItem), step.CompatibilityKey, StringComparison.Ordinal))
                 {
-                    failure = "planned expedition source stack changed before transfer";
+                    failure = "planned quick-grab source stack changed before transfer";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
 
@@ -640,7 +640,7 @@ namespace Stackmaster
                      (destination.m_stack != step.ExpectedDestinationQuantity ||
                       !string.Equals(catalog.KeyFor(destination), step.CompatibilityKey, StringComparison.Ordinal))))
                 {
-                    failure = "player inventory changed before expedition transfer";
+                    failure = "player inventory changed before quick-grab transfer";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
 
@@ -661,7 +661,7 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit transfer primitive threw: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab transfer primitive threw: " + exception);
                     // A throwing game primitive may still have mutated either inventory. Let the
                     // transaction-wide handler restore every pre-transaction snapshot regardless
                     // of whether the observed counts happen to look exact.
@@ -678,7 +678,7 @@ namespace Stackmaster
 
                 if (exact)
                 {
-                    completed.Add(new CompletedExpeditionMove(
+                    completed.Add(new CompletedQuickGrabMove(
                         runtime,
                         sourceClone,
                         sourcePosition,
@@ -698,20 +698,20 @@ namespace Stackmaster
 
                 if (!moved && sourceAfter == sourceBefore && playerAfter == playerBefore)
                 {
-                    failure = "game transfer primitive declined the expedition move";
+                    failure = "game transfer primitive declined the quick-grab move";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
 
-                failure = "an unexpected expedition transfer result required full rollback";
+                failure = "an unexpected quick-grab transfer result required full rollback";
                 var restored = RestoreBackups(backups, reservations);
                 if (!restored)
                 {
-                    RuntimeContext.Disable("Expedition-kit rollback could not restore every inventory.");
+                    RuntimeContext.Disable("Quick-grab rollback could not restore every inventory.");
                     failure += "; rollback could not restore every item";
                 }
                 else
                 {
-                    RuntimeContext.Disable("Unexpected expedition-kit transfer result; inventories were restored.");
+                    RuntimeContext.Disable("Unexpected quick-grab transfer result; inventories were restored.");
                     failure += "; inventories were restored and Stackmaster was disabled";
                 }
                 return false;
@@ -720,14 +720,14 @@ namespace Stackmaster
                 var expectedUnits = withdrawal.RequiredUnits;
                 if (completed.Sum(move => move.Quantity) != expectedUnits)
                 {
-                    failure = "expedition transfer did not complete the exact kit";
+                    failure = "quick-grab transfer did not complete the exact material set";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
                 return true;
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit transaction threw after mutation began: " + exception);
+                RuntimeContext.Plugin?.Log.LogError("Quick-grab transaction threw after mutation began: " + exception);
                 // The current move may have mutated before throwing and therefore may not yet be
                 // represented in completed. Restore every inventory from its pre-transaction image.
                 var restored = false;
@@ -737,17 +737,17 @@ namespace Stackmaster
                 }
                 catch (Exception rollbackException)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit emergency snapshot rollback threw: " + rollbackException);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab emergency snapshot rollback threw: " + rollbackException);
                 }
                 if (restored)
                 {
-                    failure = "an expedition transfer exception required full rollback; inventories were restored and Stackmaster was disabled";
-                    RuntimeContext.Disable("Expedition-kit transfer exception; inventories were restored.");
+                    failure = "a quick-grab transfer exception required full rollback; inventories were restored and Stackmaster was disabled";
+                    RuntimeContext.Disable("Quick-grab transfer exception; inventories were restored.");
                 }
                 else
                 {
-                    failure = "an expedition transfer exception required full rollback; rollback could not restore every item";
-                    RuntimeContext.Disable("Expedition-kit rollback could not restore every inventory.");
+                    failure = "a quick-grab transfer exception required full rollback; rollback could not restore every item";
+                    RuntimeContext.Disable("Quick-grab rollback could not restore every inventory.");
                 }
                 NearbyResourceService.ResetCaches();
                 NearbyBuildHudPatch.ResetCache();
@@ -759,8 +759,8 @@ namespace Stackmaster
             Player player,
             StorageScope scope,
             IReadOnlyList<ContainerReservation> reservations,
-            IList<CompletedExpeditionMove> completed,
-            IReadOnlyList<ExpeditionInventoryBackup> backups,
+            IList<CompletedQuickGrabMove> completed,
+            IReadOnlyList<QuickGrabInventoryBackup> backups,
             string reason,
             out string failure)
         {
@@ -771,7 +771,7 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit reverse rollback threw; restoring snapshots: " + exception);
+                RuntimeContext.Plugin?.Log.LogError("Quick-grab reverse rollback threw; restoring snapshots: " + exception);
             }
             if (!restored)
             {
@@ -781,7 +781,7 @@ namespace Stackmaster
                 }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot rollback threw: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab snapshot rollback threw: " + exception);
                 }
             }
             failure = restored
@@ -789,7 +789,7 @@ namespace Stackmaster
                 : reason + "; rollback could not restore every item";
             if (!restored)
             {
-                RuntimeContext.Disable("Expedition-kit rollback could not restore every inventory.");
+                RuntimeContext.Disable("Quick-grab rollback could not restore every inventory.");
             }
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
@@ -799,7 +799,7 @@ namespace Stackmaster
         private static bool RollbackCompleted(
             Player player,
             StorageScope scope,
-            IEnumerable<CompletedExpeditionMove> completed)
+            IEnumerable<CompletedQuickGrabMove> completed)
         {
             var playerInventory = player.GetInventory();
             var catalog = new CompatibilityCatalog();
@@ -848,11 +848,11 @@ namespace Stackmaster
         }
 
         private static bool RestoreBackups(
-            IEnumerable<ExpeditionInventoryBackup> backups,
+            IEnumerable<QuickGrabInventoryBackup> backups,
             IEnumerable<ContainerReservation> reservations)
         {
             if (InventoryItemsField == null) return false;
-            ExpeditionSnapshotRestoreTarget[] prepared;
+            QuickGrabSnapshotRestoreTarget[] prepared;
             List<ItemDrop.ItemData>[] restoredLists;
             try
             {
@@ -865,7 +865,7 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot preparation failed: " + exception);
+                RuntimeContext.Plugin?.Log.LogError("Quick-grab snapshot preparation failed: " + exception);
                 return false;
             }
 
@@ -886,7 +886,7 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
-                RuntimeContext.Plugin?.Log.LogError("Expedition-kit snapshot field preflight failed: " + exception);
+                RuntimeContext.Plugin?.Log.LogError("Quick-grab snapshot field preflight failed: " + exception);
                 return false;
             }
 
@@ -902,7 +902,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     allRestored = false;
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit identity-preserving restore failed: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab identity-preserving restore failed: " + exception);
                 }
             }
             foreach (var target in prepared)
@@ -917,7 +917,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     allRestored = false;
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit restored-inventory notification failed: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab restored-inventory notification failed: " + exception);
                 }
             }
 
@@ -930,7 +930,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     allRestored = false;
-                    RuntimeContext.Plugin?.Log.LogError("Expedition-kit rollback revision update failed: " + exception);
+                    RuntimeContext.Plugin?.Log.LogError("Quick-grab rollback revision update failed: " + exception);
                 }
             }
             return allRestored;
@@ -1006,8 +1006,8 @@ namespace Stackmaster
 
         private static void ShowFailure(string failure)
         {
-            var detail = string.IsNullOrWhiteSpace(failure) ? "the complete kit could not be transferred" : failure;
-            RuntimeContext.Plugin?.Log.LogWarning("Expedition-kit action rejected safely: " + detail + ".");
+            var detail = string.IsNullOrWhiteSpace(failure) ? "the required materials could not be transferred" : failure;
+            RuntimeContext.Plugin?.Log.LogWarning("Quick-grab action rejected safely: " + detail + ".");
             RuntimeContext.ShowCenter("Stackmaster: " + detail + ". Nothing was moved.");
         }
     }

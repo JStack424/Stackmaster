@@ -94,19 +94,19 @@ internal static class Program
             CraftingCancellationRollsBackExactDebit,
             ResourcePlanHonorsExactQualityAndMultiplierTotals,
             ResourcePlanIsAllOrNothingAcrossDifferentMaterials,
-            ExpeditionClickRequiresEveryConfiguredModifier,
-            ExpeditionNormalClickIsUnchanged,
-            ExpeditionKitIgnoresCarriedMaterials,
-            ExpeditionRepeatedClicksPlanRepeatedFullKits,
-            ExpeditionKitUsesLargestStockFirst,
-            ExpeditionKitBreaksStockTiesDeterministically,
-            ExpeditionKitSplitsAcrossSources,
-            ExpeditionShortageHasNoMutationSteps,
-            ExpeditionCapacityFillsStacksThenEmptySlots,
-            ExpeditionCapacityRejectsSharedSlotOverbooking,
-            ExpeditionCapacityRejectsOverweightKit,
-            ExpeditionCapacityAcceptsExactWeightLimit,
-            ExpeditionFallbackRollbackPreservesEquippedItemIdentityAndState,
+            QuickGrabClickRequiresEveryConfiguredModifier,
+            QuickGrabNormalClickIsUnchanged,
+            QuickGrabMaterialsIgnoresCarriedMaterials,
+            QuickGrabRepeatedClicksPlanRepeatedFullMaterialSets,
+            QuickGrabMaterialsUsesLargestStockFirst,
+            QuickGrabMaterialsBreaksStockTiesDeterministically,
+            QuickGrabMaterialsSplitsAcrossSources,
+            QuickGrabShortageHasNoMutationSteps,
+            QuickGrabCapacityFillsStacksThenEmptySlots,
+            QuickGrabCapacityRejectsSharedSlotOverbooking,
+            QuickGrabCapacityRejectsOverweightMaterials,
+            QuickGrabCapacityAcceptsExactWeightLimit,
+            QuickGrabFallbackRollbackPreservesEquippedItemIdentityAndState,
             ReservationCleanupMustPrecedeOwnershipRelease,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
             ResourcePlanMinimizesDistinctContainers,
@@ -1631,40 +1631,40 @@ internal static class Program
         Equal("Stone", plan.Shortages.Single().ItemName, "exact missing material is reported");
     }
 
-    private static void ExpeditionClickRequiresEveryConfiguredModifier()
+    private static void QuickGrabClickRequiresEveryConfiguredModifier()
     {
-        True(ExpeditionClickPolicy.ShouldIntercept(true, true, true, new[] { true }),
+        True(QuickGrabClickPolicy.ShouldIntercept(true, true, true, new[] { true }),
             "one held configured modifier intercepts the piece click");
-        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, true, new[] { true, false }),
+        True(!QuickGrabClickPolicy.ShouldIntercept(true, true, true, new[] { true, false }),
             "every configured modifier must be held");
-        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, true, Array.Empty<bool>()),
+        True(!QuickGrabClickPolicy.ShouldIntercept(true, true, true, Array.Empty<bool>()),
             "a shortcut without a modifier never changes ordinary build-menu clicks");
     }
 
-    private static void ExpeditionNormalClickIsUnchanged()
+    private static void QuickGrabNormalClickIsUnchanged()
     {
-        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, true, new[] { false }),
+        True(!QuickGrabClickPolicy.ShouldIntercept(true, true, true, new[] { false }),
             "an unmodified click remains vanilla");
-        True(!ExpeditionClickPolicy.ShouldIntercept(false, true, true, new[] { true }),
+        True(!QuickGrabClickPolicy.ShouldIntercept(false, true, true, new[] { true }),
             "an incompatible runtime remains vanilla");
-        True(!ExpeditionClickPolicy.ShouldIntercept(true, false, true, new[] { true }),
+        True(!QuickGrabClickPolicy.ShouldIntercept(true, false, true, new[] { true }),
             "a missing local player remains vanilla");
-        True(!ExpeditionClickPolicy.ShouldIntercept(true, true, false, new[] { true }),
+        True(!QuickGrabClickPolicy.ShouldIntercept(true, true, false, new[] { true }),
             "a missing clicked piece remains vanilla");
     }
 
-    private static void ExpeditionKitIgnoresCarriedMaterials()
+    private static void QuickGrabMaterialsIgnoresCarriedMaterials()
     {
-        var plan = ExpeditionPlan(
+        var plan = QuickGrabPlan(
             new[] { new ResourceRequirement("Wood", 10) },
             Resource("player", "carried", "Wood", 1, 99, 0, 0),
             Resource("chest", "stored", "Wood", 1, 10, 1, 0));
-        True(plan.IsSatisfiable, "storage alone contains a full kit");
+        True(plan.IsSatisfiable, "storage alone contains all required materials");
         Equal(10, plan.PlannedUnits, "the full recipe is withdrawn despite carried stock");
-        True(plan.Steps.All(step => step.InventoryId != "player"), "player stock is never a kit source");
+        True(plan.Steps.All(step => step.InventoryId != "player"), "player stock is never a quick-grab source");
     }
 
-    private static void ExpeditionRepeatedClicksPlanRepeatedFullKits()
+    private static void QuickGrabRepeatedClicksPlanRepeatedFullMaterialSets()
     {
         var requirements = new[] { new ResourceRequirement("Wood", 10), new ResourceRequirement("Stone", 5) };
         var stacks = new[]
@@ -1672,16 +1672,16 @@ internal static class Program
             Resource("chest", "wood", "Wood", 1, 30, 1, 0),
             Resource("chest", "stone", "Stone", 1, 15, 1, 1)
         };
-        var first = ExpeditionPlan(requirements, stacks);
-        var second = ExpeditionPlan(requirements, stacks);
-        Equal(15, first.PlannedUnits, "first click plans one complete kit");
-        Equal(15, second.PlannedUnits, "next click independently plans one complete additional kit");
-        Equal(30, first.PlannedUnits + second.PlannedUnits, "two clicks add exactly two kits");
+        var first = QuickGrabPlan(requirements, stacks);
+        var second = QuickGrabPlan(requirements, stacks);
+        Equal(15, first.PlannedUnits, "first click plans one complete material set");
+        Equal(15, second.PlannedUnits, "next click independently plans one complete additional material set");
+        Equal(30, first.PlannedUnits + second.PlannedUnits, "two clicks add exactly two material sets");
     }
 
-    private static void ExpeditionKitUsesLargestStockFirst()
+    private static void QuickGrabMaterialsUsesLargestStockFirst()
     {
-        var plan = ExpeditionPlan(
+        var plan = QuickGrabPlan(
             new[] { new ResourceRequirement("Wood", 12) },
             Resource("split-largest", "l1", "Wood", 1, 6, 9, 0),
             Resource("single", "s", "Wood", 1, 10, 1, 0),
@@ -1693,13 +1693,13 @@ internal static class Program
             "all stacks in the largest-stock chest precede the exact remainder from the next source");
     }
 
-    private static void ExpeditionKitBreaksStockTiesDeterministically()
+    private static void QuickGrabMaterialsBreaksStockTiesDeterministically()
     {
-        var forward = ExpeditionPlan(
+        var forward = QuickGrabPlan(
             new[] { new ResourceRequirement("Stone", 7) },
             Resource("z-chest", "z", "Stone", 1, 7, 1, 0),
             Resource("a-chest", "a", "Stone", 1, 7, 2, 0));
-        var reverse = ExpeditionPlan(
+        var reverse = QuickGrabPlan(
             new[] { new ResourceRequirement("Stone", 7) },
             Resource("a-chest", "a", "Stone", 1, 7, 2, 0),
             Resource("z-chest", "z", "Stone", 1, 7, 1, 0));
@@ -1707,53 +1707,53 @@ internal static class Program
         Equal("a-chest", reverse.Steps.Single().InventoryId, "enumeration order cannot change the tie result");
     }
 
-    private static void ExpeditionKitSplitsAcrossSources()
+    private static void QuickGrabMaterialsSplitsAcrossSources()
     {
-        var plan = ExpeditionPlan(
+        var plan = QuickGrabPlan(
             new[] { new ResourceRequirement("FineWood", 25) },
             Resource("large", "a", "FineWood", 1, 12, 1, 0),
             Resource("medium", "b", "FineWood", 1, 8, 2, 0),
             Resource("small", "c", "FineWood", 1, 5, 3, 0));
-        True(plan.IsSatisfiable, "split chest stock satisfies the complete kit");
+        True(plan.IsSatisfiable, "split chest stock satisfies the complete material set");
         SequenceEqual(new[] { "large", "medium", "small" }, plan.Steps.Select(step => step.InventoryId),
             "split sources retain largest-stock-first ordering");
         Equal(25, plan.PlannedUnits, "all split source quantities are exact");
     }
 
-    private static void ExpeditionShortageHasNoMutationSteps()
+    private static void QuickGrabShortageHasNoMutationSteps()
     {
-        var plan = ExpeditionPlan(
+        var plan = QuickGrabPlan(
             new[] { new ResourceRequirement("Wood", 10), new ResourceRequirement("Stone", 10) },
             Resource("chest", "wood", "Wood", 1, 10, 1, 0),
             Resource("chest", "stone", "Stone", 1, 9, 1, 1));
-        True(!plan.IsSatisfiable, "one short ingredient rejects the kit");
+        True(!plan.IsSatisfiable, "one short ingredient rejects the material grab");
         Equal(0, plan.Steps.Count, "atomic shortage exposes no executable chest steps");
     }
 
-    private static void ExpeditionCapacityFillsStacksThenEmptySlots()
+    private static void QuickGrabCapacityFillsStacksThenEmptySlots()
     {
         var player = Player(3, Item("existing", "wood", "Wood", 7, 10, 0));
-        var plan = new ExpeditionCapacityPlanner().Plan(
+        var plan = new QuickGrabCapacityPlanner().Plan(
             player,
-            new[] { new ExpeditionCargoStack("source", "wood", 15, 10, 15) },
+            new[] { new QuickGrabCargoStack("source", "wood", 15, 10, 15) },
             10,
             100);
-        True(plan.IsFeasible, "partial stacks plus empty slots fit the kit");
+        True(plan.IsFeasible, "partial stacks plus empty slots fit the material grab");
         SequenceEqual(new[] { 0, 1, 2 }, plan.Steps.Select(step => step.DestinationSlot),
             "compatible partial stack is filled before deterministic empty slots");
         SequenceEqual(new[] { 3, 10, 2 }, plan.Steps.Select(step => step.Quantity),
             "the cargo is split exactly by destination capacity");
     }
 
-    private static void ExpeditionCapacityRejectsSharedSlotOverbooking()
+    private static void QuickGrabCapacityRejectsSharedSlotOverbooking()
     {
         var player = Player(1);
-        var plan = new ExpeditionCapacityPlanner().Plan(
+        var plan = new QuickGrabCapacityPlanner().Plan(
             player,
             new[]
             {
-                new ExpeditionCargoStack("wood", "wood", 10, 10, 10),
-                new ExpeditionCargoStack("stone", "stone", 10, 10, 10)
+                new QuickGrabCargoStack("wood", "wood", 10, 10, 10),
+                new QuickGrabCargoStack("stone", "stone", 10, 10, 10)
             },
             0,
             100);
@@ -1761,29 +1761,29 @@ internal static class Program
         Equal(0, plan.Steps.Count, "slot failure exposes no executable destination steps");
     }
 
-    private static void ExpeditionCapacityRejectsOverweightKit()
+    private static void QuickGrabCapacityRejectsOverweightMaterials()
     {
-        var plan = new ExpeditionCapacityPlanner().Plan(
+        var plan = new QuickGrabCapacityPlanner().Plan(
             Player(2),
-            new[] { new ExpeditionCargoStack("wood", "wood", 10, 50, 10.01) },
+            new[] { new QuickGrabCargoStack("wood", "wood", 10, 50, 10.01) },
             90,
             100);
-        True(!plan.FitsWeight, "the entire added kit must fit the current carry limit");
+        True(!plan.FitsWeight, "all grabbed materials must fit the current carry limit");
         Equal(0, plan.Steps.Count, "weight failure exposes no executable destination steps");
     }
 
-    private static void ExpeditionCapacityAcceptsExactWeightLimit()
+    private static void QuickGrabCapacityAcceptsExactWeightLimit()
     {
-        var plan = new ExpeditionCapacityPlanner().Plan(
+        var plan = new QuickGrabCapacityPlanner().Plan(
             Player(2),
-            new[] { new ExpeditionCargoStack("wood", "wood", 10, 50, 10) },
+            new[] { new QuickGrabCargoStack("wood", "wood", 10, 50, 10) },
             90,
             100);
         True(plan.IsFeasible, "an exact carry-weight boundary is accepted");
-        Equal(10, plan.Steps.Sum(step => step.Quantity), "the full exact-boundary kit is planned");
+        Equal(10, plan.Steps.Sum(step => step.Quantity), "the full exact-boundary material set is planned");
     }
 
-    private static void ExpeditionFallbackRollbackPreservesEquippedItemIdentityAndState()
+    private static void QuickGrabFallbackRollbackPreservesEquippedItemIdentityAndState()
     {
         var equipped = new FakeRollbackItem(
             "hammer", 1, 73.5, 4, 17, new Slot(2, 3),
@@ -2377,8 +2377,8 @@ internal static class Program
     private static ResourceWithdrawalPlan ResourcePlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
         => new ResourceWithdrawalPlanner().Plan(requirements, stacks);
 
-    private static ResourceWithdrawalPlan ExpeditionPlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
-        => new ExpeditionKitWithdrawalPlanner().Plan(
+    private static ResourceWithdrawalPlan QuickGrabPlan(IEnumerable<ResourceRequirement> requirements, params ResourceStack[] stacks)
+        => new QuickGrabMaterialsWithdrawalPlanner().Plan(
             requirements,
             stacks.Where(stack => !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal)));
 

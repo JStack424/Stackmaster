@@ -213,46 +213,46 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("if (!compatibility.IsCompatible)", self.plugin)
         self.assertIn("return;", self.plugin)
 
-    def test_expedition_kit_intercepts_only_modified_build_ui_piece_clicks(self):
+    def test_quick_grab_materials_intercepts_only_modified_build_ui_piece_clicks(self):
         installer = (PLUGIN_DIR / "PatchInstaller.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
-        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
-        core = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionKit.cs").read_text(encoding="utf-8")
-        self.assertIn('Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch))', installer)
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "QuickGrabMaterials.cs").read_text(encoding="utf-8")
+        self.assertIn('Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(QuickGrabMaterialsClickPatch))', installer)
         self.assertIn("plugin.StorageActionShortcut.Value.Modifiers", action)
         self.assertIn("modifiers.Select(Input.GetKey)", action)
-        self.assertIn("ExpeditionClickPolicy.ShouldIntercept", action)
-        self.assertIn("return true;", action[action.index("internal static class ExpeditionKitClickPatch"):action.index("internal sealed class ExpeditionInventoryBackup")])
+        self.assertIn("QuickGrabClickPolicy.ShouldIntercept", action)
+        self.assertIn("return true;", action[action.index("internal static class QuickGrabMaterialsClickPatch"):action.index("internal sealed class QuickGrabInventoryBackup")])
         self.assertIn("return !intercepting;", action)
         self.assertIn("PendingRequests.Enqueue(Tuple.Create(player, piece))", action)
         self.assertIn("ReferenceEquals(candidate.Item1, Player.m_localPlayer)", action)
         self.assertIn("!ReferenceEquals(player, Player.m_localPlayer)", action)
         self.assertIn("return states.Length > 0 && states.All(state => state)", core)
-        click_patch = action[action.index("internal static class ExpeditionKitClickPatch"):action.index("internal sealed class ExpeditionInventoryBackup")]
+        click_patch = action[action.index("internal static class QuickGrabMaterialsClickPatch"):action.index("internal sealed class QuickGrabInventoryBackup")]
         self.assertNotIn("Hud.CloseBuildUi()", click_patch)
         self.assertNotIn("SetSelectedPiece(piece)", click_patch)
 
-    def test_expedition_kit_is_storage_only_largest_stock_first_and_exact_per_click(self):
-        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
-        core = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionKit.cs").read_text(encoding="utf-8")
+    def test_quick_grab_materials_is_storage_only_largest_stock_first_and_exact_per_click(self):
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
+        core = (ROOT / "src" / "Stackmaster.Core" / "QuickGrabMaterials.cs").read_text(encoding="utf-8")
         self.assertIn('!string.Equals(stack.InventoryId, "player", StringComparison.Ordinal)', action)
         self.assertIn(".OrderByDescending(group => group.Total)", core)
         self.assertIn(".ThenBy(group => group.InventoryId, StringComparer.Ordinal)", core)
-        self.assertIn("A kit is indivisible", core)
+        self.assertIn("A piece-specific material grab is indivisible", core)
         self.assertIn("Array.Empty<ResourceWithdrawalStep>()", core)
-        self.assertIn("Every modified click is one independent complete-kit request", action)
+        self.assertIn("Every modified click is one independent complete-material request", action)
 
-    def test_expedition_kit_preflights_capacity_and_weight_before_ownership(self):
-        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+    def test_quick_grab_materials_preflights_capacity_and_weight_before_ownership(self):
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
         begin = action[action.index("internal static void Begin"):action.index("internal static void Shutdown")]
         self.assertLess(begin.index("TryPlanCapacity"), begin.index("StartCoroutine"))
         self.assertIn("playerInventory.GetTotalWeight()", action)
         self.assertIn("player.GetMaxCarryWeight()", action)
         self.assertIn("runtime.Item.GetWeight(step.Quantity)", action)
-        self.assertIn("ExpeditionCapacityPlanner", action)
+        self.assertIn("QuickGrabCapacityPlanner", action)
         self.assertIn("ExpectedDestinationQuantity", action)
 
-    def test_expedition_kit_reserves_revalidates_rolls_back_and_preserves_build_leases(self):
-        action = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+    def test_quick_grab_materials_reserves_revalidates_rolls_back_and_preserves_build_leases(self):
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         self.assertIn("RevalidateContainers(player, plan, capture", action)
@@ -262,8 +262,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("MoveItemToThis", action)
         self.assertIn("RollbackCompleted", action)
         self.assertIn("RestoreBackups", action)
-        self.assertIn('catch (Exception exception)\n            {\n                RuntimeContext.Plugin?.Log.LogError("Expedition-kit transaction threw after mutation began:', action)
-        transfer_catch = action[action.index('RuntimeContext.Plugin?.Log.LogError("Expedition-kit transfer primitive threw:'):]
+        self.assertIn('catch (Exception exception)\n            {\n                RuntimeContext.Plugin?.Log.LogError("Quick-grab transaction threw after mutation began:', action)
+        transfer_catch = action[action.index('RuntimeContext.Plugin?.Log.LogError("Quick-grab transfer primitive threw:'):]
         self.assertIn("throw;", transfer_catch[:500])
         self.assertIn("_items.PrepareRestore(snapshot => snapshot.Clone())", action)
         self.assertIn("preserveItemIdentity: true", action)
@@ -279,7 +279,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             "m_dropPrefab", "m_lastAttackTime", "m_lastProjectile", "m_customData",
         ):
             self.assertIn(f"original.{field_name} = snapshot.{field_name}", action)
-        self.assertIn("Expedition-kit cache refresh failed after commit", action)
+        self.assertIn("Quick-grab cache refresh failed after commit", action)
         self.assertIn("reservationsReleased = NearbyResourceService.ReleaseReservations", action)
         self.assertIn("for (var attempt = 0; attempt < 2 && !released; attempt++)", nearby)
         self.assertIn("PendingReservationReleases", nearby)
@@ -336,10 +336,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipCoordinator.HasUnresolvedCleanup || NearbyResourceService.HasPendingReservationReleases", plugin)
         self.assertIn("=> !hasPendingReservationCleanup", policy)
 
-    def test_expedition_kit_runtime_surface_is_compatibility_gated(self):
+    def test_quick_grab_materials_runtime_surface_is_compatibility_gated(self):
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8") + (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         for signature in (
-            'Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(ExpeditionKitClickPatch))',
+            'Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(QuickGrabMaterialsClickPatch))',
             'RequireMethod(failures, typeof(Inventory), "GetWidth")',
             'RequireMethod(failures, typeof(Inventory), "GetHeight")',
             'RequireMethod(failures, typeof(Inventory), "GetTotalWeight")',
@@ -767,7 +767,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         storage = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
-        expedition = (PLUGIN_DIR / "ExpeditionKitAction.cs").read_text(encoding="utf-8")
+        quick_grab = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
         plugin = PLUGIN.read_text(encoding="utf-8")
 
         lifecycle_patch = ownership[ownership.index("internal static class OwnershipLifecyclePatch") : ownership.index("internal static class OwnershipSafetyUpdatePatch")]
@@ -782,7 +782,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         cleanup = runtime[runtime.index("private static bool RunSafetyCleanup") : runtime.index("private static bool TryCleanup")]
         ordered = [
             "ResourceTransactionContext.Shutdown",
-            "ExpeditionKitAction.Shutdown",
+            "QuickGrabMaterialsAction.Shutdown",
             "StorageAction.Shutdown",
             "NearbyResourceOwnership.Shutdown",
             "NearbyResourceService.FlushPendingReservationReleasesBeforeOwnershipShutdown",
@@ -805,7 +805,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertLess(rearm.index("OwnershipCoordinator.DiscardEndedSessionState()"), rearm.index("_lifecycle.TryRearm"))
         self.assertLess(rearm.index("StorageAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
         self.assertLess(rearm.index("NearbyResourceOwnership.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
-        self.assertLess(rearm.index("ExpeditionKitAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
+        self.assertLess(rearm.index("QuickGrabMaterialsAction.RearmSession()"), rearm.index("Compatibility = _verifiedCompatibility"))
         self.assertIn("_disconnectCleanupCompleted = RunSafetyCleanup", disconnect)
         self.assertIn("cleanupCompletedSafely: _disconnectCleanupCompleted", rearm)
         self.assertNotIn("cleanupCompletedSafely: true", rearm)
@@ -824,9 +824,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("generation == _generation", storage)
         self.assertIn("_generation++", nearby)
         self.assertIn("generation == _generation", nearby)
-        self.assertIn("_generation++", expedition)
-        self.assertIn("generation == _generation", expedition)
-        for action in (storage, nearby, expedition):
+        self.assertIn("_generation++", quick_grab)
+        self.assertIn("generation == _generation", quick_grab)
+        for action in (storage, nearby, quick_grab):
             self.assertIn("generation != _generation || !RuntimeContext.Compatibility.IsCompatible", action)
             self.assertIn("if (generation == _generation)", action)
         self.assertIn("!SameAcquisition(existing.Acquisition, acquisition)", ownership)

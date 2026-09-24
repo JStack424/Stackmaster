@@ -4,6 +4,7 @@
 
 Reduced Stackmaster display-cache overhead around carried-inventory changes without weakening action-time validation.
 
+- Renamed the existing modified-click build-piece withdrawal feature to **Quick Grab Materials** across the UI wording, documentation, runtime identifiers, diagnostics, and tests. Its behavior is unchanged: each modified click grabs one complete piece-specific material set from eligible storage.
 - A valid display epoch now treats its already-validated detached chest snapshot as immutable for the remainder of its hard 200 ms lifetime. If the player inventory changes, the next Stackmaster display query rebuilds only the player contribution once; later display queries in that epoch reuse the newly combined capture instead of rechecking every cached chest.
 - Expiration, workbench structural-topology changes, and fallback-radius membership-boundary movement still force a complete fresh capture. Every action, ownership, reservation, debit, rollback, and cleanup path remains fresh, synchronous, and unable to consume display cache state.
 - Removed the obsolete serialized-payload copy and chest-revalidation helper that no longer participate in display reuse.
@@ -16,7 +17,7 @@ Reduced Stackmaster display-cache overhead around carried-inventory changes with
 Bounded display-snapshot reuse to reduce hammer and crafting-menu frame drops without weakening action-time correctness.
 
 - Build-grid, selected-piece HUD, and crafting/upgrade requirement displays now share one complete read-only nearby-resource capture for at most 200 ms instead of repeating scene-wide container discovery, ZDO inventory decode, detached `Inventory.Load`, metadata hydration, and stack aggregation every rendered frame. In a stable open menu this bounds complete display captures to about five per second; live in-game frame-time improvement is not yet measured.
-- A display epoch is published only after full-scope discovery completes. Every build, craft, upgrade, expedition-kit, ownership, reservation, planning, debit, and rollback path still performs its own fresh synchronous capture and cannot read or populate the display cache.
+- A display epoch is published only after full-scope discovery completes. Every build, craft, upgrade, quick-grab, ownership, reservation, planning, debit, and rollback path still performs its own fresh synchronous capture and cannot read or populate the display cache.
 - Fallback-radius reuse is allowed only while player movement remains strictly inside the shortest proven distance to any container membership boundary. Reaching that boundary, changing the radius, changing workbench topology, or changing scope kind forces full rediscovery.
 - Before every reuse, each cached chest must still match its exact container/network identity, active scope membership, access result, ZDO identity, data revision, owner revision, owner, and serialized inventory payload byte-for-byte. A chest change therefore invalidates detached decode and stack-summary reuse.
 - Player inventory is fingerprinted independently. Pickups, consumption, drops, movement between slots, quality changes, and world-level changes rebuild the player portion immediately while retaining only already-validated chest summaries.
@@ -94,10 +95,10 @@ Public release, preserving the live-validated 1.1.0 behavior without gameplay or
 - Modifier + left-click now toggles protection immediately with no dialog: an unprotected item becomes protection-only, while any protected item is fully unprotected and loses its target in one click.
 - Modifier + right-click now opens the restocking quantity dialog for stackable items. Confirming protects the item and adds or edits its target; canceling or entering an invalid quantity preserves the prior state exactly.
 - Non-stackable items remain protection-only: modifier + right-click is consumed without changing their state. All unmodified inventory clicks remain vanilla.
-- Added an expedition-kit shortcut to the active build-piece menu: hold the configured storage-action modifier (Left Alt by default) and click a piece to withdraw one complete copy of its recipe from eligible storage into the player inventory while keeping the menu open.
-- Every modified click requests a fresh full kit and intentionally ignores materials already carried by the player.
+- Added **Quick Grab Materials** to the active build-piece menu: hold the configured storage-action modifier (Left Alt by default) and click a piece to grab all materials for one complete copy from eligible storage while keeping the menu open.
+- Every modified click requests a fresh complete material set and intentionally ignores materials already carried by the player.
 - For each ingredient, withdraws from the eligible chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
-- Preflights the complete kit against exact inventory slots and added carry weight before requesting any chest ownership.
+- Preflights the complete material set against exact inventory slots and added carry weight before requesting any chest ownership.
 - Replans from fresh storage after asynchronous ownership acquisition, requires an identical plan, reserves and revalidates every required chest, then performs exact source-to-destination moves.
 - Cancels without moving anything on shortage, access or ownership changes, busy storage, stale contents, insufficient slots, or insufficient carry capacity. Late transfer failures roll back completed moves before guarded ownership cleanup.
 - Emergency snapshot rollback restores the original player item objects and their complete captured state, preserving every equipped-item reference; chest snapshots remain detached.
