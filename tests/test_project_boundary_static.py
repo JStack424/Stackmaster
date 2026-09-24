@@ -1197,86 +1197,33 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ResourceTransactionContext.Begin", nearby)
         self.assertIn("ResourceTransactionContext.Rollback", nearby)
 
-    def test_display_capture_epoch_is_bounded_exactly_invalidated_and_never_serves_actions(self):
+    def test_failed_display_performance_experiment_is_fully_removed(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
-        policy = (ROOT / "src" / "Stackmaster.Core" / "DisplayCaptureEpochPolicy.cs").read_text(encoding="utf-8")
-        tests = (ROOT / "tests" / "Stackmaster.Tests" / "Program.cs").read_text(encoding="utf-8")
-
-        self.assertIn("MaximumAgeSeconds = 1.0", policy)
-        self.assertIn("MaximumChestAgeSeconds = 5.0", policy)
-        self.assertIn("nowSeconds < capturedAtSeconds + maximumAgeSeconds", policy)
-        self.assertIn("public static bool CanRefreshPlayerOnly(", policy)
-        player_refresh = policy[policy.index("public static bool CanRefreshPlayerOnly("):policy.index("private static bool IsSnapshotAgeValid")]
-        self.assertIn("IsSnapshotAgeValid(chestCapturedAtSeconds, nowSeconds, MaximumChestAgeSeconds)", player_refresh)
-        self.assertIn("IsScopeStable(", player_refresh)
-        self.assertIn("movedSquared < membershipStabilityDistance * membershipStabilityDistance", policy)
-        self.assertIn("MembershipStabilityDistance", discovery)
-        self.assertIn("Math.Abs(candidate.Distance - scope.Plan.FallbackRadius)", discovery)
-        capture_start = nearby.index("private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)")
-        capture_end = nearby.index("private static void AddInventory", capture_start)
-        capture = nearby[capture_start:capture_end]
-        self.assertIn("InventoryIntegration.BindPlayerInventory(player)", capture)
-        self.assertIn("TryReuseDisplayEpochWithoutScopeWalk", capture)
-        self.assertLess(capture.index("TryReuseDisplayEpochWithoutScopeWalk"), capture.index("StorageScopeProvider.Resolve(player)"))
-        fast_reuse = nearby[
-            nearby.index("private static bool TryReuseDisplayEpochWithoutScopeWalk"):
-            nearby.index("private static NearbyResourceCapture CaptureComplete")
-        ]
-        self.assertIn("epoch.PlayerContributionDirty", fast_reuse)
-        self.assertIn("DisplayCaptureEpochPolicy.IsChestAgeValid(epoch.ChestCapturedAtSeconds, nowSeconds)", fast_reuse)
-        self.assertNotIn("PlayerInventorySignature(player)", fast_reuse)
-        self.assertIn("epoch.Scope.Plan.Contains(currentPlayerPosition)", fast_reuse)
-        self.assertIn("DisplayCaptureEpochPolicy.CanReuseScope(", fast_reuse)
-        self.assertIn("if (fresh)", capture)
-        self.assertIn("return CaptureComplete(player, matchWorldLevel, scope, false)", capture)
-        self.assertIn("TryReuseDisplayEpoch", capture)
-        self.assertIn("return CaptureComplete(player, matchWorldLevel, scope, true)", capture)
-        self.assertIn("PlayerInventorySignature", capture)
-        self.assertIn("epoch.ChestStacks", capture)
-        self.assertIn("epoch.ChestRuntimeStacks", capture)
-        self.assertIn("DisplayCaptureEpochPolicy.SelectReuse", capture)
-        self.assertIn("DisplayCaptureReuseKind.RecaptureAll", capture)
-        self.assertIn("DisplayCaptureReuseKind.ReuseComplete", capture)
-        self.assertIn("DisplayCaptureEpochPolicy.CanRefreshPlayerOnly(", capture)
-        self.assertIn("epoch.ChestCapturedAtSeconds", capture)
-        self.assertIn("epoch.CapturedAtSeconds = nowSeconds", capture)
-        self.assertNotIn("epoch.ChestCapturedAtSeconds = nowSeconds", capture)
-        self.assertNotIn("ContainerDiscovery.IsResourceHandleCurrent", capture)
-        self.assertNotIn("ResourcePayload", capture)
-        self.assertNotIn("ClaimOwnership", capture)
-        self.assertNotIn("SetInUse", capture)
-        self.assertNotIn("ExecuteWithRollback", capture)
-
-        # Every mutation/preparation entrypoint still requests a fresh capture.
-        self.assertIn("var capture = Capture(player, true, true);", nearby)
-        self.assertIn("var readOnlyCapture = Capture(player, matchWorldLevel, true);", nearby)
-        self.assertIn("Capture(player, true, fresh)", nearby)
-        self.assertIn("DisplayEpochReusesMultipleCallersWithinBound", tests)
-        self.assertIn("DisplayQueriesAfterPlayerChangeRefreshPlayerWithoutChestWork", tests)
-        self.assertIn("DisplayCaptureEpochPolicy.SelectReuse", tests)
-        self.assertIn("Equal(1, chestCaptures", tests)
-        self.assertIn("DisplayEpochExpiresAtHardBound", tests)
-
-        recipe_postfix = nearby[nearby.index("internal static void RecipePostfix"):nearby.index("internal static void PiecePostfix")]
-        piece_postfix = nearby[nearby.index("internal static void PiecePostfix"):nearby.index("internal static class NearbyBuildHudPatch")]
-        self.assertIn("discover ||", recipe_postfix)
-        self.assertIn("mode != Player.RequirementMode.CanBuild", piece_postfix)
-        self.assertIn("DisplayEpochFallbackMovementRespectsMembershipMargin", tests)
-        self.assertIn("DisplayEpochWorkbenchReuseRequiresStableTopology", tests)
-        self.assertIn("PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla", tests)
-
+        core = (ROOT / "src" / "Stackmaster.Core" / "ResourceAccounting.cs").read_text(encoding="utf-8")
         inventory_integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
-        inventory_changed = inventory_integration[
+        sort_executor = (PLUGIN_DIR / "SortExecutor.cs").read_text(encoding="utf-8")
+
+        self.assertFalse((ROOT / "src" / "Stackmaster.Core" / "DisplayCaptureEpochPolicy.cs").exists())
+        self.assertNotIn("DisplayCaptureEpoch", nearby)
+        self.assertNotIn("TryReuseDisplayEpoch", nearby)
+        self.assertNotIn("PlayerInventorySignature", nearby)
+        self.assertNotIn("InvalidatePlayerContribution", nearby)
+        self.assertNotIn("MembershipStabilityDistance", discovery)
+        self.assertNotIn("ResourceAvailabilityIndex", core)
+
+        # Restore the uncomplicated 1.1.6 display capture: one same-frame snapshot, raw
+        # availability accounting, and no inventory-change invalidation/dirty machinery.
+        self.assertIn("private static int _cachedFrame = -1;", nearby)
+        self.assertIn("_cachedFrame == Time.frameCount", nearby)
+        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks)", nearby)
+        self.assertNotIn("NearbyResourceService.", inventory_integration[
             inventory_integration.index("private static void OnObservedInventoryChanged()"):
             inventory_integration.index("internal static void RequestProtectionOverlayRefresh()")
-        ]
-        self.assertIn("NearbyResourceService.InvalidatePlayerContribution(Player.m_localPlayer);", inventory_changed)
-        self.assertIn("NearbyBuildHudPatch.InvalidatePlayerContribution();", inventory_changed)
-        self.assertIn("NearbyCraftingHudPatch.InvalidatePlayerContribution();", inventory_changed)
-        self.assertNotIn("InvalidateDisplayEpoch", inventory_changed)
+        ])
 
-        sort_executor = (PLUGIN_DIR / "SortExecutor.cs").read_text(encoding="utf-8")
+        # Retain only the independent no-op sort improvement: no synthetic change event is
+        # emitted when the plan already matches the inventory.
         self.assertIn("if (PlanAlreadyApplied(source, plan)) return true;", sort_executor)
         no_op_guard = sort_executor[
             sort_executor.index("private static bool PlanAlreadyApplied"):
@@ -1404,12 +1351,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         build = nearby[nearby.index("internal static class NearbyBuildHudPatch"):nearby.index("internal static class RequirementAmountTextFitter")]
         self.assertIn("plugin.ShowStorageAmountsInRequirementMenus.Value", build)
         self.assertIn("plugin.BuildingFromNearbyChestsEnabled.Value", build)
-        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.AggregateAvailability)", nearby)
-        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.PlayerAvailability)", nearby)
-        self.assertIn("_aggregateAvailability = new Lazy<ResourceAvailabilityIndex>(() =>", nearby)
-        self.assertIn("ResourceAvailabilityIndex.Create(stacks)", nearby)
-        self.assertIn("_playerAvailability = new Lazy<ResourceAvailabilityIndex>(() =>", nearby)
-        self.assertIn("ResourceAvailabilityIndex.Create(stacks.Where(stack =>", nearby)
+        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks)", nearby)
+        self.assertIn("capture.Stacks.Where(stack => string.Equals(stack.InventoryId, PlayerInventoryId", nearby)
         self.assertIn('requirementRoot.transform.Find("res_amount")', build)
         self.assertIn("RequirementUiPolicy.Resolve(", build)
         self.assertIn("if (decision.ShouldOverrideText)", build)
@@ -1459,8 +1402,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('return required.ToString(CultureInfo.InvariantCulture) + " / " +', core)
         self.assertIn("=> !noCost && !isSatisfied && flashSignal > 0f", core)
         self.assertIn("GroupBy(requirement => new RequirementKey", core)
-        self.assertIn("public sealed class ResourceAvailabilityIndex", core)
-        self.assertIn("quantities.Any(quantity => quantity >= required)", core)
+        self.assertIn("stackList", core)
+        self.assertIn("GroupBy(stack => stack.Quality)", core)
 
     def test_requirement_text_uses_bounded_adaptive_fit_without_changing_exact_values(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")

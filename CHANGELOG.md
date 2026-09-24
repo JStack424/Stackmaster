@@ -1,31 +1,20 @@
 # Changelog
 
-## 1.1.8 (local test candidate)
+## 1.1.8 (replacement local test candidate)
 
-Reduced Stackmaster's continuous hammer-mode requirement-display workload and added an in-menu Quick Grab Materials hint without weakening action-time validation.
+Rolled back the unsuccessful requirement-display performance experiment after live testing showed that hitching became worse and spread to opening the inventory and moving items between slots while the hammer was active.
 
-- Added a keyboard/mouse build-menu hint beside Valheim's existing bottom-of-screen actions: **Quick Grab Materials** with **Left Alt + Click** by default. It follows the configured storage-action modifiers, avoids duplicate entries, preserves other mods' hints, removes only Stackmaster's hint during cleanup/reload, and intentionally adds no controller binding.
-- Build and crafting display snapshots now pre-index item and quality totals once. Repeated `CanBuild` checks use constant-time lookups instead of sorting and running the exact withdrawal planner over every player and chest stack for each icon; action-time checks still use the exact planner.
-- Stable display callers reuse the completed snapshot and scope for a one-second display window instead of repeating workbench enumeration, container discovery, detached inventory decoding, and aggregation. Player inventory changes rebuild only the player contribution and may retain the already-validated chest slice past that ordinary window when scope topology and membership remain safe.
-- The chest timestamp is separate and never renewed by player-only refreshes. Repeated pickups therefore cannot keep storage data alive indefinitely: the chest slice reaches a five-second absolute bound and is then rediscovered.
-- Opening an already-sorted inventory no longer emits a synthetic `Inventory.m_onChanged` notification. With a hammer equipped, that avoids an unnecessary vanilla placement-ghost rebuild when Stackmaster moved nothing.
-- Corrected the pinned Valheim call-path proof: `Player.OnInventoryChanged` updates known recipes and available pieces, then recreates the placement ghost. Its recipe check uses discovery mode, and its piece checks use `IsKnown` or `CanAlmostBuild`; Stackmaster intentionally skips all three. The pickup path itself does not directly call Stackmaster's `CanBuild` branch. The Stackmaster-only load is the normal hammer HUD loop around that vanilla rebuild: requirement display checks repeatedly resolved storage scope and periodically performed full chest discovery.
-- Expiration and fallback-radius membership-boundary movement force a complete fresh display capture. A workbench structural-topology change without a player-inventory event can remain visible only for the remainder of the one-second display window; the next scope resolution catches it. Every build, craft, upgrade, quick-grab, ownership, reservation, debit, rollback, and cleanup path remains fresh, synchronous, and unable to consume display cache state.
-- Added pinned `KeyHints.Update`/keyboard-hint contracts, exact IL checks for Valheim's inventory/build call paths, indexed-vs-raw availability parity tests, bounded chest-age tests, player-only refresh tests, and repository checks for hint formatting, keyboard-only insertion, duplicate avoidance, and cleanup.
-- This candidate targets the proven Stackmaster display overhead but is not yet a live-proven complete fix for the reported frame drops. Vanilla still scans inventory/recipes and, while a hammer is active, destroys and recreates the placement ghost after a real inventory change. Live comparison against 1.1.7 and 1.1.5 is required before productionization.
+- Restored the straightforward 1.1.6 requirement-display path: one same-frame capture shared only inside that frame, raw requirement availability accounting, and the original build/crafting HUD refresh behavior.
+- Removed the 1.1.7/earlier-1.1.8 bounded display epochs, cross-caller cache, one-second/five-second chest reuse, indexed totals, player-inventory fingerprints and dirty events, and movement-boundary/topology reuse machinery.
+- Retained the outside-workbench player-inventory-only crafting bypass. Its complete-cost decision still asks Valheim itself, preserving vanilla quality-tier and one-ingredient semantics without depending on any display cache.
+- Retained the comprehensive **Quick Grab Materials** rename and the keyboard/mouse build-menu hint. The hint follows the configured storage-action modifiers, avoids duplicates, preserves other hints, cleans up only itself, and remains hidden in controller mode.
+- Retained the no-op player auto-sort guard: opening an already-sorted inventory does not emit a synthetic inventory-change notification.
+- All build, craft, upgrade, Quick Grab Materials, ownership, reservation, debit, rollback, and cleanup paths retain the production 1.1.5 fresh validation and exact transaction safety.
+- This rollback deliberately makes no performance-fix claim. Live testing must establish whether behavior has returned to the earlier baseline before another optimization approach is attempted.
 
-## 1.1.7 (local test candidate)
+## 1.1.7 (superseded local performance experiment)
 
-Bounded display-snapshot reuse to reduce hammer and crafting-menu frame drops without weakening action-time correctness.
-
-- Build-grid, selected-piece HUD, and crafting/upgrade requirement displays now share one complete read-only nearby-resource capture for at most 200 ms instead of repeating scene-wide container discovery, ZDO inventory decode, detached `Inventory.Load`, metadata hydration, and stack aggregation every rendered frame. In a stable open menu this bounds complete display captures to about five per second; live in-game frame-time improvement is not yet measured.
-- A display epoch is published only after full-scope discovery completes. Every build, craft, upgrade, quick-grab, ownership, reservation, planning, debit, and rollback path still performs its own fresh synchronous capture and cannot read or populate the display cache.
-- Fallback-radius reuse is allowed only while player movement remains strictly inside the shortest proven distance to any container membership boundary. Reaching that boundary, changing the radius, changing workbench topology, or changing scope kind forces full rediscovery.
-- Before every reuse, each cached chest must still match its exact container/network identity, active scope membership, access result, ZDO identity, data revision, owner revision, owner, and serialized inventory payload byte-for-byte. A chest change therefore invalidates detached decode and stack-summary reuse.
-- Player inventory is fingerprinted independently. Pickups, consumption, drops, movement between slots, quality changes, and world-level changes rebuild the player portion immediately while retaining only already-validated chest summaries.
-- Tightened the 1.1.6 outside-workbench player-only crafting bypass to ask Valheim's own `HaveRequirementItems` implementation for the live complete cost, preventing Stackmaster from entering the bypass on any ordinary ingredient quality combination vanilla would reject. Chest-needed and workbench-mesh crafts remain guarded.
-- Added deterministic policy and source-contract regressions for bounded age, cross-caller sharing, movement boundaries, workbench topology, exact payload invalidation, player inventory refresh, forced-fresh action isolation, guarded chest/workbench crafts, the 1.1.6 multiplayer fallback path, and quality-tier safety.
-- This candidate still requires live performance and multiplayer validation before productionization.
+Introduced bounded cross-caller display snapshots as an attempted hammer-mode performance improvement. Later 1.1.8 experiments extended that architecture with player-only refreshes, longer chest reuse, and indexed requirement totals. Joe's live testing found that the combined approach made hitching worse and spread it to inventory opening and slot moves while the hammer was active. The replacement 1.1.8 candidate removes this experiment completely and restores the 1.1.6 display path. Version 1.1.7 was never productionized or published.
 
 ## 1.1.6 (local test candidate)
 

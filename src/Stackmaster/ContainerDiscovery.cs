@@ -136,8 +136,7 @@ namespace Stackmaster
             int inspectedNearby,
             string truncationReason,
             TargetDiscoveryDiagnostic targetDiagnostic,
-            StorageScope scope,
-            double membershipStabilityDistance)
+            StorageScope scope)
         {
             Containers = containers;
             Truncated = truncated;
@@ -149,7 +148,6 @@ namespace Stackmaster
             TruncationReason = truncationReason;
             TargetDiagnostic = targetDiagnostic;
             Scope = scope;
-            MembershipStabilityDistance = membershipStabilityDistance;
         }
 
         internal IReadOnlyList<ContainerHandle> Containers { get; }
@@ -162,10 +160,6 @@ namespace Stackmaster
         internal string TruncationReason { get; }
         internal TargetDiscoveryDiagnostic TargetDiagnostic { get; }
         internal StorageScope Scope { get; }
-        // In fallback-radius scope, the shortest player movement that could change membership
-        // for any container seen by this complete scene query. Workbench membership is position-
-        // independent while its structural signature is unchanged.
-        internal double MembershipStabilityDistance { get; }
     }
 
     internal static class ContainerDiscovery
@@ -214,21 +208,13 @@ namespace Stackmaster
 
             var totalStopwatch = Stopwatch.StartNew();
             var objectScanStopwatch = Stopwatch.StartNew();
-            var allCandidates = UnityEngine.Object.FindObjectsByType<Container>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
+            var nearby = UnityEngine.Object.FindObjectsByType<Container>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
                 .Where(container => container != null && container != target)
                 .Select(container => new
                 {
                     Container = container,
                     Distance = (double)Vector3.Distance(player.transform.position, container.transform.position)
                 })
-                .ToArray();
-            var membershipStabilityDistance = scope.Kind == StorageScopeKind.NearbyRadius
-                ? allCandidates
-                    .Select(candidate => Math.Abs(candidate.Distance - scope.Plan.FallbackRadius))
-                    .DefaultIfEmpty(double.PositiveInfinity)
-                    .Min()
-                : double.PositiveInfinity;
-            var nearby = allCandidates
                 .Where(candidate => scope.Contains(candidate.Container.transform.position))
                 .OrderBy(candidate => candidate.Distance)
                 .ThenBy(candidate => candidate.Container.GetInstanceID())
@@ -272,8 +258,7 @@ namespace Stackmaster
                 inspectedNearby,
                 truncationReason,
                 targetDiagnostic,
-                scope,
-                membershipStabilityDistance);
+                scope);
         }
 
         private static ContainerHandle Inspect(
