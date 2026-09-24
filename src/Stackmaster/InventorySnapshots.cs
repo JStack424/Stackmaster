@@ -137,7 +137,8 @@ namespace Stackmaster
                 isQuickBar: isPlayer && item.m_gridPos.y == 0,
                 isEquipped: item.m_equipped || (player != null && player.IsItemEquiped(item)),
                 isProtected: isProtected,
-                replenishmentTarget: target);
+                replenishmentTarget: target,
+                persistentItemKey: PersistentItemKey(item));
         }
 
         internal static string PersistentItemKey(ItemDrop.ItemData item)

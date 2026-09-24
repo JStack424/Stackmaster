@@ -33,6 +33,7 @@ internal static class Program
             RememberedDestinationStatePrunesAndCaps,
             RememberedDestinationFallbackRoutesOnlyToExactChest,
             RememberedDestinationsStayExactPerPlayerStack,
+            TransferValidationRejectsChangedPersistentSourceIdentity,
             CurrentMatchingDestinationPrecedesRememberedFallback,
             PartialCurrentRouteDoesNotOpenRememberedFallback,
             MissingOrIneligibleRememberedFallbackIsInert,
@@ -526,6 +527,40 @@ internal static class Program
         Step(plan.Steps[0], TransferKind.Deposit, "chest-a", 0, 10);
         Step(plan.Steps[1], TransferKind.Deposit, "chest-b", 0, 12);
         Valid(PlanValidator.ValidateTransferConservation(player, new[] { chestA, chestB }, plan, remembered));
+    }
+
+    private static void TransferValidationRejectsChangedPersistentSourceIdentity()
+    {
+        var player = Player(2, Item("player-wood", "wood", "Wood", 10, 50, 0, persistentItemKey: "wood|variant-a"));
+        var chest = Chest("remembered", 0, true, 2);
+        var remembered = new Dictionary<string, string>(StringComparer.Ordinal) { ["player-wood"] = "remembered" };
+        var plan = new StorageTransferPlanner().Plan(player, new[] { chest }, rememberedDestinations: remembered);
+        Equal("wood|variant-a", plan.Steps.Single().SourcePersistentItemKey, "planner carries exact source identity");
+
+        var step = plan.Steps.Single();
+        var changedIdentityPlan = new TransferPlan(
+            new[]
+            {
+                new TransferStep(
+                    step.Kind,
+                    step.Source,
+                    step.Destination,
+                    step.CompatibilityKey,
+                    step.VisibleName,
+                    step.Quantity,
+                    step.MaxStack,
+                    "wood|variant-b")
+            },
+            Array.Empty<ReplenishmentShortage>(),
+            Array.Empty<SkippedContainer>(),
+            new[] { "remembered" },
+            10,
+            0,
+            0,
+            false);
+        var validation = PlanValidator.ValidateTransferConservation(player, new[] { chest }, changedIdentityPlan, remembered);
+        True(!validation.IsValid && validation.Errors.Any(error => error.Contains("exact persistent item identity", StringComparison.Ordinal)),
+            "validator rejects a compatibility-equivalent replacement with a different persistent identity");
     }
 
     private static void CurrentMatchingDestinationPrecedesRememberedFallback()
@@ -2441,8 +2476,9 @@ internal static class Program
         bool quickBar = false,
         bool equipped = false,
         bool protectedSlot = false,
-        int? target = null)
-        => new ItemStackSnapshot(id, key, name, quantity, max, slot, quickBar, equipped, protectedSlot, target);
+        int? target = null,
+        string? persistentItemKey = null)
+        => new ItemStackSnapshot(id, key, name, quantity, max, slot, quickBar, equipped, protectedSlot, target, persistentItemKey);
 
     private static void Placement(SortPlan plan, int slot, string key, int quantity, bool fixedPlacement)
     {

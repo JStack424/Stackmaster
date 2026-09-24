@@ -89,7 +89,8 @@ namespace Stackmaster.Core
             string compatibilityKey,
             string visibleName,
             int quantity,
-            int maxStack)
+            int maxStack,
+            string? sourcePersistentItemKey = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (destination == null) throw new ArgumentNullException(nameof(destination));
@@ -97,6 +98,8 @@ namespace Stackmaster.Core
             if (visibleName == null) throw new ArgumentNullException(nameof(visibleName));
             if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
             if (maxStack <= 0) throw new ArgumentOutOfRangeException(nameof(maxStack));
+            if (sourcePersistentItemKey != null && string.IsNullOrWhiteSpace(sourcePersistentItemKey))
+                throw new ArgumentException("A supplied source item identity cannot be empty.", nameof(sourcePersistentItemKey));
             Kind = kind;
             Source = source;
             Destination = destination;
@@ -104,6 +107,7 @@ namespace Stackmaster.Core
             VisibleName = visibleName;
             Quantity = quantity;
             MaxStack = maxStack;
+            SourcePersistentItemKey = sourcePersistentItemKey ?? compatibilityKey;
         }
 
         public TransferKind Kind { get; }
@@ -113,6 +117,7 @@ namespace Stackmaster.Core
         public string VisibleName { get; }
         public int Quantity { get; }
         public int MaxStack { get; }
+        public string SourcePersistentItemKey { get; }
     }
 
     public sealed class ReplenishmentShortage

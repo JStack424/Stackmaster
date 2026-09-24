@@ -1251,6 +1251,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ObservedDataRevision", discovery)
         self.assertIn("zdo.DataRevision != expectedDataRevision", executor)
         self.assertIn("zdo.m_uid.ToString()", executor)
+        self.assertIn("step.SourcePersistentItemKey", executor)
+        self.assertIn("InventorySnapshots.PersistentItemKey(source)", executor)
         self.assertIn("expectedDataRevisions[containerId] = zdo.DataRevision", executor)
         for signature in (
             'RequireMethod(failures, typeof(Player), "GetPlayerID")',
@@ -1284,7 +1286,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("Update()", warnings)
         self.assertIn("FailedDepositWarnings.CaptureCandidates", action)
         self.assertGreaterEqual(action.count("FailedDepositWarnings.Replace"), 2)
-        self.assertGreaterEqual(action.count("FailedDepositWarnings.Clear()"), 2)
+        self.assertGreaterEqual(action.count("FailedDepositWarnings.Clear()"), 4)
+        self.assertGreaterEqual(action.count("InventoryIntegration.HideAllFailedDepositOverlays()"), 3)
 
         self.assertIn("item.IsQuickBar || item.IsEquipped", policy)
         self.assertIn("!item.IsProtected", policy)

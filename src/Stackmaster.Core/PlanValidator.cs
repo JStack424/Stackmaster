@@ -46,10 +46,10 @@ namespace Stackmaster.Core
             var containerById = containerList.ToDictionary(container => container.ContainerId, StringComparer.Ordinal);
             var state = new Dictionary<string, Cell>(StringComparer.Ordinal);
             foreach (var item in player.Items)
-                state.Add(Key(InventoryLocationKind.Player, player.InventoryId, item.Slot), new Cell(item.CompatibilityKey, item.Quantity, item.MaxStack));
+                state.Add(Key(InventoryLocationKind.Player, player.InventoryId, item.Slot), new Cell(item.CompatibilityKey, item.PersistentItemKey, item.Quantity, item.MaxStack));
             foreach (var container in containerList)
                 foreach (var item in container.Items)
-                    state.Add(Key(InventoryLocationKind.Container, container.ContainerId, item.Slot), new Cell(item.CompatibilityKey, item.Quantity, item.MaxStack));
+                    state.Add(Key(InventoryLocationKind.Container, container.ContainerId, item.Slot), new Cell(item.CompatibilityKey, item.PersistentItemKey, item.Quantity, item.MaxStack));
 
             var before = Count(state.Values);
             var errors = new List<string>();
@@ -130,6 +130,8 @@ namespace Stackmaster.Core
                 return;
             }
             if (source.CompatibilityKey != step.CompatibilityKey) errors.Add("A transfer source is not stack-compatible with its declared item.");
+            if (!string.Equals(source.PersistentItemKey, step.SourcePersistentItemKey, StringComparison.Ordinal))
+                errors.Add("A transfer source does not match its exact persistent item identity.");
             if (source.Quantity < step.Quantity)
             {
                 errors.Add("A transfer withdraws more units than its source contains.");
@@ -159,7 +161,7 @@ namespace Stackmaster.Core
                     errors.Add("A transfer creates an overfilled stack.");
                     return;
                 }
-                state.Add(destinationKey, new Cell(step.CompatibilityKey, step.Quantity, step.MaxStack));
+                state.Add(destinationKey, new Cell(step.CompatibilityKey, step.SourcePersistentItemKey, step.Quantity, step.MaxStack));
             }
 
             source.Quantity -= step.Quantity;
@@ -192,14 +194,16 @@ namespace Stackmaster.Core
 
         private sealed class Cell
         {
-            public Cell(string compatibilityKey, int quantity, int maxStack)
+            public Cell(string compatibilityKey, string persistentItemKey, int quantity, int maxStack)
             {
                 CompatibilityKey = compatibilityKey;
+                PersistentItemKey = persistentItemKey;
                 Quantity = quantity;
                 MaxStack = maxStack;
             }
 
             public string CompatibilityKey { get; }
+            public string PersistentItemKey { get; }
             public int Quantity { get; set; }
             public int MaxStack { get; }
         }

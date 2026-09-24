@@ -11,7 +11,7 @@ Added remembered Quick Stack destinations and precise failed-deposit warnings on
 - Missing, destroyed, unloaded, blocked, busy, full, inaccessible, changed, or otherwise ineligible remembered chests remain inert and leave items safely carried.
 - Failed or partial Quick Stack deposits now mark only the surviving eligible quantity with a red border and `!quantity`. Quick-bar, equipped, protection-only, and target-retained quantities are excluded; hovering that exact surviving item acknowledges the warning once, and inventory close clears remaining UI-only warnings.
 - Warning state is keyed by the live item object and never writes item custom data, preserving stacking, persistence, and network identity.
-- Quick Stack now validates the exact chest ZDO identity and observed data revision before each move and advances the expected revision after each successful Stackmaster mutation.
+- Quick Stack now validates the exact source-item identity, chest ZDO identity, and observed data revision before each move, then advances the expected revision after each successful Stackmaster mutation.
 - Destination learning and warning refreshes use existing open, action, grid-refresh, and pointer-enter events; they add no per-frame destination scan, inventory-change requirement scan, or replacement display cache.
 - Preserved the 1.1.8 rollback exactly: no bounded display epoch, long-lived chest slice, indexed totals, inventory fingerprint/dirty-event invalidation, or movement/topology reuse machinery. This candidate makes no performance-fix claim and still requires live testing before production approval.
 

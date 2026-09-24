@@ -115,7 +115,8 @@ namespace Stackmaster
             var destinationPosition = InventorySnapshots.PositionForSlot(destinationInventory, step.Destination.Slot);
             var source = sourceInventory.GetItemAt(sourcePosition.x, sourcePosition.y);
             if (source == null || source.m_stack < step.Quantity ||
-                !string.Equals(catalog.KeyFor(source), step.CompatibilityKey, StringComparison.Ordinal))
+                !string.Equals(catalog.KeyFor(source), step.CompatibilityKey, StringComparison.Ordinal) ||
+                !string.Equals(InventorySnapshots.PersistentItemKey(source), step.SourcePersistentItemKey, StringComparison.Ordinal))
             {
                 failure = "source stack changed before transfer";
                 return StepOutcome.FailedSafely;

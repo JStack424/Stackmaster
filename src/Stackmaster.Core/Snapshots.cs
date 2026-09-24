@@ -22,7 +22,8 @@ namespace Stackmaster.Core
             bool isQuickBar = false,
             bool isEquipped = false,
             bool isProtected = false,
-            int? replenishmentTarget = null)
+            int? replenishmentTarget = null,
+            string? persistentItemKey = null)
         {
             if (string.IsNullOrWhiteSpace(stackId)) throw new ArgumentException("A stack id is required.", nameof(stackId));
             if (string.IsNullOrWhiteSpace(compatibilityKey)) throw new ArgumentException("A compatibility key is required.", nameof(compatibilityKey));
@@ -34,6 +35,8 @@ namespace Stackmaster.Core
                 throw new ArgumentException("Only a protected slot can have a replenishment target.", nameof(replenishmentTarget));
             if (replenishmentTarget.HasValue && (replenishmentTarget.Value < 0 || replenishmentTarget.Value > maxStack))
                 throw new ArgumentOutOfRangeException(nameof(replenishmentTarget));
+            if (persistentItemKey != null && string.IsNullOrWhiteSpace(persistentItemKey))
+                throw new ArgumentException("A supplied persistent item key cannot be empty.", nameof(persistentItemKey));
 
             StackId = stackId;
             CompatibilityKey = compatibilityKey;
@@ -45,6 +48,7 @@ namespace Stackmaster.Core
             IsEquipped = isEquipped;
             IsProtected = isProtected;
             ReplenishmentTarget = replenishmentTarget;
+            PersistentItemKey = persistentItemKey ?? compatibilityKey;
         }
 
         public string StackId { get; }
@@ -57,6 +61,7 @@ namespace Stackmaster.Core
         public bool IsEquipped { get; }
         public bool IsProtected { get; }
         public int? ReplenishmentTarget { get; }
+        public string PersistentItemKey { get; }
 
         public bool IsFixed => IsQuickBar || IsEquipped || IsProtected;
     }

@@ -110,7 +110,8 @@ namespace Stackmaster.Core
                             protectedItem.CompatibilityKey,
                             protectedItem.VisibleName,
                             moved,
-                            protectedItem.MaxStack));
+                            protectedItem.MaxStack,
+                            source.Value.PersistentItemKey));
                         if (source.Value.Quantity == 0) container.Stacks.Remove(source.Key);
                     }
                     if (needed == 0) break;
@@ -235,7 +236,8 @@ namespace Stackmaster.Core
                             source.CompatibilityKey,
                             source.VisibleName,
                             moved,
-                            source.MaxStack));
+                            source.MaxStack,
+                            source.PersistentItemKey));
                         remaining -= moved;
                     }
                     if (remaining == 0) break;
@@ -263,7 +265,8 @@ namespace Stackmaster.Core
                 source.CompatibilityKey,
                 source.VisibleName,
                 quantity,
-                source.MaxStack));
+                source.MaxStack,
+                source.PersistentItemKey));
         }
 
         private static void ValidateContainers(IList<ContainerSnapshot> containers)
@@ -312,20 +315,22 @@ namespace Stackmaster.Core
         private sealed class WorkingStack
         {
             public WorkingStack(ItemStackSnapshot snapshot)
-                : this(snapshot.CompatibilityKey, snapshot.VisibleName, snapshot.Quantity, snapshot.MaxStack)
+                : this(snapshot.CompatibilityKey, snapshot.VisibleName, snapshot.Quantity, snapshot.MaxStack, snapshot.PersistentItemKey)
             {
             }
 
-            public WorkingStack(string compatibilityKey, string visibleName, int quantity, int maxStack)
+            public WorkingStack(string compatibilityKey, string visibleName, int quantity, int maxStack, string persistentItemKey)
             {
                 CompatibilityKey = compatibilityKey;
                 VisibleName = visibleName;
                 Quantity = quantity;
                 MaxStack = maxStack;
+                PersistentItemKey = persistentItemKey;
             }
 
             public string CompatibilityKey { get; }
             public string VisibleName { get; }
+            public string PersistentItemKey { get; }
             public int Quantity { get; set; }
             public int MaxStack { get; }
         }

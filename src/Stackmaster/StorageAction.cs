@@ -275,6 +275,8 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
+                FailedDepositWarnings.Clear();
+                InventoryIntegration.HideAllFailedDepositOverlays();
                 _actionRunning = false;
                 RuntimeContext.Plugin.Log.LogError("Quick Stack stopped safely: " + exception);
                 RuntimeContext.ShowCenter("Stackmaster stopped safely: " + exception.GetType().Name + ".");
@@ -421,6 +423,8 @@ namespace Stackmaster
             }
                 catch (Exception exception)
                 {
+                    FailedDepositWarnings.Clear();
+                    InventoryIntegration.HideAllFailedDepositOverlays();
                     RuntimeContext.Plugin.Log.LogError("Quick Stack stopped safely during execution: " + exception);
                     RuntimeContext.ShowCenter("Stackmaster stopped safely during transfer execution.");
                 }
