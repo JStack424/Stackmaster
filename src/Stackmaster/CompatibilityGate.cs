@@ -42,7 +42,8 @@ namespace Stackmaster
                 typeof(ZDOMan), typeof(Character), typeof(TextViewer), typeof(GameCamera),
                 typeof(PlayerPrefs), typeof(Recipe), typeof(Player.RequirementMode), typeof(ZInput),
                 typeof(SplitDialog), typeof(CraftingStation), typeof(ZNetScene), typeof(PrivateArea),
-                typeof(Vector3), typeof(ZDOVars), typeof(TextInput)
+                typeof(Vector3), typeof(ZDOVars), typeof(TextInput), typeof(KeyHints),
+                typeof(Localization), typeof(UnityEngine.UI.Text)
             };
             foreach (var type in requiredTypes) RuntimeContractValidator.RequireType(failures, type);
 
@@ -105,6 +106,8 @@ namespace Stackmaster
             RequireStaticMethod(failures, typeof(PlayerPrefs), "DeleteKey", typeof(string));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "Save");
             RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
+            RequireStaticMethod(failures, typeof(ZInput), "IsGamepadActive");
+            RequireMethod(failures, typeof(Localization), "RemoveTextFromCache", typeof(UnityEngine.UI.Text));
             RequireMethod(failures, typeof(SplitDialog), "get_IsActive");
             RequireMethod(failures, typeof(ZNetView), "IsOwner");
             RequireMethod(failures, typeof(ZNetView), "IsValid");
@@ -151,6 +154,7 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_splitDialog");
             RequireField(failures, typeof(InventoryGui), "m_variantDialog");
             RequireField(failures, typeof(Hud), "m_requirementItems");
+            RequireField(failures, typeof(KeyHints), "m_buildMenuHintsKB");
             RequireField(failures, typeof(Container), "m_nview");
             RequireField(failures, typeof(Container), "m_wagon");
             RequireField(failures, typeof(ZDO), "m_uid");

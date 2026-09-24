@@ -223,6 +223,15 @@ namespace Stackmaster.Compatibility.Tests
             var utilsContract = new Contract(utilsPe.GetMetadataReader(), utilsPe);
             utilsContract.Method("ZInput", "ResetButtonStatus", "System.Void", new[] { "System.String" },
                 MethodAttributes.Public | MethodAttributes.Static);
+            utilsContract.Method("ZInput", "IsGamepadActive", "System.Boolean", Array.Empty<string>(),
+                MethodAttributes.Public | MethodAttributes.Static);
+
+            var guiPath = Path.Combine(Path.GetFullPath(args[3]), "assembly_guiutils.dll");
+            using var guiStream = File.OpenRead(guiPath);
+            using var guiPe = new PEReader(guiStream);
+            var guiContract = new Contract(guiPe.GetMetadataReader(), guiPe);
+            guiContract.Method("Localization", "RemoveTextFromCache", "System.Void", new[] { "UnityEngine.UI.Text" },
+                MethodAttributes.Public);
 
             Console.WriteLine(_passed + " compatibility contract checks passed");
             return 0;

@@ -1226,6 +1226,12 @@ namespace Stackmaster
                 return false;
             }
 
+            var nowSeconds = Time.realtimeSinceStartupAsDouble;
+            if (!DisplayCaptureEpochPolicy.IsChestAgeValid(epoch.ChestCapturedAtSeconds, nowSeconds))
+            {
+                return false;
+            }
+
             var position = player.transform.position;
             var currentPlayerPosition = new ScopePoint(position.x, position.y, position.z);
             if (epoch.ScopeKind == StorageScopeKind.WorkbenchMesh &&
@@ -1242,7 +1248,7 @@ namespace Stackmaster
                     epoch.ScopeKind,
                     epoch.StructuralScopeSignature,
                     currentPlayerPosition,
-                    Time.realtimeSinceStartupAsDouble))
+                    nowSeconds))
             {
                 return false;
             }

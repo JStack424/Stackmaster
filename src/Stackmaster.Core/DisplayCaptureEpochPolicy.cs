@@ -32,6 +32,9 @@ namespace Stackmaster.Core
                 : DisplayCaptureReuseKind.RefreshPlayerOnly;
         }
 
+        public static bool IsChestAgeValid(double chestCapturedAtSeconds, double nowSeconds)
+            => IsSnapshotAgeValid(chestCapturedAtSeconds, nowSeconds, MaximumChestAgeSeconds);
+
         public static bool CanReuseScope(
             StorageScopeKind cachedKind,
             string cachedStructuralSignature,

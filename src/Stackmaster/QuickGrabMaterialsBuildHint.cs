@@ -46,10 +46,15 @@ namespace Stackmaster
             if (ReferenceEquals(_failedOwner, owner)) return;
             if (_failedOwner != null) _failedOwner = null;
 
-            if (!ReferenceEquals(_owner, owner) || _hint == null)
+            if (_hint != null && !ReferenceEquals(_owner, owner)) Detach();
+
+            if (ZInput.IsGamepadActive())
             {
-                Attach(owner);
+                if (_hint != null) _hint.SetActive(false);
+                return;
             }
+
+            if (_hint == null) Attach(owner);
             if (_hint == null) return;
 
             var shortcutText = FormatShortcut(RuntimeContext.Plugin.StorageActionShortcut.Value.Modifiers);

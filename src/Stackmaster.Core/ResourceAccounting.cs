@@ -191,7 +191,8 @@ namespace Stackmaster.Core
 
         public int CountAvailable(string itemName, int quality = -1)
         {
-            if (itemName == null) throw new ArgumentNullException(nameof(itemName));
+            if (string.IsNullOrWhiteSpace(itemName)) throw new ArgumentException("An item name is required.", nameof(itemName));
+            if (quality == 0 || quality < -1) throw new ArgumentOutOfRangeException(nameof(quality));
             int quantity;
             return quality < 0
                 ? (_allQualities.TryGetValue(itemName, out quantity) ? quantity : 0)

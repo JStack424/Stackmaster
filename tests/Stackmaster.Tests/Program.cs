@@ -1003,6 +1003,14 @@ internal static class Program
             requireSingleQuality: true).Single();
         Equal(6, singleQuality.Available, "indexed alternatives retain the visible all-quality total");
         True(singleQuality.IsSatisfied, "indexed alternatives preserve one-complete-quality-tier semantics");
+
+        var availability = ResourceAvailabilityIndex.Create(stacks);
+        Throws<ArgumentException>(() => availability.CountAvailable(" "),
+            "the indexed path preserves the raw counter's blank-name rejection");
+        Throws<ArgumentOutOfRangeException>(() => availability.CountAvailable("Wood", 0),
+            "the indexed path preserves the raw counter's invalid-quality rejection");
+        Throws<ArgumentOutOfRangeException>(() => availability.CountAvailable("Wood", -2),
+            "the indexed path rejects quality values below the all-quality sentinel");
     }
 
     private static void RequirementPresentationFormatsAggregateTotals()
@@ -1499,6 +1507,14 @@ internal static class Program
                 P(0, 0, 0),
                 nowSeconds: 10 + DisplayCaptureEpochPolicy.MaximumChestAgeSeconds),
             "repeated player mutations cannot extend cached chest data beyond its hard age");
+        True(DisplayCaptureEpochPolicy.IsChestAgeValid(
+                chestCapturedAtSeconds: 10,
+                nowSeconds: 10 + DisplayCaptureEpochPolicy.MaximumChestAgeSeconds - 0.001),
+            "the fast display path may reuse chest data just inside its absolute bound");
+        True(!DisplayCaptureEpochPolicy.IsChestAgeValid(
+                chestCapturedAtSeconds: 10,
+                nowSeconds: 10 + DisplayCaptureEpochPolicy.MaximumChestAgeSeconds),
+            "the fast display path also rejects chest data at the absolute bound after a player-only refresh");
     }
 
     private static void DisplayEpochExpiresAtHardBound()
