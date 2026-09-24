@@ -32,6 +32,7 @@ namespace Stackmaster
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
             NearbyCraftingHudPatch.ResetCache();
+            QuickGrabMaterialsBuildHint.Detach();
             NearbyHudFailOpen.ResetSession();
         }
 
@@ -142,6 +143,7 @@ namespace Stackmaster
                 completedSafely &= TryCleanup("Nearby resource cache cleanup", NearbyResourceService.ResetCaches);
                 completedSafely &= TryCleanup("Build HUD cache cleanup", NearbyBuildHudPatch.ResetCache);
                 completedSafely &= TryCleanup("Crafting HUD cache cleanup", NearbyCraftingHudPatch.ResetCache);
+                completedSafely &= TryCleanup("Quick-grab build-menu hint cleanup", QuickGrabMaterialsBuildHint.Detach);
                 completedSafely &= TryCleanup("HUD diagnostic cache cleanup", NearbyHudFailOpen.ResetSession);
             }
             finally
@@ -180,6 +182,7 @@ namespace Stackmaster
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
             NearbyCraftingHudPatch.ResetCache();
+            QuickGrabMaterialsBuildHint.Detach();
             NearbyHudFailOpen.ResetSession();
             ResourceActionContext.Reset();
             VanillaPlayerCraftContext.End();

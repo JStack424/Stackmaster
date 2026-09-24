@@ -73,7 +73,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ResolveExactMethod", installer)
         self.assertNotRegex(installer, r"typeof\((InventoryGui|Container|InventoryGrid|Player|Hud|BuildUi|Game|ZNet)\)")
         self.assertEqual(
-            32,
+            33,
             len(re.findall(r"^\s{12}(?:Prefix|Postfix|Both|Transactional)\(", manifest, flags=re.MULTILINE)),
         )
         self.assertIn(
@@ -230,6 +230,28 @@ class ProjectBoundaryTests(unittest.TestCase):
         click_patch = action[action.index("internal static class QuickGrabMaterialsClickPatch"):action.index("internal sealed class QuickGrabInventoryBackup")]
         self.assertNotIn("Hud.CloseBuildUi()", click_patch)
         self.assertNotIn("SetSelectedPiece(piece)", click_patch)
+
+    def test_quick_grab_build_menu_hint_is_dynamic_keyboard_only_and_cleans_up_only_itself(self):
+        hint = (PLUGIN_DIR / "QuickGrabMaterialsBuildHint.cs").read_text(encoding="utf-8")
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        compatibility = (ROOT / "tests" / "Stackmaster.Compatibility.Tests" / "Program.cs").read_text(encoding="utf-8")
+
+        self.assertIn('Postfix(typeof(KeyHints), "Update", false, typeof(void), Type.EmptyTypes, typeof(QuickGrabMaterialsBuildHintPatch))', manifest)
+        self.assertIn('internal const string ActionText = "Quick Grab Materials"', hint)
+        self.assertIn("RuntimeContext.Plugin.StorageActionShortcut.Value.Modifiers", hint)
+        self.assertIn('keys.Add("Click")', hint)
+        self.assertIn('case KeyCode.LeftAlt: return "Left Alt"', hint)
+        self.assertIn("owner.m_buildMenuHintsKB", hint)
+        self.assertNotIn("m_buildMenuHintsGP", hint)
+        self.assertIn("vanillaAndThirdPartyHints.Concat(new[] { hint }).ToArray()", hint)
+        self.assertIn("string.Equals(item.name, ObjectName, StringComparison.Ordinal)", hint)
+        self.assertIn("!ReferenceEquals(item, _hint)", hint)
+        self.assertNotIn("_originalKeyboardHints", hint)
+        self.assertGreaterEqual(runtime.count("QuickGrabMaterialsBuildHint.Detach"), 3)
+        self.assertIn('(\"KeyHints\", \"Update\", Array.Empty<string>())', compatibility)
+        self.assertIn('(\"KeyHints\", \"m_buildMenuHintsKB\")', compatibility)
+        self.assertIn('\"KeyHints\", \"UpdateHints\", Array.Empty<string>(), \"KeyHints\", \"m_buildMenuHintsKB\"', compatibility)
 
     def test_quick_grab_materials_is_storage_only_largest_stock_first_and_exact_per_click(self):
         action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
@@ -1173,14 +1195,27 @@ class ProjectBoundaryTests(unittest.TestCase):
         policy = (ROOT / "src" / "Stackmaster.Core" / "DisplayCaptureEpochPolicy.cs").read_text(encoding="utf-8")
         tests = (ROOT / "tests" / "Stackmaster.Tests" / "Program.cs").read_text(encoding="utf-8")
 
-        self.assertIn("MaximumAgeSeconds = 0.20", policy)
-        self.assertIn("nowSeconds >= capturedAtSeconds + MaximumAgeSeconds", policy)
+        self.assertIn("MaximumAgeSeconds = 1.0", policy)
+        self.assertIn("MaximumChestAgeSeconds = 5.0", policy)
+        self.assertIn("nowSeconds < capturedAtSeconds + maximumAgeSeconds", policy)
+        self.assertIn("public static bool CanRefreshPlayerOnly(", policy)
+        player_refresh = policy[policy.index("public static bool CanRefreshPlayerOnly("):policy.index("private static bool IsSnapshotAgeValid")]
+        self.assertIn("IsSnapshotAgeValid(chestCapturedAtSeconds, nowSeconds, MaximumChestAgeSeconds)", player_refresh)
+        self.assertIn("IsScopeStable(", player_refresh)
         self.assertIn("movedSquared < membershipStabilityDistance * membershipStabilityDistance", policy)
         self.assertIn("MembershipStabilityDistance", discovery)
         self.assertIn("Math.Abs(candidate.Distance - scope.Plan.FallbackRadius)", discovery)
         capture_start = nearby.index("private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)")
         capture_end = nearby.index("private static void AddInventory", capture_start)
         capture = nearby[capture_start:capture_end]
+        self.assertIn("TryReuseDisplayEpochWithoutScopeWalk", capture)
+        self.assertLess(capture.index("TryReuseDisplayEpochWithoutScopeWalk"), capture.index("StorageScopeProvider.Resolve(player)"))
+        fast_reuse = nearby[
+            nearby.index("private static bool TryReuseDisplayEpochWithoutScopeWalk"):
+            nearby.index("private static NearbyResourceCapture CaptureComplete")
+        ]
+        self.assertIn("epoch.Scope.Plan.Contains(currentPlayerPosition)", fast_reuse)
+        self.assertIn("DisplayCaptureEpochPolicy.CanReuseScope(", fast_reuse)
         self.assertIn("if (fresh)", capture)
         self.assertIn("return CaptureComplete(player, matchWorldLevel, scope, false)", capture)
         self.assertIn("TryReuseDisplayEpoch", capture)
@@ -1191,6 +1226,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("DisplayCaptureEpochPolicy.SelectReuse", capture)
         self.assertIn("DisplayCaptureReuseKind.RecaptureAll", capture)
         self.assertIn("DisplayCaptureReuseKind.ReuseComplete", capture)
+        self.assertIn("DisplayCaptureEpochPolicy.CanRefreshPlayerOnly(", capture)
+        self.assertIn("epoch.ChestCapturedAtSeconds", capture)
+        self.assertIn("epoch.CapturedAtSeconds = nowSeconds", capture)
+        self.assertNotIn("epoch.ChestCapturedAtSeconds = nowSeconds", capture)
         self.assertNotIn("ContainerDiscovery.IsResourceHandleCurrent", capture)
         self.assertNotIn("ResourcePayload", capture)
         self.assertNotIn("ClaimOwnership", capture)
@@ -1214,6 +1253,25 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("DisplayEpochFallbackMovementRespectsMembershipMargin", tests)
         self.assertIn("DisplayEpochWorkbenchReuseRequiresStableTopology", tests)
         self.assertIn("PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla", tests)
+
+        inventory_integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        inventory_changed = inventory_integration[
+            inventory_integration.index("private static void OnObservedInventoryChanged()"):
+            inventory_integration.index("internal static void RequestProtectionOverlayRefresh()")
+        ]
+        self.assertIn("NearbyBuildHudPatch.InvalidatePlayerContribution();", inventory_changed)
+        self.assertIn("NearbyCraftingHudPatch.InvalidatePlayerContribution();", inventory_changed)
+        self.assertNotIn("InvalidateDisplayEpoch", inventory_changed)
+
+        sort_executor = (PLUGIN_DIR / "SortExecutor.cs").read_text(encoding="utf-8")
+        self.assertIn("if (PlanAlreadyApplied(source, plan)) return true;", sort_executor)
+        no_op_guard = sort_executor[
+            sort_executor.index("private static bool PlanAlreadyApplied"):
+            sort_executor.index("private static bool Execute")
+        ]
+        self.assertIn("source.Items.Count != plan.Placements.Count", no_op_guard)
+        self.assertIn("placement.Quantity != item.Quantity", no_op_guard)
+        self.assertNotIn("m_onChanged", no_op_guard)
 
     def test_crafting_exact_debit_is_one_shot_journaled_and_fail_closed(self):
         debit = (ROOT / "src" / "Stackmaster.Core" / "ExactResourceDebit.cs").read_text(encoding="utf-8")
@@ -1333,8 +1391,12 @@ class ProjectBoundaryTests(unittest.TestCase):
         build = nearby[nearby.index("internal static class NearbyBuildHudPatch"):nearby.index("internal static class RequirementAmountTextFitter")]
         self.assertIn("plugin.ShowStorageAmountsInRequirementMenus.Value", build)
         self.assertIn("plugin.BuildingFromNearbyChestsEnabled.Value", build)
-        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.Stacks)", nearby)
-        self.assertIn("capture.Stacks.Where(stack => string.Equals(stack.InventoryId, PlayerInventoryId", nearby)
+        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.AggregateAvailability)", nearby)
+        self.assertIn("ResourceDisplayAvailability.Evaluate(validRequirements, capture.PlayerAvailability)", nearby)
+        self.assertIn("_aggregateAvailability = new Lazy<ResourceAvailabilityIndex>(() =>", nearby)
+        self.assertIn("ResourceAvailabilityIndex.Create(stacks)", nearby)
+        self.assertIn("_playerAvailability = new Lazy<ResourceAvailabilityIndex>(() =>", nearby)
+        self.assertIn("ResourceAvailabilityIndex.Create(stacks.Where(stack =>", nearby)
         self.assertIn('requirementRoot.transform.Find("res_amount")', build)
         self.assertIn("RequirementUiPolicy.Resolve(", build)
         self.assertIn("if (decision.ShouldOverrideText)", build)
@@ -1384,7 +1446,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('return required.ToString(CultureInfo.InvariantCulture) + " / " +', core)
         self.assertIn("=> !noCost && !isSatisfied && flashSignal > 0f", core)
         self.assertIn("GroupBy(requirement => new RequirementKey", core)
-        self.assertIn("GroupBy(stack => stack.Quality)", core)
+        self.assertIn("public sealed class ResourceAvailabilityIndex", core)
+        self.assertIn("quantities.Any(quantity => quantity >= required)", core)
 
     def test_requirement_text_uses_bounded_adaptive_fit_without_changing_exact_values(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")

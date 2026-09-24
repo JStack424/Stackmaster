@@ -509,6 +509,12 @@ namespace Stackmaster
             // Inventory.m_onChanged can run before InventoryGrid rebuilds its element positions.
             // Defer the actual overlay walk until the matching player grid has finished UpdateGui.
             _overlayRefreshPending = true;
+
+            // Requirement displays should reflect carried items immediately, but a player pickup,
+            // drop, or move must never invalidate the cached chest slice. The shared display epoch
+            // recognizes the new player signature and rebuilds only that contribution.
+            NearbyBuildHudPatch.InvalidatePlayerContribution();
+            NearbyCraftingHudPatch.InvalidatePlayerContribution();
         }
 
         internal static void RequestProtectionOverlayRefresh()

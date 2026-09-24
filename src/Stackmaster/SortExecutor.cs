@@ -28,6 +28,11 @@ namespace Stackmaster
                     return false;
                 }
 
+                // Opening an already-sorted inventory must not synthesize an Inventory.m_onChanged
+                // notification. With a hammer equipped, Valheim treats that notification as a
+                // real inventory mutation and rebuilds the placement ghost even though no item moved.
+                if (PlanAlreadyApplied(source, plan)) return true;
+
                 return Execute(inventory, source, plan, out failure);
             }
             catch (Exception exception)
@@ -35,6 +40,25 @@ namespace Stackmaster
                 failure = exception.GetType().Name + ": " + exception.Message;
                 return false;
             }
+        }
+
+        private static bool PlanAlreadyApplied(InventorySnapshot source, SortPlan plan)
+        {
+            if (source == null || plan == null || source.Items.Count != plan.Placements.Count) return false;
+
+            var placementBySlot = plan.Placements.ToDictionary(placement => placement.Slot);
+            foreach (var item in source.Items)
+            {
+                SortPlacement placement;
+                if (!placementBySlot.TryGetValue(item.Slot, out placement) ||
+                    !string.Equals(placement.CompatibilityKey, item.CompatibilityKey, StringComparison.Ordinal) ||
+                    placement.Quantity != item.Quantity ||
+                    placement.IsFixed != item.IsFixed)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static bool Execute(Inventory inventory, InventorySnapshot source, SortPlan plan, out string failure)

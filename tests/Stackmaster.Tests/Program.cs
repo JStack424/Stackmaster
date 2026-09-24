@@ -64,6 +64,7 @@ internal static class Program
             ResourceDisplayAggregatesDuplicateRequirements,
             ResourceDisplayUsesUpgradeAndMultiCraftTotals,
             ResourceDisplayAlternativesRequireOneQualityTier,
+            ResourceAvailabilityIndexMatchesRawDisplaySemantics,
             RequirementPresentationFormatsAggregateTotals,
             RequirementPresentationRetainsLongExactTotals,
             RequirementPresentationUsesRedOnlyForTrueShortages,
@@ -85,6 +86,7 @@ internal static class Program
             PlayerOnlyBypassDefersOrdinaryQualitySemanticsToVanilla,
             DisplayEpochReusesMultipleCallersWithinBound,
             DisplayQueriesAfterPlayerChangeRefreshPlayerWithoutChestWork,
+            DisplayExpiredEpochStillRefreshesOnlyPlayerWhenScopeIsStable,
             DisplayEpochExpiresAtHardBound,
             DisplayEpochFallbackMovementRespectsMembershipMargin,
             DisplayEpochWorkbenchReuseRequiresStableTopology,
@@ -965,6 +967,44 @@ internal static class Program
         True(matchingQuality.IsSatisfied, "one complete quality tier satisfies the alternative requirement");
     }
 
+    private static void ResourceAvailabilityIndexMatchesRawDisplaySemantics()
+    {
+        var requirements = new[]
+        {
+            new ResourceRequirement("Wood", 2),
+            new ResourceRequirement("Wood", 3),
+            new ResourceRequirement("Fish", 4)
+        };
+        var stacks = new[]
+        {
+            Resource("player", "wood-p", "Wood", 1, 1, 0, 0),
+            Resource("near", "wood-c", "Wood", 1, 5, 1, 0),
+            Resource("near", "fish-q1", "Fish", 1, 2, 1, 1),
+            Resource("near", "fish-q2", "Fish", 2, 4, 1, 2)
+        };
+
+        var raw = ResourceDisplayAvailability.Evaluate(requirements, stacks);
+        var indexed = ResourceDisplayAvailability.Evaluate(
+            requirements,
+            ResourceAvailabilityIndex.Create(stacks));
+        Equal(raw.Count, indexed.Count, "the indexed display path preserves every requirement row");
+        for (var index = 0; index < raw.Count; index++)
+        {
+            Equal(raw[index].Required, indexed[index].Required, "indexed required quantity matches the raw path");
+            Equal(raw[index].TotalRequired, indexed[index].TotalRequired, "indexed duplicate normalization matches the raw path");
+            Equal(raw[index].Available, indexed[index].Available, "indexed aggregate availability matches the raw path");
+            Equal(raw[index].IsSatisfied, indexed[index].IsSatisfied, "indexed affordability matches the raw path");
+        }
+
+        var singleQuality = ResourceDisplayAvailability.Evaluate(
+            new[] { new ResourceRequirement("Fish", 4) },
+            ResourceAvailabilityIndex.Create(stacks),
+            alternatives: true,
+            requireSingleQuality: true).Single();
+        Equal(6, singleQuality.Available, "indexed alternatives retain the visible all-quality total");
+        True(singleQuality.IsSatisfied, "indexed alternatives preserve one-complete-quality-tier semantics");
+    }
+
     private static void RequirementPresentationFormatsAggregateTotals()
     {
         Equal("2 / 17", ResourceRequirementPresentation.Format(2, 17),
@@ -1411,6 +1451,54 @@ internal static class Program
             currentPlayerInventorySignature: "player:wood=13");
         Equal(DisplayCaptureReuseKind.RecaptureAll, expired,
             "an expired or unsafe scope still forces a complete chest recapture");
+    }
+
+    private static void DisplayExpiredEpochStillRefreshesOnlyPlayerWhenScopeIsStable()
+    {
+        True(DisplayCaptureEpochPolicy.CanRefreshPlayerOnly(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 4,
+                chestCapturedAtSeconds: 10,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                nowSeconds: 10 + DisplayCaptureEpochPolicy.MaximumAgeSeconds),
+            "a carried-inventory mutation reuses the stable chest slice past the ordinary age boundary");
+        True(!DisplayCaptureEpochPolicy.CanRefreshPlayerOnly(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 4,
+                chestCapturedAtSeconds: 10,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:25",
+                P(0, 0, 0),
+                nowSeconds: 11),
+            "a configuration/scope change still forces complete chest discovery");
+        True(!DisplayCaptureEpochPolicy.CanRefreshPlayerOnly(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 4,
+                chestCapturedAtSeconds: 10,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(4, 0, 0),
+                nowSeconds: 11),
+            "reaching the proven membership boundary still forces complete chest discovery");
+        True(!DisplayCaptureEpochPolicy.CanRefreshPlayerOnly(
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                membershipStabilityDistance: 4,
+                chestCapturedAtSeconds: 10,
+                StorageScopeKind.NearbyRadius,
+                "NearbyRadius:20",
+                P(0, 0, 0),
+                nowSeconds: 10 + DisplayCaptureEpochPolicy.MaximumChestAgeSeconds),
+            "repeated player mutations cannot extend cached chest data beyond its hard age");
     }
 
     private static void DisplayEpochExpiresAtHardBound()

@@ -134,6 +134,100 @@ namespace Stackmaster.Core
     }
 
     /// <summary>
+    /// Immutable quantity index for repeated display-only requirement checks. Building the
+    /// index is linear in the snapshot size; every later item/quality lookup is constant-time.
+    /// </summary>
+    public sealed class ResourceAvailabilityIndex
+    {
+        private readonly IReadOnlyDictionary<string, int> _allQualities;
+        private readonly IReadOnlyDictionary<AvailabilityKey, int> _exactQualities;
+        private readonly IReadOnlyDictionary<string, IReadOnlyList<int>> _quantitiesByQuality;
+
+        private ResourceAvailabilityIndex(
+            IReadOnlyDictionary<string, int> allQualities,
+            IReadOnlyDictionary<AvailabilityKey, int> exactQualities,
+            IReadOnlyDictionary<string, IReadOnlyList<int>> quantitiesByQuality)
+        {
+            _allQualities = allQualities;
+            _exactQualities = exactQualities;
+            _quantitiesByQuality = quantitiesByQuality;
+        }
+
+        public static ResourceAvailabilityIndex Create(IEnumerable<ResourceStack> stacks)
+        {
+            if (stacks == null) throw new ArgumentNullException(nameof(stacks));
+
+            var allQualities = new Dictionary<string, int>(StringComparer.Ordinal);
+            var exactQualities = new Dictionary<AvailabilityKey, int>();
+            var quantitiesByQuality = new Dictionary<string, Dictionary<int, int>>(StringComparer.Ordinal);
+            foreach (var stack in stacks.Where(stack => stack != null))
+            {
+                int quantity;
+                allQualities.TryGetValue(stack.ItemName, out quantity);
+                allQualities[stack.ItemName] = checked(quantity + stack.Quantity);
+
+                var key = new AvailabilityKey(stack.ItemName, stack.Quality);
+                exactQualities.TryGetValue(key, out quantity);
+                exactQualities[key] = checked(quantity + stack.Quantity);
+
+                Dictionary<int, int> qualities;
+                if (!quantitiesByQuality.TryGetValue(stack.ItemName, out qualities))
+                {
+                    qualities = new Dictionary<int, int>();
+                    quantitiesByQuality.Add(stack.ItemName, qualities);
+                }
+                qualities.TryGetValue(stack.Quality, out quantity);
+                qualities[stack.Quality] = checked(quantity + stack.Quantity);
+            }
+
+            return new ResourceAvailabilityIndex(
+                allQualities,
+                exactQualities,
+                quantitiesByQuality.ToDictionary(
+                    pair => pair.Key,
+                    pair => (IReadOnlyList<int>)pair.Value.Values.ToArray(),
+                    StringComparer.Ordinal));
+        }
+
+        public int CountAvailable(string itemName, int quality = -1)
+        {
+            if (itemName == null) throw new ArgumentNullException(nameof(itemName));
+            int quantity;
+            return quality < 0
+                ? (_allQualities.TryGetValue(itemName, out quantity) ? quantity : 0)
+                : (_exactQualities.TryGetValue(new AvailabilityKey(itemName, quality), out quantity) ? quantity : 0);
+        }
+
+        public bool HasSingleQualityAmount(string itemName, int required)
+        {
+            if (itemName == null) throw new ArgumentNullException(nameof(itemName));
+            IReadOnlyList<int> quantities;
+            return _quantitiesByQuality.TryGetValue(itemName, out quantities) &&
+                   quantities.Any(quantity => quantity >= required);
+        }
+
+        private sealed class AvailabilityKey : IEquatable<AvailabilityKey>
+        {
+            internal AvailabilityKey(string itemName, int quality)
+            {
+                ItemName = itemName;
+                Quality = quality;
+            }
+
+            private string ItemName { get; }
+            private int Quality { get; }
+
+            public bool Equals(AvailabilityKey? other)
+                => other != null && Quality == other.Quality &&
+                   string.Equals(ItemName, other.ItemName, StringComparison.Ordinal);
+
+            public override bool Equals(object obj) => Equals(obj as AvailabilityKey);
+            public override int GetHashCode()
+                => unchecked((StringComparer.Ordinal.GetHashCode(ItemName) * 397) ^ Quality);
+        }
+    }
+
+    /// <summary>
     /// Pure availability accounting for requirement UIs. Normal recipes combine duplicate
     /// costs before deciding whether any line is affordable. One-ingredient recipes treat
     /// their rows as alternatives and require one quality tier to satisfy the selected row.
@@ -146,11 +240,20 @@ namespace Stackmaster.Core
             bool alternatives = false,
             bool requireSingleQuality = false)
         {
-            if (requirements == null) throw new ArgumentNullException(nameof(requirements));
             if (stacks == null) throw new ArgumentNullException(nameof(stacks));
+            return Evaluate(requirements, ResourceAvailabilityIndex.Create(stacks), alternatives, requireSingleQuality);
+        }
+
+        public static IReadOnlyList<ResourceDisplayRequirement> Evaluate(
+            IEnumerable<ResourceRequirement> requirements,
+            ResourceAvailabilityIndex availability,
+            bool alternatives = false,
+            bool requireSingleQuality = false)
+        {
+            if (requirements == null) throw new ArgumentNullException(nameof(requirements));
+            if (availability == null) throw new ArgumentNullException(nameof(availability));
 
             var requirementList = requirements.Where(requirement => requirement != null).ToList();
-            var stackList = stacks.Where(stack => stack != null).ToList();
             var totalRequired = alternatives
                 ? null
                 : requirementList
@@ -164,12 +267,9 @@ namespace Stackmaster.Core
                 {
                     var key = new RequirementKey(requirement.ItemName, requirement.Quality);
                     var required = alternatives ? requirement.Quantity : totalRequired![key];
-                    var available = ResourceAvailability.CountAvailable(stackList, requirement.ItemName, requirement.Quality);
+                    var available = availability.CountAvailable(requirement.ItemName, requirement.Quality);
                     var satisfied = requireSingleQuality && requirement.Quality < 0
-                        ? stackList
-                            .Where(stack => string.Equals(stack.ItemName, requirement.ItemName, StringComparison.Ordinal))
-                            .GroupBy(stack => stack.Quality)
-                            .Any(group => group.Sum(stack => checked(stack.Quantity)) >= required)
+                        ? availability.HasSingleQualityAmount(requirement.ItemName, required)
                         : available >= required;
                     return new ResourceDisplayRequirement(
                         requirement.ItemName,

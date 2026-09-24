@@ -54,6 +54,8 @@ namespace Stackmaster.Compatibility.Tests
                 ("Hud", "UpdatePieceBuildStatusAll", new[] { "System.Collections.Generic.List`1<Piece>", "Player" }),
                 ("BuildUi", "OnSelectPiece", new[] { "Piece" }),
                 ("BuildUiPieceButton", "UpdateRequirements", Array.Empty<string>()),
+                ("KeyHints", "Update", Array.Empty<string>()),
+                ("KeyHints", "UpdateHints", Array.Empty<string>()),
                 ("InventoryGrid", "UpdateInventory", new[] { "Inventory", "Player", "ItemData" }),
                 ("InventoryGrid", "OnLeftDown", new[] { "UIInputHandler" }),
                 ("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }),
@@ -173,6 +175,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("Container", "m_nview"), ("Container", "m_wagon"),
                 ("Inventory", "m_onChanged"), ("Inventory", "m_inventory"),
                 ("Player", "m_customData"), ("Player", "m_noPlacementCost"),
+                ("KeyHints", "m_buildMenuHintsKB"), ("KeyHints", "m_buildMenuHintsGP"),
                 ("ItemDrop", "m_itemData")
             };
             foreach (var field in fields) contract.Field(field.Type, field.Name);
@@ -183,6 +186,13 @@ namespace Stackmaster.Compatibility.Tests
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnLeftDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodReadsFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onRightClick");
             contract.MethodDoesNotReadFieldByName("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }, "InventoryGrid", "m_onSelected");
+            contract.MethodCalls(
+                "KeyHints", "Update", "System.Void", Array.Empty<string>(),
+                "KeyHints", "UpdateHints", "System.Void", Array.Empty<string>());
+            contract.MethodReadsFieldByName(
+                "KeyHints", "UpdateHints", Array.Empty<string>(), "KeyHints", "m_buildMenuHintsKB");
+            contract.MethodReadsFieldByName(
+                "KeyHints", "UpdateHints", Array.Empty<string>(), "KeyHints", "m_buildMenuHintsGP");
 
             // Stackmaster debits the prepared plan before letting vanilla create output,
             // then suppresses these exact vanilla charging calls. Keep this a structural
@@ -255,7 +265,7 @@ namespace Stackmaster.Compatibility.Tests
                 .GetMethod("PrepareCleanupSafety", BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, null)!).Cast<object>().ToArray();
 
-            Equal(32, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
+            Equal(33, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
             Equal(descriptors.Length, prepared.Length, "PatchInstaller.Prepare returns every manifest operation");
             Equal(2, cleanupSafety.Length, "cleanup safety installation filters the canonical manifest");
 
