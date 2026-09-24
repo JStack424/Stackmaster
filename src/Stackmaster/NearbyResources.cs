@@ -431,6 +431,7 @@ namespace Stackmaster
             internal IReadOnlyList<ResourceStack> ChestStacks;
             internal IReadOnlyDictionary<string, RuntimeResourceStack> ChestRuntimeStacks;
             internal string PlayerInventorySignature;
+            internal bool PlayerContributionDirty;
             internal NearbyResourceCapture Capture;
         }
 
@@ -455,6 +456,15 @@ namespace Stackmaster
         internal static void ResetCaches()
         {
             _displayEpoch = null;
+        }
+
+        internal static void InvalidatePlayerContribution(Player player)
+        {
+            var epoch = _displayEpoch;
+            if (epoch != null && (player == null || ReferenceEquals(epoch.Player, player)))
+            {
+                epoch.PlayerContributionDirty = true;
+            }
         }
 
         internal static bool HasPieceRequirements(Player player, Piece piece, bool fresh)
@@ -1167,6 +1177,14 @@ namespace Stackmaster
         {
             if (!fresh)
             {
+                // Observe the local inventory even before the inventory panel has ever opened, so
+                // steady HUD frames can trust a cheap dirty bit instead of serializing every carried
+                // stack once per displayed requirement.
+                InventoryIntegration.BindPlayerInventory(player);
+            }
+
+            if (!fresh)
+            {
                 NearbyResourceCapture cachedWithoutScopeWalk;
                 if (TryReuseDisplayEpochWithoutScopeWalk(player, matchWorldLevel, out cachedWithoutScopeWalk))
                 {
@@ -1203,8 +1221,7 @@ namespace Stackmaster
                 return false;
             }
 
-            var playerSignature = PlayerInventorySignature(player);
-            if (!string.Equals(epoch.PlayerInventorySignature, playerSignature, StringComparison.Ordinal))
+            if (epoch.PlayerContributionDirty)
             {
                 return false;
             }
@@ -1297,7 +1314,9 @@ namespace Stackmaster
 
             var nowSeconds = Time.realtimeSinceStartupAsDouble;
             var currentStructuralSignature = DisplayStructuralScopeSignature(scope);
-            var playerSignature = PlayerInventorySignature(player);
+            var playerSignature = epoch.PlayerContributionDirty
+                ? PlayerInventorySignature(player)
+                : epoch.PlayerInventorySignature;
             var playerInventoryChanged = !string.Equals(
                 epoch.PlayerInventorySignature,
                 playerSignature,
@@ -1333,6 +1352,7 @@ namespace Stackmaster
             }
             if (reuse == DisplayCaptureReuseKind.ReuseComplete)
             {
+                epoch.PlayerContributionDirty = false;
                 capture = epoch.Capture;
                 return true;
             }
@@ -1351,6 +1371,7 @@ namespace Stackmaster
                 epoch.ChestStacks,
                 epoch.ChestRuntimeStacks);
             epoch.PlayerInventorySignature = playerSignature;
+            epoch.PlayerContributionDirty = false;
             epoch.CapturedAtSeconds = nowSeconds;
             epoch.Capture = capture;
             return true;

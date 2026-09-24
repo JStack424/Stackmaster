@@ -512,7 +512,8 @@ namespace Stackmaster
 
             // Requirement displays should reflect carried items immediately, but a player pickup,
             // drop, or move must never invalidate the cached chest slice. The shared display epoch
-            // recognizes the new player signature and rebuilds only that contribution.
+            // marks that slice dirty and rebuilds only that contribution on the next display query.
+            NearbyResourceService.InvalidatePlayerContribution(Player.m_localPlayer);
             NearbyBuildHudPatch.InvalidatePlayerContribution();
             NearbyCraftingHudPatch.InvalidatePlayerContribution();
         }

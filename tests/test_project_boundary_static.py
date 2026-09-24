@@ -1210,12 +1210,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         capture_start = nearby.index("private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)")
         capture_end = nearby.index("private static void AddInventory", capture_start)
         capture = nearby[capture_start:capture_end]
+        self.assertIn("InventoryIntegration.BindPlayerInventory(player)", capture)
         self.assertIn("TryReuseDisplayEpochWithoutScopeWalk", capture)
         self.assertLess(capture.index("TryReuseDisplayEpochWithoutScopeWalk"), capture.index("StorageScopeProvider.Resolve(player)"))
         fast_reuse = nearby[
             nearby.index("private static bool TryReuseDisplayEpochWithoutScopeWalk"):
             nearby.index("private static NearbyResourceCapture CaptureComplete")
         ]
+        self.assertIn("epoch.PlayerContributionDirty", fast_reuse)
+        self.assertNotIn("PlayerInventorySignature(player)", fast_reuse)
         self.assertIn("epoch.Scope.Plan.Contains(currentPlayerPosition)", fast_reuse)
         self.assertIn("DisplayCaptureEpochPolicy.CanReuseScope(", fast_reuse)
         self.assertIn("if (fresh)", capture)
@@ -1261,6 +1264,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             inventory_integration.index("private static void OnObservedInventoryChanged()"):
             inventory_integration.index("internal static void RequestProtectionOverlayRefresh()")
         ]
+        self.assertIn("NearbyResourceService.InvalidatePlayerContribution(Player.m_localPlayer);", inventory_changed)
         self.assertIn("NearbyBuildHudPatch.InvalidatePlayerContribution();", inventory_changed)
         self.assertIn("NearbyCraftingHudPatch.InvalidatePlayerContribution();", inventory_changed)
         self.assertNotIn("InvalidateDisplayEpoch", inventory_changed)
