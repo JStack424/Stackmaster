@@ -1274,6 +1274,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         plugin = (PLUGIN_DIR / "Plugin.cs").read_text(encoding="utf-8")
 
         self.assertIn("ReferenceComparer<ItemDrop.ItemData>.Instance", warnings)
+        self.assertIn("var replacement = new Dictionary<ItemDrop.ItemData, int>", warnings)
+        self.assertIn("replacement[candidate.Item] = failed", warnings)
+        self.assertIn("Warnings = replacement", warnings)
+        self.assertNotIn("Warnings.Clear();\n            var inventory", warnings)
         self.assertIn("FailedDepositPolicy.FailedRemainder", warnings)
         self.assertIn("Warnings.Remove(item)", warnings)
         self.assertIn("ReconcileAfterSuccessfulSort", warnings)

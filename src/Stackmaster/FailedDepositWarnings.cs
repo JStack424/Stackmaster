@@ -27,7 +27,7 @@ namespace Stackmaster
     internal static class FailedDepositWarnings
     {
         private static readonly MethodInfo GetHoveredElementMethod = AccessTools.Method(typeof(InventoryGrid), "GetHoveredElement", Type.EmptyTypes);
-        private static readonly Dictionary<ItemDrop.ItemData, int> Warnings =
+        private static Dictionary<ItemDrop.ItemData, int> Warnings =
             new Dictionary<ItemDrop.ItemData, int>(ReferenceComparer<ItemDrop.ItemData>.Instance);
         private static int _playerSortDepth;
 
@@ -51,7 +51,7 @@ namespace Stackmaster
 
         internal static void Replace(Player player, IEnumerable<FailedDepositCandidate> candidates)
         {
-            Warnings.Clear();
+            var replacement = new Dictionary<ItemDrop.ItemData, int>(ReferenceComparer<ItemDrop.ItemData>.Instance);
             var inventory = player?.GetInventory();
             if (inventory != null && candidates != null)
             {
@@ -61,10 +61,11 @@ namespace Stackmaster
                     var failed = FailedDepositPolicy.FailedRemainder(candidate.Snapshot, candidate.Item.m_stack);
                     if (failed > 0)
                     {
-                        Warnings[candidate.Item] = failed;
+                        replacement[candidate.Item] = failed;
                     }
                 }
             }
+            Warnings = replacement;
             RequestRefreshIfNeeded();
         }
 
