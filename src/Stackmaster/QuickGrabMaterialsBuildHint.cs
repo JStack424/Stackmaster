@@ -20,7 +20,7 @@ namespace Stackmaster
             }
             catch (Exception exception)
             {
-                QuickGrabMaterialsBuildHint.Detach();
+                QuickGrabMaterialsBuildHint.FailForOwner(__instance);
                 NearbyHudFailOpen.ReportOnce("quick-grab build-menu hint", exception);
             }
         }
@@ -32,6 +32,7 @@ namespace Stackmaster
         internal const string ActionText = "Quick Grab Materials";
 
         private static KeyHints _owner;
+        private static KeyHints _failedOwner;
         private static GameObject _hint;
         private static string _lastShortcutText;
 
@@ -42,6 +43,8 @@ namespace Stackmaster
                 Detach();
                 return;
             }
+            if (ReferenceEquals(_failedOwner, owner)) return;
+            if (_failedOwner != null) _failedOwner = null;
 
             if (!ReferenceEquals(_owner, owner) || _hint == null)
             {
@@ -55,6 +58,12 @@ namespace Stackmaster
                 ApplyText(_hint, shortcutText);
                 _lastShortcutText = shortcutText;
             }
+        }
+
+        internal static void FailForOwner(KeyHints owner)
+        {
+            Detach();
+            _failedOwner = owner;
         }
 
         internal static void Detach()
@@ -78,6 +87,7 @@ namespace Stackmaster
             finally
             {
                 _owner = null;
+                _failedOwner = null;
                 _hint = null;
                 _lastShortcutText = null;
             }
@@ -103,6 +113,7 @@ namespace Stackmaster
                 }
                 RuntimeContext.Plugin?.Log.LogWarning(
                     "Quick Grab Materials hint was skipped because Valheim exposed no keyboard build-menu hint template.");
+                _failedOwner = owner;
                 return;
             }
 

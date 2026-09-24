@@ -247,6 +247,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("vanillaAndThirdPartyHints.Concat(new[] { hint }).ToArray()", hint)
         self.assertIn("string.Equals(item.name, ObjectName, StringComparison.Ordinal)", hint)
         self.assertIn("!ReferenceEquals(item, _hint)", hint)
+        self.assertIn("if (ReferenceEquals(_failedOwner, owner)) return;", hint)
+        self.assertIn("QuickGrabMaterialsBuildHint.FailForOwner(__instance)", hint)
         self.assertNotIn("_originalKeyboardHints", hint)
         self.assertGreaterEqual(runtime.count("QuickGrabMaterialsBuildHint.Detach"), 3)
         self.assertIn('(\"KeyHints\", \"Update\", Array.Empty<string>())', compatibility)
