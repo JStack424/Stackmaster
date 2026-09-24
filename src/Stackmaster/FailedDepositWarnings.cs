@@ -29,6 +29,7 @@ namespace Stackmaster
         private static readonly MethodInfo GetHoveredElementMethod = AccessTools.Method(typeof(InventoryGrid), "GetHoveredElement", Type.EmptyTypes);
         private static readonly Dictionary<ItemDrop.ItemData, int> Warnings =
             new Dictionary<ItemDrop.ItemData, int>(ReferenceComparer<ItemDrop.ItemData>.Instance);
+        private static int _playerSortDepth;
 
         internal static IReadOnlyList<FailedDepositCandidate> CaptureCandidates(Player player, InventorySnapshot snapshot)
         {
@@ -87,6 +88,16 @@ namespace Stackmaster
             return true;
         }
 
+        internal static void BeginPlayerSort()
+        {
+            _playerSortDepth++;
+        }
+
+        internal static void EndPlayerSort()
+        {
+            _playerSortDepth = Math.Max(0, _playerSortDepth - 1);
+        }
+
         internal static void ReconcileAfterSuccessfulSort(
             IEnumerable<ItemDrop.ItemData> originalItems,
             IEnumerable<ItemDrop.ItemData> survivingItems)
@@ -120,6 +131,10 @@ namespace Stackmaster
 
         internal static void Reconcile()
         {
+            // Vanilla raises Inventory.m_onChanged during each consolidation move. Keep warnings
+            // attached to their original objects until SortExecutor can atomically map every
+            // consumed donor to the final surviving stack after the complete sort succeeds.
+            if (_playerSortDepth > 0) return;
             var inventory = Player.m_localPlayer?.GetInventory();
             foreach (var item in Warnings.Keys
                 .Where(item => item == null || inventory == null || !inventory.ContainsItem(item) || item.m_stack <= 0)

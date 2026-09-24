@@ -33,7 +33,20 @@ namespace Stackmaster
                 // real inventory mutation and rebuilds the placement ghost even though no item moved.
                 if (PlanAlreadyApplied(source, plan)) return true;
 
-                return Execute(inventory, source, plan, isPlayer, out failure);
+                if (!isPlayer)
+                {
+                    return Execute(inventory, source, plan, false, out failure);
+                }
+
+                FailedDepositWarnings.BeginPlayerSort();
+                try
+                {
+                    return Execute(inventory, source, plan, true, out failure);
+                }
+                finally
+                {
+                    FailedDepositWarnings.EndPlayerSort();
+                }
             }
             catch (Exception exception)
             {
