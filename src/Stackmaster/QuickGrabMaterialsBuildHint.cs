@@ -118,12 +118,12 @@ namespace Stackmaster
             }
 
             var hint = Object.Instantiate(template, template.transform.parent, false);
+            _owner = owner;
+            _hint = hint;
             hint.name = ObjectName;
             hint.transform.SetAsLastSibling();
             hint.SetActive(false);
 
-            _owner = owner;
-            _hint = hint;
             owner.m_buildMenuHintsKB = vanillaAndThirdPartyHints.Concat(new[] { hint }).ToArray();
             foreach (var staleHint in staleHints)
             {
