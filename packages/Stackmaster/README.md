@@ -2,7 +2,7 @@
 
 > Turn a messy Viking inventory into a tidy, adventure-ready loadout.
 
-Stackmaster by **JStack424** brings inventory sorting, automatic chest depositing, and building and crafting from nearby storage into one Valheim workflow.
+Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
 ## About this project
 
@@ -10,12 +10,12 @@ I'm a Valheim-loving software engineer with an interest in mild game design. I b
 
 ## Vanilla-plus by design
 
-Stackmaster removes repetitive container management without adding free resources, carrying capacity, powers, cheats, or progression shortcuts. Storage actions stay deliberate: nothing leaves your backpack just because you walk near a base, and every build or craft still consumes real materials from your inventory or accessible storage.
+Stackmaster removes repetitive container management without adding free resources, carrying capacity, powers, cheats, or progression shortcuts. Quick Stack stays deliberate: nothing leaves your backpack just because you walk near a base, and every build or craft still consumes real materials from your inventory or accessible storage.
 
 ## TL;DR
 
 - Automatically sort your backpack and opted-in vanilla chests.
-- Deposit matching items into nearby storage with one deliberate shortcut.
+- Use **Quick Stack** to deposit matching items and replenish protected targets with one deliberate shortcut.
 - Build and craft using materials from accessible chests.
 
 ## Controls
@@ -36,8 +36,8 @@ Stackmaster removes repetitive container management without adding free resource
 | Control | Behavior |
 | --- | --- |
 | Open or close a vanilla chest | Sort that chest when its **Auto-sort chest** setting is enabled. |
-| `Left Alt + E` while targeting a vanilla container | Deposit matching items and replenish protected targets. |
-| `Left Alt + E` while a vanilla chest is open | Run the same action using that chest as the target without closing it. |
+| `Left Alt + E` while targeting a vanilla container | Run **Quick Stack**: deposit matching items and replenish protected targets. |
+| `Left Alt + E` while a vanilla chest is open | Run **Quick Stack** using that chest as the target without closing it. |
 
 ### Build menu
 
@@ -45,7 +45,7 @@ Stackmaster removes repetitive container management without adding free resource
 | --- | --- |
 | `Left Alt` + click a build piece | Grab all materials for one complete copy of that build piece from eligible storage without closing the build menu. |
 
-The modifier follows the configured storage-action shortcut, which uses `Left Alt + E` by default. While the build menu is open, its keyboard/mouse action list shows **Quick Grab Materials** with **Left Alt + Click** by default and updates that shortcut text when the configured modifiers change. Version 1.1.8 does not add a controller-specific action.
+The modifier follows the configured **Quick Stack** shortcut, which uses `Left Alt + E` by default. While the build menu is open, its keyboard/mouse action list shows **Quick Grab Materials** with **Left Alt + Click** by default and updates that shortcut text when the configured modifiers change. Version 1.1.9 does not add a controller-specific action.
 
 ## Detailed mechanics
 
@@ -59,19 +59,21 @@ The modifier follows the configured storage-action shortcut, which uses `Left Al
   - Inside a vanilla workbench build zone, follows every overlapping workbench zone as one connected base mesh and includes loaded supported chests anywhere in that exact union.
   - Excludes nearby chests outside the connected mesh, even if they are within the fallback radius.
   - Outside every workbench mesh, uses the configurable player-centered radius (20 metres by default).
-  - Applies the same scope to deposit, replenishment, building, and crafting; a chest's **Auto-sort chest** checkbox never changes storage eligibility.
-- **Auto-deposit**
+  - Applies the same scope to Quick Stack, building, and crafting; a chest's **Auto-sort chest** checkbox never changes storage eligibility.
+- **Quick Stack**
   - Runs only when you press `Left Alt + E` while targeting or interacting with a vanilla chest.
-  - Deposits only into eligible vanilla containers in the active storage scope that already hold a compatible item.
-  - Fills partial stacks first, prioritizing the targeted chest and then searching nearest to farthest.
+  - Refills protected stacks, including ammo and consumables, to optional target quantities, then deposits eligible carried items.
+  - Fills current matching stacks first, prioritizing the targeted chest and then searching nearest to farthest.
+  - Remembers the last directly opened or targeted chest for each exact item type. If no current matching chest accepts any quantity, Quick Stack can return that item to its remembered chest even after the chest reaches zero stock.
+  - A remembered destination is only a local hint: it must still be loaded, inside the active scope, accessible, idle, compatible, and exactly the same network chest at execution time. Missing, destroyed, unloaded, blocked, busy, full, or otherwise ineligible destinations leave the item safely in the player inventory.
+  - Current matching destinations always win. If one accepts even part of a stack, Quick Stack does not open a second route to the remembered chest for the remainder.
+  - Marks only the eligible quantity that survived a failed or partial deposit with a red border and `!quantity`; quick-bar, equipped, protection-only, and target-retained quantities are excluded. The warning follows the surviving item through sorting and clears when that exact item is hovered once or the inventory closes.
   - Leaves unmatched items and overflow safely in the player inventory.
-- **Auto-replenish**
-  - Refills protected stacks, including ammo and consumables, to optional target quantities during the same storage action.
-  - Uses the configured storage-action modifier for two distinct inventory controls: left-click instantly protects or fully unprotects an item, while right-click opens target entry for stackable items.
+  - Uses the configured Quick Stack modifier for two distinct inventory controls: left-click instantly protects or fully unprotects an item, while right-click opens target entry for stackable items.
   - A left-click protection toggle never opens a dialog; unlocking also clears any replenishment target. Canceling the right-click dialog preserves the prior state, and non-stackable items remain protection-only.
   - Keeps protected stacks fixed while sorting and follows one compatible stack when it moves or survives a merge inside the player inventory.
   - Clears a stack's protection and target after that whole stack is manually transferred to a chest or dropped into the world; partial moves keep the protected remainder.
-  - Prunes older orphaned targets before a storage hotkey action, so an item you no longer carry does not keep reporting `target item missing`.
+  - Prunes older orphaned targets before a Quick Stack action, so an item you no longer carry does not keep reporting `target item missing`.
 - **Storage-aware build and craft requirements**
   - Separately controls storage-backed crafting, storage-backed building, and visibility of base-wide storage totals; all three options default to on.
   - When enabled for an action, counts and consumes exact costs from the player plus accessible vanilla chests in the active storage scope, regardless of current network ownership.
@@ -81,7 +83,7 @@ The modifier follows the configured storage-action shortcut, which uses `Left Al
   - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
   - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
 - **Quick Grab Materials**
-  - Hold the configured storage-action modifier (Left Alt by default) and click a build piece to grab all materials for one complete copy from eligible storage.
+  - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to grab all materials for one complete copy from eligible storage.
   - Keeps the build menu open and leaves ordinary clicks unchanged.
   - Treats every modified click as one full additional material grab; materials you already carry never reduce the requested quantities.
   - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
@@ -103,7 +105,7 @@ Stackmaster has exactly six settings:
 
 1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory. Chest auto-sort is controlled separately in each chest UI and is not a seventh global setting.
 2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and used by all chest-powered features only while the player is outside every valid connected workbench mesh.
-3. **Storage-action keybind** — Left Alt + E by default. Its modifier keys also activate protected-item left/right clicks in the player inventory and Quick Grab Materials left-clicks in the build menu; the main E key is not required for either click action.
+3. **Quick Stack keybind** — Left Alt + E by default. Existing custom shortcuts are migrated automatically from the legacy setting name. Its modifier keys also activate protected-item left/right clicks in the player inventory and Quick Grab Materials left-clicks in the build menu; the main E key is not required for either click action.
 4. **Allow building from storage** — on by default and independently controls building eligibility and consumption from storage.
 5. **Allow crafting from storage** — on by default and independently controls crafting/upgrade eligibility and consumption from storage.
 6. **Show storage amounts in craft and build menus** — on by default; independently shows player-plus-eligible-storage totals in both requirement UIs without granting permission to consume those stored items.
@@ -118,9 +120,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-> **Test candidate status:** Stackmaster 1.1.8 is a replacement local rollback and multiplayer test candidate. After live testing showed that the 1.1.7/earlier-1.1.8 requirement-display optimization made hammer-related hitching worse—and added noticeable lag when opening the inventory or moving items between slots—the experiment was removed comprehensively. Requirement displays now use the straightforward 1.1.6 behavior again: one same-frame read-only capture, raw availability accounting, and the original HUD refresh flow, with no bounded display epoch, long-lived chest slice, indexed totals, inventory fingerprint, dirty-event invalidation, or movement/topology reuse machinery. The independent no-op auto-sort guard remains, so opening an already-sorted inventory does not synthesize an inventory-change notification. The 1.1.6 outside-workbench player-only crafting fallback remains and still asks Valheim itself for the complete-cost verdict. The **Quick Grab Materials** rename and keyboard/mouse build-menu hint also remain. Build, craft, upgrade, Quick Grab Materials, ownership, reservation, debit, rollback, and cleanup paths preserve the production 1.1.5 fresh validation and exact transaction safety. This selective rollback makes no performance-fix claim; Joe still needs to verify whether frame behavior has returned to the earlier baseline. Stackmaster 1.1.5 remains the current production-ready build until this candidate passes live testing and is separately approved. Broader multiplayer, dedicated-server, workbench-extension, manual-access-preemption, and load/unload edge-case testing remains incomplete. Back up valuable characters and worlds and report any item loss, duplication, free output, crash, blocked chest, synchronization disagreement, or stale requirement total.
+> **Test candidate status:** Stackmaster 1.1.9 combines the completed 1.1.8 selective performance rollback with remembered Quick Stack destinations and failed-deposit warnings. Directly opening or targeting a vanilla chest locally remembers it for the exact item types observed there; if a later Quick Stack finds no currently matching destination that accepts anything, it may return that item to the same freshly validated chest even when the chest is empty. Items that remain after a full or partial Quick Stack failure show only their eligible failed quantity in red until that exact item is hovered once or the inventory closes. The rollback still uses the straightforward 1.1.6 requirement-display path and deliberately makes no performance-fix claim. Build, craft, upgrade, Quick Grab Materials, Quick Stack, ownership, reservation, debit, rollback, and cleanup paths preserve fresh validation and exact transaction safety, with added chest identity and data-revision checks immediately before every Quick Stack move. Joe still needs to live-test frame behavior and the new UI/routing behavior before any production approval. Stackmaster 1.1.5 remains the current production-ready build. Broader multiplayer, dedicated-server, workbench-extension, manual-access-preemption, and load/unload edge-case testing remains incomplete. Back up valuable characters and worlds and report any item loss, duplication, free output, crash, blocked chest, synchronization disagreement, stale warning, or stale requirement total.
 
-Stackmaster 1.1.8 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
+Stackmaster 1.1.9 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
 
 Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, reserves them for the transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous. Remote-owned building actions use the existing prepared-ownership retry window; chest-backed crafting and Quick Grab Materials clicks instead wait in their client-side coroutines for the exact required ownership and proceed from the original click only after a fresh matching plan and reservations are ready. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Crafting and quick-grab withdrawals release their reservations and exact acquired ownership immediately and never create or renew that lease. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition releases only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards. If exact local reservation cleanup cannot finish immediately, Stackmaster keeps the matching ownership cleanup record and retries the reservation first; it never clears a later or unrelated owner's in-use state.
 

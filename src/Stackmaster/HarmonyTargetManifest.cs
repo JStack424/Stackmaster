@@ -27,6 +27,7 @@ namespace Stackmaster
             Prefix(typeof(InventoryGui), "OnTabUpgradePressed", false, typeof(void), Type.EmptyTypes, typeof(CraftingSelectionPatch)),
             Prefix(typeof(InventoryGui), "OnSelectedRecipe", false, typeof(void), new[] { typeof(GameObject) }, typeof(CraftingSelectionPatch)),
             Postfix(typeof(InventoryGrid), "UpdateInventory", false, typeof(void), new[] { typeof(Inventory), typeof(Player), typeof(ItemDrop.ItemData) }, typeof(InventoryGridUpdateInventoryPatch)),
+            Postfix(typeof(InventoryGrid), "OnPointerEnter", false, typeof(void), new[] { typeof(UIInputHandler) }, typeof(InventoryGridPointerEnterPatch)),
             Prefix(typeof(InventoryGui), "OnSelectedItem", false, typeof(void), new[]
             {
                 typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier)

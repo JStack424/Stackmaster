@@ -1351,6 +1351,7 @@ namespace Stackmaster
                     handle.Snapshot,
                     liveInventory,
                     zdo.DataRevision,
+                    zdo.DataRevision,
                     zdo.m_uid,
                     zdo.OwnerRevision,
                     zdo.GetOwner(),

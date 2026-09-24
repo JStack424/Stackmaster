@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.9 (local test candidate)
+
+Added remembered Quick Stack destinations and precise failed-deposit warnings on top of the completed 1.1.8 selective performance rollback.
+
+- Renamed the plain user-facing deposit/replenish action to **Quick Stack** while preserving the existing configurable shortcut and **Quick Grab Materials** name.
+- Quick Stack now remembers the last directly opened or explicitly targeted vanilla chest for each exact persistent item identity, including quality, variant, world level, and custom data. Emptying that chest does not erase the hint.
+- Remembered destinations are bounded to 512 local entries, expire after 180 days, and are scoped per player and world through local `PlayerPrefs`; malformed or unreadable state disables hints safely for the session without touching world or item data.
+- Existing matching-stack routing still runs first. A remembered chest is considered only if no current matching destination accepted any quantity, and only the exact currently discovered, eligible, in-scope chest can receive the fallback.
+- Missing, destroyed, unloaded, blocked, busy, full, inaccessible, changed, or otherwise ineligible remembered chests remain inert and leave items safely carried.
+- Failed or partial Quick Stack deposits now mark only the surviving eligible quantity with a red border and `!quantity`. Quick-bar, equipped, protection-only, and target-retained quantities are excluded; hovering that exact surviving item acknowledges the warning once, and inventory close clears remaining UI-only warnings.
+- Warning state is keyed by the live item object and never writes item custom data, preserving stacking, persistence, and network identity.
+- Quick Stack now validates the exact chest ZDO identity and observed data revision before each move and advances the expected revision after each successful Stackmaster mutation.
+- Destination learning and warning refreshes use existing open, action, grid-refresh, and pointer-enter events; they add no per-frame destination scan, inventory-change requirement scan, or replacement display cache.
+- Preserved the 1.1.8 rollback exactly: no bounded display epoch, long-lived chest slice, indexed totals, inventory fingerprint/dirty-event invalidation, or movement/topology reuse machinery. This candidate makes no performance-fix claim and still requires live testing before production approval.
+
 ## 1.1.8 (replacement local test candidate)
 
 Rolled back the unsuccessful requirement-display performance experiment after live testing showed that hitching became worse and spread to opening the inventory and moving items between slots while the hammer was active.

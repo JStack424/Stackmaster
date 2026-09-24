@@ -29,6 +29,10 @@ namespace Stackmaster
             {
                 result.FailedContainers[failure.Key] = failure.Value;
             }
+            var expectedDataRevisions = handles.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ObservedDataRevision,
+                StringComparer.Ordinal);
             foreach (var step in plan.Steps)
             {
                 var containerId = step.Source.Kind == InventoryLocationKind.Container
@@ -40,7 +44,14 @@ namespace Stackmaster
                 }
 
                 string failure;
-                var outcome = TryExecuteStep(player, executionScope, handles, step, catalog, out failure);
+                var outcome = TryExecuteStep(
+                    player,
+                    executionScope,
+                    handles,
+                    expectedDataRevisions,
+                    step,
+                    catalog,
+                    out failure);
                 if (outcome == StepOutcome.FailedSafely)
                 {
                     result.FailedContainers[containerId] = failure;
@@ -73,6 +84,7 @@ namespace Stackmaster
             Player player,
             StorageScope executionScope,
             IReadOnlyDictionary<string, ContainerHandle> handles,
+            IDictionary<string, uint> expectedDataRevisions,
             TransferStep step,
             CompatibilityCatalog catalog,
             out string failure)
@@ -88,7 +100,9 @@ namespace Stackmaster
                 return StepOutcome.FailedSafely;
             }
 
-            if (!RevalidateAndOwn(player, executionScope, handle, out failure))
+            uint expectedDataRevision;
+            if (!expectedDataRevisions.TryGetValue(containerId, out expectedDataRevision) ||
+                !RevalidateAndOwn(player, executionScope, handle, expectedDataRevision, out failure))
             {
                 return StepOutcome.FailedSafely;
             }
@@ -140,6 +154,13 @@ namespace Stackmaster
                                      sourceAfter + destinationAfter == sourceBefore + destinationBefore;
             if (exactPostcondition)
             {
+                var zdo = handle.NetworkView.GetZDO();
+                if (zdo == null || !string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal))
+                {
+                    failure = "container identity disappeared after transfer";
+                    return StepOutcome.FatalPostconditionFailure;
+                }
+                expectedDataRevisions[containerId] = zdo.DataRevision;
                 return StepOutcome.Succeeded;
             }
 
@@ -155,14 +176,26 @@ namespace Stackmaster
             return StepOutcome.FatalPostconditionFailure;
         }
 
-        private static bool RevalidateAndOwn(Player player, StorageScope executionScope, ContainerHandle handle, out string failure)
+        private static bool RevalidateAndOwn(
+            Player player,
+            StorageScope executionScope,
+            ContainerHandle handle,
+            uint expectedDataRevision,
+            out string failure)
         {
             failure = null;
             var container = handle.Container;
             var view = handle.NetworkView;
-            if (container == null || container.GetType() != typeof(Container) || view == null || !view.IsValid() || view.GetZDO() == null)
+            var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+            if (container == null || container.GetType() != typeof(Container) || zdo == null ||
+                !string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal))
             {
-                failure = "container is no longer a known vanilla container";
+                failure = "container is no longer the exact known vanilla container";
+                return false;
+            }
+            if (zdo.DataRevision != expectedDataRevision)
+            {
+                failure = "container inventory revision changed before transfer";
                 return false;
             }
             var locallyOpenTarget = handle.Snapshot.IsTarget && StorageAction.IsLocalOpenTarget(container);

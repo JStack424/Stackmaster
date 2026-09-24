@@ -19,9 +19,12 @@ namespace Stackmaster
         private const string ChestToggleName = "StackmasterChestAutoSortToggle";
         private const string ChestToggleAnchorName = "StackmasterChestAutoSortAnchor";
         private const string ProtectionOverlayName = "StackmasterProtectionOverlay";
+        private const string FailedDepositOverlayName = "StackmasterFailedDepositOverlay";
         private static readonly FieldInfo GridElementsField = AccessTools.Field(typeof(InventoryGrid), "m_elements");
         private static readonly Dictionary<InventoryElement, ProtectionOverlay> ProtectionOverlays = new Dictionary<InventoryElement, ProtectionOverlay>();
+        private static readonly Dictionary<InventoryElement, FailedDepositOverlay> FailedDepositOverlays = new Dictionary<InventoryElement, FailedDepositOverlay>();
         private static readonly Color ProtectedBorderColor = new Color(0.22f, 0.78f, 0.84f, 0.82f);
+        private static readonly Color FailedDepositBorderColor = new Color(0.96f, 0.18f, 0.14f, 0.92f);
         private static GameObject _toggleAnchor;
         private static GameObject _toggleCheckmark;
         private static Toggle _toggle;
@@ -357,12 +360,18 @@ namespace Stackmaster
                     return;
                 }
                 var resolution = InventorySnapshots.ResolveProtection(player, state);
+                FailedDepositWarnings.Reconcile();
 
                 var currentElements = new HashSet<InventoryElement>(elements.Where(element => element != null));
                 foreach (var stale in ProtectionOverlays.Keys.Where(element => element == null || !currentElements.Contains(element)).ToArray())
                 {
                     ProtectionOverlays[stale].Destroy();
                     ProtectionOverlays.Remove(stale);
+                }
+                foreach (var stale in FailedDepositOverlays.Keys.Where(element => element == null || !currentElements.Contains(element)).ToArray())
+                {
+                    FailedDepositOverlays[stale].Destroy();
+                    FailedDepositOverlays.Remove(stale);
                 }
 
                 foreach (var element in currentElements)
@@ -373,9 +382,18 @@ namespace Stackmaster
                         overlay = ProtectionOverlay.Create(element);
                         ProtectionOverlays.Add(element, overlay);
                     }
+                    FailedDepositOverlay failedOverlay;
+                    if (!FailedDepositOverlays.TryGetValue(element, out failedOverlay))
+                    {
+                        failedOverlay = FailedDepositOverlay.Create(element);
+                        FailedDepositOverlays.Add(element, failedOverlay);
+                    }
 
                     ProtectionRecord record;
                     overlay.Apply(resolution.TryGet(new Slot(element.Position.x, element.Position.y), out record) ? record : null);
+                    var item = player.GetInventory().GetItemAt(element.Position.x, element.Position.y);
+                    var failedQuantity = 0;
+                    failedOverlay.Apply(item != null && FailedDepositWarnings.TryGet(item, out failedQuantity), failedQuantity);
                 }
             }
             catch (Exception exception)
@@ -460,6 +478,7 @@ namespace Stackmaster
             _boundChest = null;
 
             DestroyProtectionOverlays();
+            FailedDepositWarnings.Clear();
             _overlaysDisabled = false;
             _overlayFailureLogged = false;
             _sortedThisOpen = false;
@@ -514,6 +533,23 @@ namespace Stackmaster
         internal static void RequestProtectionOverlayRefresh()
         {
             _overlayRefreshPending = true;
+        }
+
+        internal static void HideFailedDepositOverlay(InventoryElement element)
+        {
+            FailedDepositOverlay overlay;
+            if (element != null && FailedDepositOverlays.TryGetValue(element, out overlay))
+            {
+                overlay.Apply(false, 0);
+            }
+        }
+
+        internal static void HideAllFailedDepositOverlays()
+        {
+            foreach (var overlay in FailedDepositOverlays.Values)
+            {
+                overlay.Apply(false, 0);
+            }
         }
 
         internal static void FlushPendingProtectionOverlayRefresh(InventoryGrid grid, Inventory inventory)
@@ -608,6 +644,7 @@ namespace Stackmaster
         internal static void OnInventoryHidden()
         {
             _sortedThisOpen = false;
+            FailedDepositWarnings.Clear();
             _overlayRefreshPending = false;
             UnbindPlayerInventory();
             UnbindChestToggle();
@@ -620,6 +657,10 @@ namespace Stackmaster
             {
                 overlay.Apply(null);
             }
+            foreach (var overlay in FailedDepositOverlays.Values)
+            {
+                overlay.Apply(false, 0);
+            }
         }
 
         private static void DestroyProtectionOverlays()
@@ -629,6 +670,11 @@ namespace Stackmaster
                 overlay.Destroy();
             }
             ProtectionOverlays.Clear();
+            foreach (var overlay in FailedDepositOverlays.Values)
+            {
+                overlay.Destroy();
+            }
+            FailedDepositOverlays.Clear();
         }
 
         private static Image CreateImage(Transform parent, string name, Color color)
@@ -648,6 +694,80 @@ namespace Stackmaster
             rect.pivot = pivot;
             rect.anchoredPosition = Vector2.zero;
             rect.sizeDelta = size;
+        }
+
+
+        private sealed class FailedDepositOverlay
+        {
+            private readonly GameObject _root;
+            private readonly TMP_Text _quantityLabel;
+
+            private FailedDepositOverlay(GameObject root, TMP_Text quantityLabel)
+            {
+                _root = root;
+                _quantityLabel = quantityLabel;
+            }
+
+            internal static FailedDepositOverlay Create(InventoryElement element)
+            {
+                var slotRoot = element.GetElementRectTransform();
+                if (slotRoot == null || element.m_amount == null)
+                {
+                    throw new InvalidOperationException("An inventory item slot does not expose the expected UI elements.");
+                }
+                var previous = slotRoot.Find(FailedDepositOverlayName);
+                if (previous != null) Object.Destroy(previous.gameObject);
+
+                var root = new GameObject(FailedDepositOverlayName, typeof(RectTransform));
+                root.transform.SetParent(slotRoot, false);
+                root.transform.SetAsLastSibling();
+                var rootRect = (RectTransform)root.transform;
+                rootRect.anchorMin = Vector2.zero;
+                rootRect.anchorMax = Vector2.one;
+                rootRect.offsetMin = Vector2.zero;
+                rootRect.offsetMax = Vector2.zero;
+
+                ConfigureEdge(CreateImage(root.transform, "Top", FailedDepositBorderColor).rectTransform,
+                    new Vector2(0f, 1f), Vector2.one, new Vector2(0.5f, 1f), new Vector2(0f, 3f));
+                ConfigureEdge(CreateImage(root.transform, "Bottom", FailedDepositBorderColor).rectTransform,
+                    Vector2.zero, new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 3f));
+                ConfigureEdge(CreateImage(root.transform, "Left", FailedDepositBorderColor).rectTransform,
+                    Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(3f, 0f));
+                ConfigureEdge(CreateImage(root.transform, "Right", FailedDepositBorderColor).rectTransform,
+                    new Vector2(1f, 0f), Vector2.one, new Vector2(1f, 0.5f), new Vector2(3f, 0f));
+
+                var quantityLabel = Object.Instantiate(element.m_amount, root.transform, false);
+                quantityLabel.gameObject.name = "FailedQuantity";
+                quantityLabel.gameObject.SetActive(true);
+                quantityLabel.alignment = TextAlignmentOptions.TopRight;
+                quantityLabel.textWrappingMode = TextWrappingModes.NoWrap;
+                quantityLabel.fontSize = Mathf.Max(11f, quantityLabel.fontSize * 0.72f);
+                quantityLabel.color = FailedDepositBorderColor;
+                quantityLabel.outlineColor = new Color32(45, 0, 0, 255);
+                quantityLabel.outlineWidth = 0.22f;
+                quantityLabel.raycastTarget = false;
+                var quantityRect = quantityLabel.rectTransform;
+                quantityRect.anchorMin = new Vector2(1f, 1f);
+                quantityRect.anchorMax = new Vector2(1f, 1f);
+                quantityRect.pivot = new Vector2(1f, 1f);
+                quantityRect.anchoredPosition = new Vector2(-3f, -2f);
+                quantityRect.sizeDelta = new Vector2(32f, 18f);
+
+                root.SetActive(false);
+                return new FailedDepositOverlay(root, quantityLabel);
+            }
+
+            internal void Apply(bool visible, int failedQuantity)
+            {
+                if (_root == null) return;
+                _root.SetActive(visible);
+                if (visible) _quantityLabel.text = "!" + failedQuantity;
+            }
+
+            internal void Destroy()
+            {
+                if (_root != null) Object.Destroy(_root);
+            }
         }
 
         private sealed class ProtectionOverlay
@@ -822,6 +942,7 @@ namespace Stackmaster
             InventoryIntegration.EnsureToggle(__instance);
             InventoryIntegration.EnsureChestToggle(__instance);
             InventoryIntegration.BindPlayerInventory(Player.m_localPlayer);
+            RememberedChestDestinations.ObserveDirect(container);
             InventoryIntegration.BindChestToggle(container);
             InventoryIntegration.SortOpenedInventories(container);
             InventoryIntegration.RequestProtectionOverlayRefresh();

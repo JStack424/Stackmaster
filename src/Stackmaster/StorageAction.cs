@@ -68,7 +68,7 @@ namespace Stackmaster
             var container = hover != null ? hover.GetComponentInParent<Container>() : null;
             if (container == null)
             {
-                RuntimeContext.Plugin.Log.LogWarning("Storage action rejected: targetHovered=false reason=no targeted container.");
+                RuntimeContext.Plugin.Log.LogWarning("Quick Stack rejected: targetHovered=false reason=no targeted container.");
                 RuntimeContext.ShowTopLeft("Stackmaster: target a valid container.");
                 _lastActionFrame = Time.frameCount;
                 return;
@@ -174,11 +174,16 @@ namespace Stackmaster
             _lastActionFrame = Time.frameCount;
             if (_actionRunning)
             {
-                RuntimeContext.Plugin.Log.LogWarning("Storage action rejected: actionRunning=true reason=another storage action is already running.");
-                RuntimeContext.ShowTopLeft("Stackmaster: storage action already running.");
+                RuntimeContext.Plugin.Log.LogWarning("Quick Stack rejected: actionRunning=true reason=another Quick Stack is already running.");
+                RuntimeContext.ShowTopLeft("Stackmaster: Quick Stack already running.");
                 return;
             }
             _actionRunning = true;
+            // A newly accepted Quick Stack supersedes every unacknowledged result from
+            // the prior run. Any early return, exception, or fatal cancellation therefore
+            // cannot leave a stale warning attached to the old attempt.
+            FailedDepositWarnings.Clear();
+            InventoryIntegration.HideAllFailedDepositOverlays();
 
             try
             {
@@ -210,8 +215,14 @@ namespace Stackmaster
                     return;
                 }
 
+                RememberedChestDestinations.ObserveDirect(target);
+                var rememberedDestinations = RememberedChestDestinations.ResolveFallbacks(player, playerSnapshot, discovery);
                 var planner = new StorageTransferPlanner();
-                var plan = planner.Plan(playerSnapshot, discovery.Containers.Select(handle => handle.Snapshot));
+                var plan = planner.Plan(
+                    playerSnapshot,
+                    discovery.Containers.Select(handle => handle.Snapshot),
+                    rememberedDestinations: rememberedDestinations);
+                var depositCandidates = FailedDepositWarnings.CaptureCandidates(player, playerSnapshot);
                 if (discovery.Truncated && !plan.SearchTruncated)
                 {
                     plan = new TransferPlan(
@@ -228,10 +239,11 @@ namespace Stackmaster
                 var validation = PlanValidator.ValidateTransferConservation(
                     playerSnapshot,
                     discovery.Containers.Select(handle => handle.Snapshot),
-                    plan);
+                    plan,
+                    rememberedDestinations);
                 if (!validation.IsValid)
                 {
-                    RuntimeContext.Plugin.Log.LogError("Storage action plan rejected before mutation: " + string.Join("; ", validation.Errors));
+                    RuntimeContext.Plugin.Log.LogError("Quick Stack plan rejected before mutation: " + string.Join("; ", validation.Errors));
                     RuntimeContext.ShowCenter("Stackmaster stopped safely: transfer plan validation failed.");
                     _actionRunning = false;
                     return;
@@ -247,6 +259,7 @@ namespace Stackmaster
 
                 if (neededHandles.Length == 0)
                 {
+                    FailedDepositWarnings.Replace(player, depositCandidates);
                     ShowSummary(player, protection, plan, new TransferExecutionResult());
                     _actionRunning = false;
                     return;
@@ -263,7 +276,7 @@ namespace Stackmaster
             catch (Exception exception)
             {
                 _actionRunning = false;
-                RuntimeContext.Plugin.Log.LogError("Storage action stopped safely: " + exception);
+                RuntimeContext.Plugin.Log.LogError("Quick Stack stopped safely: " + exception);
                 RuntimeContext.ShowCenter("Stackmaster stopped safely: " + exception.GetType().Name + ".");
             }
         }
@@ -287,8 +300,8 @@ namespace Stackmaster
             catch (Exception exception)
             {
                 _actionRunning = false;
-                RuntimeContext.Plugin.Log.LogError("Storage ownership setup failed safely: " + exception);
-                RuntimeContext.ShowCenter("Stackmaster stopped safely while requesting container ownership.");
+                RuntimeContext.Plugin.Log.LogError("Quick Stack ownership setup failed safely: " + exception);
+                RuntimeContext.ShowCenter("Stackmaster: Quick Stack stopped safely while requesting container ownership.");
                 yield break;
             }
 
@@ -306,8 +319,8 @@ namespace Stackmaster
                     catch (Exception exception)
                     {
                         refreshFailed = true;
-                        RuntimeContext.Plugin.Log.LogError("Storage ownership refresh failed safely: " + exception);
-                        RuntimeContext.ShowCenter("Stackmaster stopped safely while requesting container ownership.");
+                        RuntimeContext.Plugin.Log.LogError("Quick Stack ownership refresh failed safely: " + exception);
+                        RuntimeContext.ShowCenter("Stackmaster: Quick Stack stopped safely while requesting container ownership.");
                     }
                     if (refreshFailed) break;
                     yield return null;
@@ -349,10 +362,19 @@ namespace Stackmaster
                     RuntimeContext.ShowTopLeft("Stackmaster: targeted container is inaccessible, in use, unknown, or outside the active storage scope.");
                     yield break;
                 }
+                // Ownership and network refresh make this an authoritative direct observation,
+                // including when the explicitly targeted chest began under a remote owner.
+                RememberedChestDestinations.ObserveDirect(target);
                 var freshHandles = freshDiscovery.Containers.ToDictionary(handle => handle.Id, StringComparer.Ordinal);
+                var freshRememberedDestinations = RememberedChestDestinations.ResolveFallbacks(
+                    player,
+                    freshPlayer,
+                    freshDiscovery);
                 var freshPlan = new StorageTransferPlanner().Plan(
                     freshPlayer,
-                    freshDiscovery.Containers.Select(handle => handle.Snapshot));
+                    freshDiscovery.Containers.Select(handle => handle.Snapshot),
+                    rememberedDestinations: freshRememberedDestinations);
+                var freshDepositCandidates = FailedDepositWarnings.CaptureCandidates(player, freshPlayer);
                 if (freshDiscovery.Truncated && !freshPlan.SearchTruncated)
                 {
                     freshPlan = new TransferPlan(
@@ -369,10 +391,11 @@ namespace Stackmaster
                 var validation = PlanValidator.ValidateTransferConservation(
                     freshPlayer,
                     freshDiscovery.Containers.Select(handle => handle.Snapshot),
-                    freshPlan);
+                    freshPlan,
+                    freshRememberedDestinations);
                 if (!validation.IsValid)
                 {
-                    RuntimeContext.Plugin.Log.LogError("Refreshed storage action plan rejected before mutation: " + string.Join("; ", validation.Errors));
+                    RuntimeContext.Plugin.Log.LogError("Refreshed Quick Stack plan rejected before mutation: " + string.Join("; ", validation.Errors));
                     RuntimeContext.ShowCenter("Stackmaster stopped safely: refreshed transfer plan validation failed.");
                 }
                 else
@@ -386,17 +409,19 @@ namespace Stackmaster
                         ownership.FailedContainerIds);
                     if (execution.FatalPostconditionFailure)
                     {
+                        FailedDepositWarnings.Clear();
                         RuntimeContext.ShowCenter("Stackmaster disabled after an unexpected transfer result. Restart Valheim before using it again.");
                     }
                     else
                     {
+                        FailedDepositWarnings.Replace(player, freshDepositCandidates);
                         ShowSummary(player, freshProtection, freshPlan, execution);
                     }
                 }
             }
                 catch (Exception exception)
                 {
-                    RuntimeContext.Plugin.Log.LogError("Storage action stopped safely during execution: " + exception);
+                    RuntimeContext.Plugin.Log.LogError("Quick Stack stopped safely during execution: " + exception);
                     RuntimeContext.ShowCenter("Stackmaster stopped safely during transfer execution.");
                 }
             }
@@ -467,7 +492,7 @@ namespace Stackmaster
             if (execution.FailedContainers.Count > 0)
             {
                 RuntimeContext.Plugin.Log.LogWarning(
-                    "Storage action completed with safe container rejections: " + string.Join(", ", skipReasons));
+                    "Quick Stack completed with safe container rejections: " + string.Join(", ", skipReasons));
             }
             if (plan.SearchTruncated)
             {
@@ -479,7 +504,7 @@ namespace Stackmaster
         private static void LogTargetRejection(string stage, DiscoveryResult discovery)
         {
             RuntimeContext.Plugin.Log.LogWarning(
-                "Storage action rejected at " + stage + ": " +
+                "Quick Stack rejected at " + stage + ": " +
                 discovery.TargetDiagnostic.Format(discovery));
         }
 
@@ -532,7 +557,7 @@ namespace Stackmaster
                 var shortcutText = string.Join(" + ", shortcut.Modifiers.Select(key => key.ToString())
                     .Concat(new[] { shortcut.MainKey.ToString() })
                     .ToArray());
-                __result += "\n[<color=yellow>" + shortcutText + "</color>] Auto-Stack All";
+                __result += "\n[<color=yellow>" + shortcutText + "</color>] Quick Stack";
             }
         }
     }

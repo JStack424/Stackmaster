@@ -147,7 +147,7 @@ namespace Stackmaster.Core
 
     public sealed class TransferPlan
     {
-        public const string PartialSearchNotice = "The storage action stopped before every nearby container was checked.";
+        public const string PartialSearchNotice = "Quick Stack stopped before every nearby container was checked.";
 
         public TransferPlan(
             IEnumerable<TransferStep> steps,

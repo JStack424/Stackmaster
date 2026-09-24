@@ -28,6 +28,7 @@ namespace Stackmaster
             _cleanupInProgress = false;
             Compatibility = compatibility;
             ChestSortPreferences.Initialize();
+            RememberedChestDestinations.Initialize();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
@@ -75,6 +76,7 @@ namespace Stackmaster
                 NearbyResourceOwnership.RearmSession();
                 QuickGrabMaterialsAction.RearmSession();
                 ChestSortPreferences.Initialize();
+                RememberedChestDestinations.Initialize();
                 StorageScopeProvider.Reset();
                 NearbyResourceService.ResetCaches();
                 NearbyBuildHudPatch.ResetCache();
@@ -129,7 +131,7 @@ namespace Stackmaster
                 // acquired ZDO back to vanilla. Every stage runs even if another stage fails.
                 completedSafely &= TryCleanup("Resource transaction shutdown", ResourceTransactionContext.Shutdown);
                 completedSafely &= TryCleanup("Quick-grab shutdown", QuickGrabMaterialsAction.Shutdown);
-                completedSafely &= TryCleanup("Storage-action shutdown", StorageAction.Shutdown);
+                completedSafely &= TryCleanup("Quick Stack shutdown", StorageAction.Shutdown);
                 completedSafely &= TryCleanup("Crafting preflight shutdown", () => CraftingPreflightAction.Shutdown(reason));
                 completedSafely &= TryCleanup("Nearby-resource ownership shutdown", NearbyResourceOwnership.Shutdown);
                 completedSafely &= TryCleanup("Pending reservation shutdown cleanup",
@@ -139,6 +141,7 @@ namespace Stackmaster
                 completedSafely &= TryCleanup("Vanilla player-craft context cleanup", VanillaPlayerCraftContext.End);
                 completedSafely &= TryCleanup("Inventory session cleanup", InventoryIntegration.OnSessionDisconnected);
                 completedSafely &= TryCleanup("Chest-sort preference session cleanup", ChestSortPreferences.Shutdown);
+                completedSafely &= TryCleanup("Remembered Quick Stack destination cleanup", RememberedChestDestinations.Shutdown);
                 completedSafely &= TryCleanup("Storage scope cleanup", StorageScopeProvider.Reset);
                 completedSafely &= TryCleanup("Nearby resource cache cleanup", NearbyResourceService.ResetCaches);
                 completedSafely &= TryCleanup("Build HUD cache cleanup", NearbyBuildHudPatch.ResetCache);
@@ -177,7 +180,9 @@ namespace Stackmaster
             StorageAction.Shutdown();
             CraftingPreflightAction.Shutdown("plugin shutdown");
             NearbyResourceOwnership.Shutdown();
+            InventoryIntegration.OnSessionDisconnected();
             ChestSortPreferences.Shutdown();
+            RememberedChestDestinations.Shutdown();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();

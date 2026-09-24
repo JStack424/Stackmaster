@@ -35,7 +35,8 @@ namespace Stackmaster.Core
         public static ValidationResult ValidateTransferConservation(
             InventorySnapshot player,
             IEnumerable<ContainerSnapshot> containers,
-            TransferPlan plan)
+            TransferPlan plan,
+            IReadOnlyDictionary<string, string>? rememberedDestinations = null)
         {
             if (player == null) throw new ArgumentNullException(nameof(player));
             if (containers == null) throw new ArgumentNullException(nameof(containers));
@@ -54,7 +55,13 @@ namespace Stackmaster.Core
             var errors = new List<string>();
             foreach (var step in plan.Steps)
             {
-                ValidateAndApplyStep(player, containerById, state, step, errors);
+                ValidateAndApplyStep(
+                    player,
+                    containerById,
+                    state,
+                    step,
+                    rememberedDestinations ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                    errors);
             }
             var after = Count(state.Values);
             CompareCounts(before, after, errors);
@@ -66,6 +73,7 @@ namespace Stackmaster.Core
             IDictionary<string, ContainerSnapshot> containers,
             IDictionary<string, Cell> state,
             TransferStep step,
+            IReadOnlyDictionary<string, string> rememberedDestinations,
             IList<string> errors)
         {
             if (step.Kind == TransferKind.Replenishment)
@@ -92,7 +100,16 @@ namespace Stackmaster.Core
                     if (!destinationContainer.IsEligible) errors.Add("A step targets an ineligible container.");
                     if ((step.Kind == TransferKind.Deposit || step.Kind == TransferKind.ExcessDeposit) &&
                         !destinationContainer.Items.Any(item => item.CompatibilityKey == step.CompatibilityKey))
-                        errors.Add("A deposit targets a container that did not initially contain a compatible item.");
+                    {
+                        string rememberedContainerId;
+                        var sourceStack = player.Items.FirstOrDefault(item => item.Slot == step.Source.Slot);
+                        if (sourceStack == null ||
+                            !rememberedDestinations.TryGetValue(sourceStack.StackId, out rememberedContainerId) ||
+                            !string.Equals(rememberedContainerId, destinationContainer.ContainerId, StringComparison.Ordinal))
+                        {
+                            errors.Add("A deposit targets a container that neither initially contained the item nor matched its remembered destination.");
+                        }
+                    }
                 }
             }
 

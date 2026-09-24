@@ -73,7 +73,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ResolveExactMethod", installer)
         self.assertNotRegex(installer, r"typeof\((InventoryGui|Container|InventoryGrid|Player|Hud|BuildUi|Game|ZNet)\)")
         self.assertEqual(
-            33,
+            34,
             len(re.findall(r"^\s{12}(?:Prefix|Postfix|Both|Transactional)\(", manifest, flags=re.MULTILINE)),
         )
         self.assertIn(
@@ -109,17 +109,28 @@ class ProjectBoundaryTests(unittest.TestCase):
 
     def test_exactly_six_current_user_settings_are_bound(self):
         migration_call = "ConfigMigration.BindRenamedDefaultEnabledBoolean("
-        self.assertEqual(4, self.plugin.count("Config.Bind("))
+        self.assertEqual(3, self.plugin.count("Config.Bind("))
         self.assertEqual(2, self.plugin.count(migration_call))
+        self.assertEqual(1, self.plugin.count("ConfigMigration.BindRenamedKeyboardShortcut("))
         for key in (
             "Auto-sort enabled",
             "Nearby-storage radius",
-            "Storage-action keybind",
+            "Quick Stack keybind",
             "Allow building from storage",
             "Allow crafting from storage",
             "Show storage amounts in craft and build menus",
         ):
             self.assertEqual(1, self.plugin.count(f'"{key}"'))
+
+    def test_quick_stack_keybind_uses_public_migration_and_preserves_custom_shortcuts(self):
+        migration = (PLUGIN_DIR / "ConfigMigration.cs").read_text(encoding="utf-8")
+        self.assertEqual(1, self.plugin.count('"Storage-action keybind"'))
+        self.assertEqual(1, self.plugin.count('"Quick Stack keybind"'))
+        self.assertIn("BindRenamedKeyboardShortcut", migration)
+        self.assertIn("current.Value.Equals(defaultShortcut)", migration)
+        self.assertIn("!legacy.Value.Equals(defaultShortcut)", migration)
+        self.assertIn("current.Value = legacy.Value", migration)
+        self.assertIn("config.Remove(legacy.Definition)", migration)
 
     def test_renamed_storage_permissions_use_public_idempotent_bepinex_migration(self):
         migration = (PLUGIN_DIR / "ConfigMigration.cs").read_text(encoding="utf-8")
@@ -417,7 +428,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         self.assertIn("shortcut.Modifiers.Select(key => key.ToString())", action)
         self.assertIn("Concat(new[] { shortcut.MainKey.ToString() })", action)
-        self.assertIn('"</color>] Auto-Stack All"', action)
+        self.assertIn('"</color>] Quick Stack"', action)
+        self.assertNotIn('"</color>] Auto-Stack All"', action)
         self.assertNotIn('"</color>] Stackmaster: deposit + replenish"', action)
         self.assertIn("new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt)", self.plugin)
 
@@ -1196,6 +1208,116 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RevalidateStacks", nearby)
         self.assertIn("ResourceTransactionContext.Begin", nearby)
         self.assertIn("ResourceTransactionContext.Rollback", nearby)
+
+    def test_remembered_chest_destinations_are_bounded_local_hints_and_fail_closed(self):
+        state = (ROOT / "src" / "Stackmaster.Core" / "RememberedDestinationState.cs").read_text(encoding="utf-8")
+        planner = (ROOT / "src" / "Stackmaster.Core" / "StorageTransferPlanner.cs").read_text(encoding="utf-8")
+        validator = (ROOT / "src" / "Stackmaster.Core" / "PlanValidator.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RememberedChestDestinations.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
+        context = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+
+        self.assertIn("MaximumEntries = 512", state)
+        self.assertIn("TimeSpan.FromDays(180)", state)
+        self.assertIn("new UTF8Encoding(false, true)", state)
+        self.assertIn('string.Equals(parts[0], "v1"', state)
+        self.assertIn("if (records.Count > MaximumEntries) return false", state)
+        self.assertIn("TrimToMaximum()", state)
+
+        self.assertIn("PlayerPrefs", runtime)
+        self.assertIn("player.GetPlayerID()", runtime)
+        self.assertIn("ZNet.instance.GetWorldUID()", runtime)
+        self.assertIn("zdo.m_uid.ToString()", runtime)
+        self.assertIn("handle.Snapshot.IsEligible", runtime)
+        self.assertIn("eligibleIds.Contains(record.ContainerId)", runtime)
+        self.assertIn("result[itemSnapshot.StackId] = record.ContainerId", runtime)
+        self.assertIn("view.IsOwner() && container.IsOwner()", runtime)
+        self.assertIn("InventorySnapshots.PersistentItemKey", runtime)
+        self.assertNotIn("m_customData[", runtime)
+        self.assertEqual(2, context.count("RememberedChestDestinations.Initialize()"))
+        self.assertEqual(2, context.count("RememberedChestDestinations.Shutdown"))
+
+        self.assertIn("movedToCurrent == 0", planner)
+        self.assertIn("rememberedDestinations.TryGetValue", planner)
+        self.assertIn("string.Equals(container.Id, rememberedContainerId", planner)
+        self.assertIn("rememberedDestinations.TryGetValue", validator)
+        self.assertGreaterEqual(action.count("rememberedDestinations:"), 2)
+        self.assertGreaterEqual(action.count("RememberedChestDestinations.ResolveFallbacks"), 2)
+        self.assertGreaterEqual(action.count("RememberedChestDestinations.ObserveDirect"), 1)
+
+        self.assertIn("ObservedDataRevision", discovery)
+        self.assertIn("zdo.DataRevision != expectedDataRevision", executor)
+        self.assertIn("zdo.m_uid.ToString()", executor)
+        self.assertIn("expectedDataRevisions[containerId] = zdo.DataRevision", executor)
+        for signature in (
+            'RequireMethod(failures, typeof(Player), "GetPlayerID")',
+            'RequireMethod(failures, typeof(ZNet), "GetWorldUID")',
+            'RequireMethod(failures, typeof(ZDO), "get_DataRevision")',
+            'RequireStaticMethod(failures, typeof(PlayerPrefs), "GetString", typeof(string), typeof(string))',
+            'RequireStaticMethod(failures, typeof(PlayerPrefs), "SetString", typeof(string), typeof(string))',
+        ):
+            self.assertIn(signature, gate)
+
+    def test_failed_deposit_warning_is_ephemeral_pointer_driven_and_quantity_exact(self):
+        warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "FailedDepositPolicy.cs").read_text(encoding="utf-8")
+        inventory = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        sorter = (PLUGIN_DIR / "SortExecutor.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        plugin = (PLUGIN_DIR / "Plugin.cs").read_text(encoding="utf-8")
+
+        self.assertIn("ReferenceComparer<ItemDrop.ItemData>.Instance", warnings)
+        self.assertIn("FailedDepositPolicy.FailedRemainder", warnings)
+        self.assertIn("Warnings.Remove(item)", warnings)
+        self.assertIn("ReconcileAfterSuccessfulSort", warnings)
+        self.assertIn("FailedDepositWarnings.ReconcileAfterSuccessfulSort", sorter)
+        self.assertIn("inventory.ContainsItem(candidate.Item)", warnings)
+        self.assertNotIn("m_customData", warnings)
+        self.assertNotIn("Update()", warnings)
+        self.assertIn("FailedDepositWarnings.CaptureCandidates", action)
+        self.assertGreaterEqual(action.count("FailedDepositWarnings.Replace"), 2)
+        self.assertGreaterEqual(action.count("FailedDepositWarnings.Clear()"), 2)
+
+        self.assertIn("item.IsQuickBar || item.IsEquipped", policy)
+        self.assertIn("!item.IsProtected", policy)
+        self.assertIn("source.Quantity - original.ReplenishmentTarget", (ROOT / "src" / "Stackmaster.Core" / "StorageTransferPlanner.cs").read_text(encoding="utf-8"))
+        self.assertIn("survivingStackQuantity - intentionallyRetained", policy)
+        self.assertIn('FailedDepositOverlayName = "StackmasterFailedDepositOverlay"', inventory)
+        self.assertIn("FailedDepositBorderColor", inventory)
+        self.assertIn('quantityLabel.text = "!" + failedQuantity', inventory)
+        self.assertIn("FailedDepositWarnings.Clear()", inventory)
+
+        self.assertIn('Postfix(typeof(InventoryGrid), "OnPointerEnter"', manifest)
+        self.assertIn("FailedDepositWarnings.AcknowledgeHover(__instance)", warnings)
+        self.assertIn('RequireMethod(failures, typeof(InventoryGrid), "GetHoveredElement")', gate)
+        self.assertIn('RequireField(failures, typeof(InventoryGui), "m_playerGrid")', gate)
+        self.assertIn('RequireProperty(failures, typeof(InventoryElement), "Position")', gate)
+        self.assertIn("Quick Stack", plugin)
+
+    def test_destination_and_warning_work_add_no_frame_or_inventory_change_scans(self):
+        runtime = (PLUGIN_DIR / "RememberedChestDestinations.cs").read_text(encoding="utf-8")
+        warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")
+        inventory = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+
+        self.assertNotIn("Update()", runtime)
+        self.assertNotIn("Time.frameCount", runtime)
+        self.assertNotIn("Update()", warnings)
+        observed_changed = inventory[
+            inventory.index("private static void OnObservedInventoryChanged()"):
+            inventory.index("internal static void RequestProtectionOverlayRefresh()")
+        ]
+        self.assertNotIn("RememberedChestDestinations", observed_changed)
+        self.assertNotIn("FailedDepositWarnings.CaptureCandidates", observed_changed)
+        self.assertNotIn("NearbyResourceService", observed_changed)
+        self.assertIn("RememberedChestDestinations.ObserveDirect(container)", inventory)
+        self.assertIn("FailedDepositWarnings.Reconcile()", inventory)
+        self.assertIn("FailedDepositWarnings.CaptureCandidates", action)
 
     def test_failed_display_performance_experiment_is_fully_removed(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")

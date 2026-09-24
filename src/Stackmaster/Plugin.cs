@@ -33,9 +33,13 @@ namespace Stackmaster
             NearbyStorageRadius = Config.Bind("General", "Nearby-storage radius", 20f,
                 new ConfigDescription("Player-centered vanilla-container fallback radius in metres, used by all chest-powered features only while outside every connected vanilla workbench mesh.",
                     new AcceptableValueRange<float>(1f, 50f)));
-            StorageActionShortcut = Config.Bind("General", "Storage-action keybind",
+            StorageActionShortcut = ConfigMigration.BindRenamedKeyboardShortcut(
+                Config,
+                "General",
+                "Storage-action keybind",
+                "Quick Stack keybind",
                 new KeyboardShortcut(KeyCode.E, KeyCode.LeftAlt),
-                "While targeting or viewing an eligible container: deposit and replenish. The shortcut modifiers also control protected-item inventory clicks and build-menu quick-grab clicks.");
+                "Run Quick Stack while targeting or viewing an eligible container. Its modifiers also control protected-item inventory clicks and Quick Grab Materials build-menu clicks.");
             BuildingFromNearbyChestsEnabled = ConfigMigration.BindRenamedDefaultEnabledBoolean(
                 Config,
                 "General",

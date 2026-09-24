@@ -43,7 +43,7 @@ namespace Stackmaster
                 typeof(PlayerPrefs), typeof(Recipe), typeof(Player.RequirementMode), typeof(ZInput),
                 typeof(SplitDialog), typeof(CraftingStation), typeof(ZNetScene), typeof(PrivateArea),
                 typeof(Vector3), typeof(ZDOVars), typeof(TextInput), typeof(KeyHints),
-                typeof(Localization), typeof(UnityEngine.UI.Text)
+                typeof(Localization), typeof(UnityEngine.UI.Text), typeof(InventoryElement)
             };
             foreach (var type in requiredTypes) RuntimeContractValidator.RequireType(failures, type);
 
@@ -79,6 +79,8 @@ namespace Stackmaster
             RequireStaticMethod(failures, typeof(TextViewer), "get_instance");
             RequireMethod(failures, typeof(TextViewer), "IsVisible");
             RequireStaticMethod(failures, typeof(GameCamera), "InFreeFly");
+            RequireMethod(failures, typeof(InventoryGrid), "GetInventory");
+            RequireMethod(failures, typeof(InventoryGrid), "GetHoveredElement");
             RequireMethod(failures, typeof(Inventory), "MoveItemToThis", typeof(Inventory), typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int));
             RequireMethod(failures, typeof(Inventory), "GetWidth");
             RequireMethod(failures, typeof(Inventory), "GetHeight");
@@ -102,7 +104,9 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNet), "GetWorldUID");
             RequireStaticMethod(failures, typeof(PlayerPrefs), "HasKey", typeof(string));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "GetInt", typeof(string), typeof(int));
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "GetString", typeof(string), typeof(string));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "SetInt", typeof(string), typeof(int));
+            RequireStaticMethod(failures, typeof(PlayerPrefs), "SetString", typeof(string), typeof(string));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "DeleteKey", typeof(string));
             RequireStaticMethod(failures, typeof(PlayerPrefs), "Save");
             RequireStaticMethod(failures, typeof(ZInput), "ResetButtonStatus", typeof(string));
@@ -124,6 +128,7 @@ namespace Stackmaster
             RequireStaticMethod(failures, typeof(PrivateArea), "CheckAccess", typeof(Vector3), typeof(float), typeof(bool), typeof(bool));
             RequireField(failures, typeof(InventoryGui), "m_pvp");
             RequireField(failures, typeof(InventoryGui), "m_container");
+            RequireField(failures, typeof(InventoryGui), "m_playerGrid");
             RequireField(failures, typeof(InventoryGui), "m_currentContainer");
             RequireField(failures, typeof(InventoryGui), "m_craftTimer");
             RequireField(failures, typeof(InventoryGui), "m_craftRecipe");
@@ -164,6 +169,7 @@ namespace Stackmaster
             RequireField(failures, typeof(Player), "m_customData");
             RequireField(failures, typeof(Player), "m_noPlacementCost");
             RequireField(failures, typeof(TextInput), "m_inputField");
+            RequireProperty(failures, typeof(InventoryElement), "Position");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_gridPos");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_stack");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_quality");

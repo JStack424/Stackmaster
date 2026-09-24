@@ -28,6 +28,16 @@ internal static class Program
             ReplenishmentReportsPartialStockShortage,
             ExcessProtectedQuantityUsesDepositRouting,
             EligibilityAndInitialMatchingAreEnforced,
+            RememberedDestinationStateRoundTripsReplacesAndRetainsZeroStock,
+            RememberedDestinationStateRejectsMalformedPayloads,
+            RememberedDestinationStatePrunesAndCaps,
+            RememberedDestinationFallbackRoutesOnlyToExactChest,
+            RememberedDestinationsStayExactPerPlayerStack,
+            CurrentMatchingDestinationPrecedesRememberedFallback,
+            PartialCurrentRouteDoesNotOpenRememberedFallback,
+            MissingOrIneligibleRememberedFallbackIsInert,
+            FailedDepositEligibilityExcludesRetainedQuantities,
+            FailedDepositRemainderReportsOnlySurvivingAttempt,
             OrdinaryBaseInspectionIgnoresElapsedBudgetUntilComplete,
             OrdinaryBaseRoutesItemsIntoNonTargetChest,
             DenseBaseInspectionStopsAfterGuaranteedPrefix,
@@ -428,6 +438,160 @@ internal static class Program
         True(plan.SkippedContainers.Any(item => item.ContainerId == "modded"), "modded container reported skipped");
         True(plan.SkippedContainers.Any(item => item.ContainerId == "in-use" && item.Reason == "in use"), "in-use container reported skipped");
         Valid(PlanValidator.ValidateTransferConservation(player, containers, plan));
+    }
+
+    private static void RememberedDestinationStateRoundTripsReplacesAndRetainsZeroStock()
+    {
+        var first = DateTime.UtcNow.Ticks;
+        var state = new RememberedDestinationState();
+        True(state.Remember("wood|quality=1", "chest-a", first), "first direct observation is stored");
+        True(state.Remember("stone|quality=1", "chest-a", first + 1), "observing another present item is stored");
+        True(!state.Remember("wood|quality=1", "chest-a", first + 2), "same-chest observations are throttled to avoid repeated preference writes");
+        RememberedDestinationRecord wood;
+        True(state.TryGet("wood|quality=1", out wood), "an absent item is retained when a later observation does not mention it");
+        Equal("chest-a", wood.ContainerId, "zero-stock destination remains remembered");
+        True(state.Remember("wood|quality=1", "chest-b", first + 2), "later direct observation replaces the hint");
+        Equal("chest-b", state.Records.Single(record => record.ItemKey == "wood|quality=1").ContainerId, "replacement destination");
+
+        RememberedDestinationState parsed;
+        True(RememberedDestinationState.TryParse(state.Serialize(), out parsed), "serialized destination state round trips");
+        Equal(2, parsed.Records.Count, "round-trip record count");
+        Equal("chest-b", parsed.Records.Single(record => record.ItemKey == "wood|quality=1").ContainerId, "round-trip replacement");
+    }
+
+    private static void RememberedDestinationStateRejectsMalformedPayloads()
+    {
+        RememberedDestinationState parsed;
+        True(!RememberedDestinationState.TryParse("v999", out parsed), "unknown destination-state version is rejected");
+        True(!RememberedDestinationState.TryParse("v1;%%%bad%%%,Y2hlc3Q=,1", out parsed), "malformed base64 is rejected");
+        True(!RememberedDestinationState.TryParse("v1;/w==,Y2hlc3Q=,1", out parsed), "invalid UTF-8 is rejected");
+        var duplicate = new RememberedDestinationState(new[]
+        {
+            new RememberedDestinationRecord("wood", "chest", 1)
+        }).Serialize().Split(';')[1];
+        True(!RememberedDestinationState.TryParse("v1;" + duplicate + ";" + duplicate, out parsed), "duplicate item identities reject the whole payload");
+        Equal(0, parsed.Records.Count, "malformed state never exposes partial hints");
+    }
+
+    private static void RememberedDestinationStatePrunesAndCaps()
+    {
+        var now = DateTime.UtcNow.Ticks;
+        var cutoff = now - RememberedDestinationState.Retention.Ticks;
+        var state = new RememberedDestinationState(new[]
+        {
+            new RememberedDestinationRecord("stale", "old", cutoff - 1),
+            new RememberedDestinationRecord("boundary", "kept", cutoff),
+            new RememberedDestinationRecord("future", "bad", now + TimeSpan.FromDays(1).Ticks + 1)
+        });
+        Equal(2, state.Prune(now), "stale and implausibly future hints are pruned");
+        Equal(1, state.Records.Count, "only boundary record remains");
+        Equal("boundary", state.Records.Single().ItemKey, "retention boundary is inclusive");
+
+        var many = new RememberedDestinationState(Enumerable.Range(0, RememberedDestinationState.MaximumEntries + 7)
+            .Select(index => new RememberedDestinationRecord("item-" + index, "chest", now + index)));
+        Equal(RememberedDestinationState.MaximumEntries, many.Records.Count, "destination state is bounded");
+        True(!many.Records.Any(record => record.ItemKey == "item-0"), "oldest hint is evicted first");
+        True(many.Records.Any(record => record.ItemKey == "item-" + (RememberedDestinationState.MaximumEntries + 6)), "newest hint is retained");
+    }
+
+    private static void RememberedDestinationFallbackRoutesOnlyToExactChest()
+    {
+        var player = Player(2, Item("player-wood", "wood", "Wood", 20, 50, 0));
+        var exact = Chest("remembered", 4, false, 2);
+        var unrelated = Chest("unrelated", 1, false, 2, Item("stone", "stone", "Stone", 1, 50, 0));
+        var remembered = new Dictionary<string, string>(StringComparer.Ordinal) { ["player-wood"] = "remembered" };
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { unrelated, exact }, rememberedDestinations: remembered);
+        Equal(1, plan.Steps.Count, "remembered zero-stock chest receives one new stack");
+        Step(plan.Steps[0], TransferKind.Deposit, "remembered", 0, 20);
+        Equal(0, plan.LeftBehindUnits, "remembered route accepts all units");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { unrelated, exact }, plan, remembered));
+    }
+
+    private static void RememberedDestinationsStayExactPerPlayerStack()
+    {
+        var player = Player(3,
+            Item("wood-a", "wood", "Wood", 10, 50, 0),
+            Item("wood-b", "wood", "Wood", 12, 50, 1));
+        var chestA = Chest("chest-a", 1, false, 2);
+        var chestB = Chest("chest-b", 2, false, 2);
+        var remembered = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["wood-a"] = "chest-a",
+            ["wood-b"] = "chest-b"
+        };
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { chestA, chestB }, rememberedDestinations: remembered);
+        Equal(2, plan.Steps.Count, "each otherwise-compatible player stack gets its own exact remembered route");
+        Step(plan.Steps[0], TransferKind.Deposit, "chest-a", 0, 10);
+        Step(plan.Steps[1], TransferKind.Deposit, "chest-b", 0, 12);
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chestA, chestB }, plan, remembered));
+    }
+
+    private static void CurrentMatchingDestinationPrecedesRememberedFallback()
+    {
+        var player = Player(2, Item("player-wood", "wood", "Wood", 20, 50, 0));
+        var current = Chest("current", 2, false, 2, Item("wood-current", "wood", "Wood", 40, 50, 0));
+        var rememberedChest = Chest("remembered", 1, true, 2);
+        var remembered = new Dictionary<string, string>(StringComparer.Ordinal) { ["player-wood"] = "remembered" };
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { rememberedChest, current }, rememberedDestinations: remembered);
+        Equal(2, plan.Steps.Count, "current matching chest receives partial then new stack");
+        True(plan.Steps.All(step => step.Destination.InventoryId == "current"), "remembered fallback is not considered after a current match accepts units");
+        Equal(0, plan.LeftBehindUnits, "current route accepts all units");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { rememberedChest, current }, plan));
+    }
+
+    private static void PartialCurrentRouteDoesNotOpenRememberedFallback()
+    {
+        var player = Player(2, Item("player-wood", "wood", "Wood", 20, 50, 0));
+        var current = Chest("current", 1, false, 1, Item("wood-current", "wood", "Wood", 45, 50, 0));
+        var rememberedChest = Chest("remembered", 0, true, 2);
+        var remembered = new Dictionary<string, string>(StringComparer.Ordinal) { ["player-wood"] = "remembered" };
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { current, rememberedChest }, rememberedDestinations: remembered);
+        Equal(1, plan.Steps.Count, "only the accepting current match is used");
+        Step(plan.Steps[0], TransferKind.Deposit, "current", 0, 5);
+        Equal(15, plan.LeftBehindUnits, "overflow remains carried rather than opening a remembered second route");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { current, rememberedChest }, plan));
+    }
+
+    private static void MissingOrIneligibleRememberedFallbackIsInert()
+    {
+        var player = Player(2, Item("player-wood", "wood", "Wood", 10, 50, 0));
+        var ineligible = new ContainerSnapshot("remembered", 0, true, true, false, true, false, 2, Array.Empty<ItemStackSnapshot>());
+        var absent = new Dictionary<string, string>(StringComparer.Ordinal) { ["player-wood"] = "missing" };
+        var inaccessible = new Dictionary<string, string>(StringComparer.Ordinal) { ["player-wood"] = "remembered" };
+
+        var absentPlan = new StorageTransferPlanner().Plan(player, new[] { ineligible }, rememberedDestinations: absent);
+        Equal(0, absentPlan.Steps.Count, "missing remembered identity creates no route");
+        Equal(10, absentPlan.LeftBehindUnits, "missing hint leaves items safely carried");
+        var inaccessiblePlan = new StorageTransferPlanner().Plan(player, new[] { ineligible }, rememberedDestinations: inaccessible);
+        Equal(0, inaccessiblePlan.Steps.Count, "ineligible remembered chest creates no route");
+        Equal(10, inaccessiblePlan.LeftBehindUnits, "ineligible hint leaves items safely carried");
+    }
+
+    private static void FailedDepositEligibilityExcludesRetainedQuantities()
+    {
+        Equal(20, FailedDepositPolicy.AttemptedQuantity(Item("ordinary", "wood", "Wood", 20, 50, 1)), "ordinary movable quantity is attempted");
+        Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("quick", "wood", "Wood", 20, 50, 0, quickBar: true)), "quick-bar quantity is retained");
+        Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("equipped", "wood", "Wood", 20, 50, 1, equipped: true)), "equipped quantity is retained");
+        Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("protected", "wood", "Wood", 20, 50, 1, protectedSlot: true)), "protection-only quantity is retained");
+        Equal(10, FailedDepositPolicy.AttemptedQuantity(Item("target", "wood", "Wood", 30, 50, 1, protectedSlot: true, target: 20)), "only target excess is attempted");
+        Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("below-target", "wood", "Wood", 15, 50, 1, protectedSlot: true, target: 20)), "target-retained shortage is not a failed deposit");
+    }
+
+    private static void FailedDepositRemainderReportsOnlySurvivingAttempt()
+    {
+        var ordinary = Item("ordinary", "wood", "Wood", 20, 50, 1);
+        Equal(20, FailedDepositPolicy.FailedRemainder(ordinary, 20), "full ordinary failure is reported");
+        Equal(7, FailedDepositPolicy.FailedRemainder(ordinary, 7), "partial ordinary failure reports the surviving remainder");
+        Equal(0, FailedDepositPolicy.FailedRemainder(ordinary, 0), "fully deposited item has no warning");
+
+        var target = Item("target", "wood", "Wood", 30, 50, 1, protectedSlot: true, target: 20);
+        Equal(10, FailedDepositPolicy.FailedRemainder(target, 30), "full excess failure excludes target-retained quantity");
+        Equal(4, FailedDepositPolicy.FailedRemainder(target, 24), "partial excess failure reports only surviving excess");
+        Equal(0, FailedDepositPolicy.FailedRemainder(target, 20), "exact retained target has no warning");
     }
 
     private static void OrdinaryBaseInspectionIgnoresElapsedBudgetUntilComplete()
@@ -2242,6 +2406,9 @@ internal static class Program
 
     private static InventorySnapshot Player(int capacity, params ItemStackSnapshot[] items)
         => new InventorySnapshot("player", capacity, items);
+
+    private static ContainerSnapshot Chest(string id, double distance, bool target, int capacity)
+        => new ContainerSnapshot(id, distance, target, true, true, true, false, capacity, Array.Empty<ItemStackSnapshot>());
 
     private static ContainerSnapshot Chest(
         string id,

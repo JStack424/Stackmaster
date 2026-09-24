@@ -56,6 +56,9 @@ namespace Stackmaster.Compatibility.Tests
                 ("InventoryGrid", "UpdateInventory", new[] { "Inventory", "Player", "ItemData" }),
                 ("InventoryGrid", "OnLeftDown", new[] { "UIInputHandler" }),
                 ("InventoryGrid", "OnRightDown", new[] { "UIInputHandler" }),
+                ("InventoryGrid", "OnPointerEnter", new[] { "UIInputHandler" }),
+                ("InventoryGrid", "GetInventory", Array.Empty<string>()),
+                ("InventoryGrid", "GetHoveredElement", Array.Empty<string>()),
                 ("Container", "CheckAccess", new[] { "System.Int64" }),
                 ("Container", "CheckForChanges", Array.Empty<string>()),
                 ("Container", "GetInventory", Array.Empty<string>()),
@@ -98,6 +101,7 @@ namespace Stackmaster.Compatibility.Tests
             var fields = new (string Type, string Name)[]
             {
                 ("InventoryGui", "m_pvp"), ("InventoryGui", "m_container"),
+                ("InventoryGui", "m_playerGrid"),
                 ("InventoryGui", "m_currentContainer"), ("InventoryGui", "m_craftTimer"),
                 ("InventoryGui", "m_craftRecipe"), ("InventoryGui", "m_selectedRecipe"),
                 ("InventoryGui", "m_reqList"), ("InventoryGui", "m_craftUpgradeItem"),
@@ -207,7 +211,7 @@ namespace Stackmaster.Compatibility.Tests
                 .GetMethod("PrepareCleanupSafety", BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, null)!).Cast<object>().ToArray();
 
-            Equal(33, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
+            Equal(34, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
             Equal(descriptors.Length, prepared.Length, "PatchInstaller.Prepare returns every manifest operation");
             Equal(2, cleanupSafety.Length, "cleanup safety installation filters the canonical manifest");
 

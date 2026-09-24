@@ -13,7 +13,8 @@ namespace Stackmaster.Core
         public TransferPlan Plan(
             InventorySnapshot player,
             IEnumerable<ContainerSnapshot> containers,
-            IPlanningBudget? budget = null)
+            IPlanningBudget? budget = null,
+            IReadOnlyDictionary<string, string>? rememberedDestinations = null)
         {
             if (player == null) throw new ArgumentNullException(nameof(player));
             if (containers == null) throw new ArgumentNullException(nameof(containers));
@@ -54,7 +55,12 @@ namespace Stackmaster.Core
             var steps = new List<TransferStep>();
             var shortages = new List<ReplenishmentShortage>();
             var replenishedUnits = PlanReplenishment(player, playerStacks, routedContainers, steps, shortages);
-            var depositResult = PlanDeposits(player, playerStacks, routedContainers, steps);
+            var depositResult = PlanDeposits(
+                player,
+                playerStacks,
+                routedContainers,
+                steps,
+                rememberedDestinations ?? new Dictionary<string, string>(StringComparer.Ordinal));
 
             return new TransferPlan(
                 steps,
@@ -126,7 +132,8 @@ namespace Stackmaster.Core
             InventorySnapshot player,
             IDictionary<int, WorkingStack> playerStacks,
             IList<WorkingContainer> containers,
-            IList<TransferStep> steps)
+            IList<TransferStep> steps,
+            IReadOnlyDictionary<string, string> rememberedDestinations)
         {
             var deposited = 0;
             var leftBehind = 0;
@@ -143,50 +150,39 @@ namespace Stackmaster.Core
                 var matchingContainers = containers
                     .Where(container => container.InitialCompatibilityKeys.Contains(source.CompatibilityKey))
                     .ToList();
-                if (matchingContainers.Count == 0)
-                {
-                    leftBehind += available;
-                    continue;
-                }
-
                 var remaining = available;
-                // Global pass one: every existing compatible partial stack, in routing and slot order.
-                foreach (var container in matchingContainers)
-                {
-                    foreach (var destination in container.Stacks
-                        .Where(pair => pair.Value.CompatibilityKey == source.CompatibilityKey && pair.Value.Quantity < pair.Value.MaxStack)
-                        .OrderBy(pair => pair.Key)
-                        .ToList())
-                    {
-                        if (remaining == 0) break;
-                        var moved = Math.Min(remaining, destination.Value.MaxStack - destination.Value.Quantity);
-                        MoveFromPlayer(player, original, source, container, destination.Key, moved, excess, steps);
-                        destination.Value.Quantity += moved;
-                        remaining -= moved;
-                        deposited += moved;
-                    }
-                    if (remaining == 0) break;
-                }
+                var movedToCurrent = MoveIntoContainers(
+                    player,
+                    original,
+                    source,
+                    matchingContainers,
+                    remaining,
+                    excess,
+                    steps);
+                remaining -= movedToCurrent;
+                deposited += movedToCurrent;
 
-                // Global pass two: only after all compatible partials are full, create stacks.
-                if (remaining > 0)
+                // A remembered zero-stock chest is only a fallback. If any currently matching
+                // destination accepted even one unit, preserve the existing deterministic route
+                // and leave overflow in the player inventory rather than opening a second route.
+                string rememberedContainerId;
+                if (remaining > 0 && movedToCurrent == 0 &&
+                    rememberedDestinations.TryGetValue(original.StackId, out rememberedContainerId))
                 {
-                    foreach (var container in matchingContainers)
+                    var remembered = containers.FirstOrDefault(container =>
+                        string.Equals(container.Id, rememberedContainerId, StringComparison.Ordinal));
+                    if (remembered != null)
                     {
-                        foreach (var destinationSlot in container.EmptySlots().ToList())
-                        {
-                            if (remaining == 0) break;
-                            var moved = Math.Min(remaining, source.MaxStack);
-                            MoveFromPlayer(player, original, source, container, destinationSlot, moved, excess, steps);
-                            container.Stacks.Add(destinationSlot, new WorkingStack(
-                                source.CompatibilityKey,
-                                source.VisibleName,
-                                moved,
-                                source.MaxStack));
-                            remaining -= moved;
-                            deposited += moved;
-                        }
-                        if (remaining == 0) break;
+                        var movedToRemembered = MoveIntoContainers(
+                            player,
+                            original,
+                            source,
+                            new[] { remembered },
+                            remaining,
+                            excess,
+                            steps);
+                        remaining -= movedToRemembered;
+                        deposited += movedToRemembered;
                     }
                 }
 
@@ -194,6 +190,59 @@ namespace Stackmaster.Core
             }
 
             return new DepositResult(deposited, leftBehind);
+        }
+
+        private static int MoveIntoContainers(
+            InventorySnapshot player,
+            ItemStackSnapshot original,
+            WorkingStack source,
+            IEnumerable<WorkingContainer> destinations,
+            int available,
+            bool excess,
+            IList<TransferStep> steps)
+        {
+            var containers = destinations.ToList();
+            var remaining = available;
+
+            // Global pass one: every existing compatible partial stack, in routing and slot order.
+            foreach (var container in containers)
+            {
+                foreach (var destination in container.Stacks
+                    .Where(pair => pair.Value.CompatibilityKey == source.CompatibilityKey && pair.Value.Quantity < pair.Value.MaxStack)
+                    .OrderBy(pair => pair.Key)
+                    .ToList())
+                {
+                    if (remaining == 0) break;
+                    var moved = Math.Min(remaining, destination.Value.MaxStack - destination.Value.Quantity);
+                    MoveFromPlayer(player, original, source, container, destination.Key, moved, excess, steps);
+                    destination.Value.Quantity += moved;
+                    remaining -= moved;
+                }
+                if (remaining == 0) break;
+            }
+
+            // Global pass two: only after all compatible partials are full, create stacks.
+            if (remaining > 0)
+            {
+                foreach (var container in containers)
+                {
+                    foreach (var destinationSlot in container.EmptySlots().ToList())
+                    {
+                        if (remaining == 0) break;
+                        var moved = Math.Min(remaining, source.MaxStack);
+                        MoveFromPlayer(player, original, source, container, destinationSlot, moved, excess, steps);
+                        container.Stacks.Add(destinationSlot, new WorkingStack(
+                            source.CompatibilityKey,
+                            source.VisibleName,
+                            moved,
+                            source.MaxStack));
+                        remaining -= moved;
+                    }
+                    if (remaining == 0) break;
+                }
+            }
+
+            return available - remaining;
         }
 
         private static void MoveFromPlayer(

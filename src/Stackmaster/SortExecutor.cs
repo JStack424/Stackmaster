@@ -33,7 +33,7 @@ namespace Stackmaster
                 // real inventory mutation and rebuilds the placement ghost even though no item moved.
                 if (PlanAlreadyApplied(source, plan)) return true;
 
-                return Execute(inventory, source, plan, out failure);
+                return Execute(inventory, source, plan, isPlayer, out failure);
             }
             catch (Exception exception)
             {
@@ -61,7 +61,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool Execute(Inventory inventory, InventorySnapshot source, SortPlan plan, out string failure)
+        private static bool Execute(Inventory inventory, InventorySnapshot source, SortPlan plan, bool isPlayer, out string failure)
         {
             failure = null;
             var backing = (List<ItemDrop.ItemData>)InventoryItemsField.GetValue(inventory);
@@ -170,6 +170,18 @@ namespace Stackmaster
                     throw new InvalidOperationException("Sort conservation check failed.");
                 }
 
+                if (isPlayer)
+                {
+                    try
+                    {
+                        FailedDepositWarnings.ReconcileAfterSuccessfulSort(originalOrder, backing);
+                    }
+                    catch (Exception warningException)
+                    {
+                        FailedDepositWarnings.Clear();
+                        RuntimeContext.Plugin?.Log.LogWarning("Failed-deposit warning reconciliation was cleared safely after sorting: " + warningException);
+                    }
+                }
                 inventory.m_onChanged?.Invoke();
                 return true;
             }

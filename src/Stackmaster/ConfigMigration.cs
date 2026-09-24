@@ -12,6 +12,48 @@ namespace Stackmaster
     /// </summary>
     internal static class ConfigMigration
     {
+        internal static ConfigEntry<KeyboardShortcut> BindRenamedKeyboardShortcut(
+            ConfigFile config,
+            string section,
+            string legacyKey,
+            string currentKey,
+            KeyboardShortcut defaultShortcut,
+            string currentDescription)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
+
+            var originalSaveOnConfigSet = config.SaveOnConfigSet;
+            config.SaveOnConfigSet = false;
+            try
+            {
+                var legacy = config.Bind(section, legacyKey, defaultShortcut,
+                    "Legacy Stackmaster setting; migrated automatically and removed from the saved configuration.");
+                var current = config.Bind(section, currentKey, defaultShortcut, currentDescription);
+
+                // Prefer an explicitly customized current key. Otherwise carry the legacy
+                // shortcut forward exactly, including all modifier choices.
+                if (current.Value.Equals(defaultShortcut) && !legacy.Value.Equals(defaultShortcut))
+                {
+                    current.Value = legacy.Value;
+                }
+
+                if (!config.Remove(legacy.Definition))
+                {
+                    throw new InvalidOperationException("Could not retire legacy Stackmaster configuration key: " + legacyKey);
+                }
+
+                config.Save();
+                return current;
+            }
+            finally
+            {
+                config.SaveOnConfigSet = originalSaveOnConfigSet;
+            }
+        }
+
         internal static ConfigEntry<bool> BindRenamedDefaultEnabledBoolean(
             ConfigFile config,
             string section,
