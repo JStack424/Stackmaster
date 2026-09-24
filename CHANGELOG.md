@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+
+A clearer, safer Quick Stack update, live-tested before release.
+
+- Renamed the deposit-and-replenish action to **Quick Stack** and its setting to **Quick Stack keybind** while preserving existing custom shortcuts.
+- Quick Stack remembers the last directly observed chest for each exact item type, even after that chest reaches zero stock. The chest is freshly checked before use; unavailable, inaccessible, busy, or full destinations leave the item safely carried.
+- Genuine failed or partial deposits mark only the surviving eligible quantity with a red border and `!quantity`. Quick-bar, equipped, protection-only, and target-retained quantities are excluded. The warning follows the surviving item through sorting and clears when that item is hovered once, the inventory closes, or another Quick Stack begins.
+- The result summary is now a compact three-line bullet list for deposited, replenished, and left-behind quantities, including zeros.
+- Kept the straightforward requirement-display behavior from before the unsuccessful optimization experiment. This release makes no performance-improvement claim.
+
 ## 1.1.9 (local test candidate)
 
 Added remembered Quick Stack destinations and precise failed-deposit warnings on top of the completed 1.1.8 selective performance rollback.
