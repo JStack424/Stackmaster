@@ -450,8 +450,10 @@ namespace Stackmaster
             var leftBehind = Math.Max(0, depositable - execution.DepositedUnits);
             var lines = new List<string>
             {
-                "Stackmaster: " + execution.DepositedUnits + " deposited • " +
-                execution.ReplenishedUnits + " replenished • " + leftBehind + " left behind"
+                QuickStackSummaryFormatter.Format(
+                    execution.DepositedUnits,
+                    execution.ReplenishedUnits,
+                    leftBehind)
             };
 
             var shortageNames = new List<string>();

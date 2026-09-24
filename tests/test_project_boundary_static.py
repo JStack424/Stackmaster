@@ -1309,6 +1309,26 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('RequireProperty(failures, typeof(InventoryElement), "Position")', gate)
         self.assertIn("Quick Stack", plugin)
 
+    def test_quick_stack_summary_is_an_unclipped_multiline_top_left_list(self):
+        formatter = (ROOT / "src" / "Stackmaster.Core" / "QuickStackSummaryFormatter.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        context = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+
+        self.assertIn('return "Stackmaster:\\n" +', formatter)
+        self.assertIn('"• " + depositedUnits', formatter)
+        self.assertIn('" deposited\\n"', formatter)
+        self.assertIn('"• " + replenishedUnits', formatter)
+        self.assertIn('" replenished\\n"', formatter)
+        self.assertIn('"• " + leftBehindUnits', formatter)
+        self.assertIn('" left behind"', formatter)
+        self.assertLess(formatter.index("depositedUnits"), formatter.index("replenishedUnits"))
+        self.assertLess(formatter.index("replenishedUnits"), formatter.index("leftBehindUnits"))
+        self.assertIn("QuickStackSummaryFormatter.Format(", action)
+        self.assertIn('RuntimeContext.ShowTopLeft(string.Join("\\n", lines))', action)
+        self.assertIn("Player.m_localPlayer.Message(MessageHud.MessageType.TopLeft, message, 0, null, false)", context)
+        self.assertNotIn('Replace("\\n"', action)
+        self.assertNotIn("Substring(", action[action.index("private static void ShowSummary"):])
+
     def test_destination_and_warning_work_add_no_frame_or_inventory_change_scans(self):
         runtime = (PLUGIN_DIR / "RememberedChestDestinations.cs").read_text(encoding="utf-8")
         warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")

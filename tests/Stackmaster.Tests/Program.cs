@@ -39,6 +39,9 @@ internal static class Program
             MissingOrIneligibleRememberedFallbackIsInert,
             FailedDepositEligibilityExcludesRetainedQuantities,
             FailedDepositRemainderReportsOnlySurvivingAttempt,
+            QuickStackSummaryFormatsMultilineBulletTable,
+            QuickStackSummaryRetainsZeroValues,
+            QuickStackSummaryKeepsStableVerbsAcrossQuantities,
             OrdinaryBaseInspectionIgnoresElapsedBudgetUntilComplete,
             OrdinaryBaseRoutesItemsIntoNonTargetChest,
             DenseBaseInspectionStopsAfterGuaranteedPrefix,
@@ -637,6 +640,37 @@ internal static class Program
         Equal(10, FailedDepositPolicy.FailedRemainder(target, 30), "full excess failure excludes target-retained quantity");
         Equal(4, FailedDepositPolicy.FailedRemainder(target, 24), "partial excess failure reports only surviving excess");
         Equal(0, FailedDepositPolicy.FailedRemainder(target, 20), "exact retained target has no warning");
+    }
+
+    private static void QuickStackSummaryFormatsMultilineBulletTable()
+    {
+        Equal(
+            "Stackmaster:\n• 12 deposited\n• 3 replenished\n• 4 left behind",
+            QuickStackSummaryFormatter.Format(12, 3, 4),
+            "Quick Stack summary uses one ordered bullet per outcome");
+        SequenceEqual(
+            new[] { "Stackmaster:", "• 12 deposited", "• 3 replenished", "• 4 left behind" },
+            QuickStackSummaryFormatter.Format(12, 3, 4).Split('\n'),
+            "Quick Stack summary has four unclipped lines");
+    }
+
+    private static void QuickStackSummaryRetainsZeroValues()
+    {
+        Equal(
+            "Stackmaster:\n• 0 deposited\n• 0 replenished\n• 0 left behind",
+            QuickStackSummaryFormatter.Format(0, 0, 0),
+            "zero-valued outcomes remain visible");
+    }
+
+    private static void QuickStackSummaryKeepsStableVerbsAcrossQuantities()
+    {
+        Equal(
+            "Stackmaster:\n• 1 deposited\n• 1 replenished\n• 1 left behind",
+            QuickStackSummaryFormatter.Format(1, 1, 1),
+            "action verbs do not need singular or plural noun variants");
+        Throws<ArgumentOutOfRangeException>(() => QuickStackSummaryFormatter.Format(-1, 0, 0), "negative deposited quantity is rejected");
+        Throws<ArgumentOutOfRangeException>(() => QuickStackSummaryFormatter.Format(0, -1, 0), "negative replenished quantity is rejected");
+        Throws<ArgumentOutOfRangeException>(() => QuickStackSummaryFormatter.Format(0, 0, -1), "negative left-behind quantity is rejected");
     }
 
     private static void OrdinaryBaseInspectionIgnoresElapsedBudgetUntilComplete()
