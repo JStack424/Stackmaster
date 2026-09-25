@@ -2,7 +2,7 @@
 
 ## 1.3.0 (local test candidate)
 
-Integrated durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. Version 1.2.0 remains the production release while the complete release gate and live validation are pending.
+Integrated durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. The complete automated release gate and focused source audit pass; live Valheim validation is still pending, and version 1.2.0 remains the production release.
 
 - Every successfully committed **Quick Grab Materials** click records one reserved build piece after the atomic transfer succeeds; rejected, failed, or rolled-back clicks record nothing.
 - Repeated grabs of the same stable piece-prefab identity increment a count. Records are local, versioned, bounded, and isolated by exact player and world.
