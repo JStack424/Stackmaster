@@ -1321,13 +1321,20 @@ class ProjectBoundaryTests(unittest.TestCase):
 
         self.assertIn("TryGetRecords", runtime)
         self.assertIn("TryReleaseOne", runtime)
-        self.assertIn("_state.TryReleaseReservation(pieceKey, 1)", runtime)
+        self.assertIn("candidate.TryReleaseReservation(pieceKey, 1)", runtime)
+        self.assertIn("PlayerPrefs.SetString(_loadedKey, candidate.Serialize())", runtime)
+        self.assertLess(
+            runtime.index("PlayerPrefs.Save();", runtime.index("internal static bool TryReleaseOne")),
+            runtime.index("_state = candidate;"),
+        )
+        self.assertIn("previousPayload", runtime)
         self.assertIn("RequestExpeditionRefresh", runtime)
         self.assertNotIn("StorageAction.", ui)
         self.assertNotIn("TransferExecutor", ui)
         self.assertIn("button.onClick.AddListener", ui)
         self.assertIn("ExpeditionReservations.TryReleaseOne", ui)
         self.assertIn("released 1 ×", ui)
+        self.assertIn("it was left unchanged", ui)
         self.assertIn("RectMask2D", ui)
         self.assertIn("HorizontalLayoutGroup", ui)
         self.assertIn("ZNetScene.instance.GetPrefab", ui)

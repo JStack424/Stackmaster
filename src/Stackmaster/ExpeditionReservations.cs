@@ -189,16 +189,48 @@ namespace Stackmaster
                 {
                     return false;
                 }
-                if (!_state.TryReleaseReservation(pieceKey, 1))
+                // The settled interaction changes saved intent only. It deliberately neither
+                // transfers inventory nor invokes Quick Stack. Release is durable-first: a failed
+                // persistence write must not change the active in-session reservation count.
+                var previousPayload = _state.Serialize();
+                ExpeditionReservationState candidate;
+                if (!ExpeditionReservationState.TryParse(previousPayload, out candidate))
+                {
+                    throw new InvalidOperationException("The active reservation state could not be cloned safely.");
+                }
+                if (!candidate.TryReleaseReservation(pieceKey, 1))
                 {
                     return false;
                 }
 
-                // The settled interaction changes saved intent only. It deliberately neither
-                // transfers inventory nor invokes Quick Stack.
-                Save();
+                try
+                {
+                    PlayerPrefs.SetString(_loadedKey, candidate.Serialize());
+                    PlayerPrefs.Save();
+                }
+                catch (Exception exception)
+                {
+                    _writesHealthy = false;
+                    try
+                    {
+                        // Restore the PlayerPrefs memory cache as well as the runtime state. A
+                        // best-effort second flush prevents a partially completed first save from
+                        // becoming the durable value later in the session.
+                        PlayerPrefs.SetString(_loadedKey, previousPayload);
+                        PlayerPrefs.Save();
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        RuntimeContext.Plugin?.Log.LogError(
+                            "Quick Grab reservation release rollback could not be flushed: " + rollbackException);
+                    }
+                    LogFailureOnce("Quick Grab reservation release could not be saved and was left unchanged: " + exception.GetType().Name);
+                    return false;
+                }
+
+                _state = candidate;
                 InventoryIntegration.RequestExpeditionRefresh();
-                return _storageHealthy && _writesHealthy;
+                return true;
             }
             catch (Exception exception)
             {
