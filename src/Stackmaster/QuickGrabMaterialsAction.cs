@@ -248,7 +248,7 @@ namespace Stackmaster
                 ResourceWithdrawalPlan plan;
                 ContainerHandle[] handles;
                 string failure;
-                if (!TryPrepare(player, piece, out requirements, out capture, out plan, out handles, out failure))
+                if (!TryPrepare(player, piece, request.ReservationRequirements, out requirements, out capture, out plan, out handles, out failure))
                 {
                     ShowFailure(failure);
                     Complete(generation);
@@ -497,7 +497,7 @@ namespace Stackmaster
             ResourceWithdrawalPlan plan;
             ContainerHandle[] handles;
             string failure;
-            if (!TryPrepare(player, piece, out requirements, out capture, out plan, out handles, out failure) ||
+            if (!TryPrepare(player, piece, reservationRequirements, out requirements, out capture, out plan, out handles, out failure) ||
                 !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan))
             {
                 ShowFailure(failure ?? "nearby materials changed before transfer");
@@ -516,7 +516,7 @@ namespace Stackmaster
                 ShowFailure(failure);
                 return;
             }
-            if (!TryPrepare(player, piece, out requirements, out capture, out plan, out handles, out failure) ||
+            if (!TryPrepare(player, piece, reservationRequirements, out requirements, out capture, out plan, out handles, out failure) ||
                 !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan) ||
                 handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
             {
@@ -557,7 +557,7 @@ namespace Stackmaster
                 // Reservation persistence is a post-commit observer. It can never authorize or
                 // roll back the proven 1.2.0 transfer path, and a storage failure leaves the
                 // successful material grab intact.
-                ExpeditionReservations.RecordSuccessfulQuickGrab(
+                var reservationSaved = ExpeditionReservations.RecordSuccessfulQuickGrab(
                     player,
                     pieceKey,
                     displayName,
@@ -576,6 +576,11 @@ namespace Stackmaster
                 {
                     RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials (" +
                         plan.RequiredUnits.ToString(CultureInfo.InvariantCulture) + " items).");
+                    if (!reservationSaved)
+                    {
+                        RuntimeContext.ShowCenter(
+                            "Materials were grabbed, but their reservation could not be saved. Check the Stackmaster log before Quick Stack.");
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -605,6 +610,7 @@ namespace Stackmaster
         private static bool TryPrepare(
             Player player,
             Piece piece,
+            IReadOnlyList<ResourceRequirement> reservationRequirements,
             out IReadOnlyList<ResourceRequirement> requirements,
             out NearbyResourceCapture capture,
             out ResourceWithdrawalPlan plan,
@@ -629,12 +635,30 @@ namespace Stackmaster
                 return false;
             }
             capture = NearbyResourceService.CaptureForQuickGrab(player, true, true);
-            plan = WithdrawalPlanner.Plan(
-                requirements,
-                capture.Stacks.Where(stack => !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal)));
+            var allowedIdentities = new HashSet<string>(
+                (reservationRequirements ?? Array.Empty<ResourceRequirement>())
+                    .Select(requirement => StableIdentityKey(requirement.ItemName, requirement.Quality)),
+                StringComparer.Ordinal);
+            var preparedCapture = capture;
+            var eligibleStacks = preparedCapture.Stacks.Where(stack =>
+            {
+                RuntimeResourceStack runtime;
+                string prefabName;
+                int quality;
+                return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
+                       preparedCapture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
+                       ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
+                       allowedIdentities.Contains(StableIdentityKey(prefabName, quality));
+            });
+            plan = WithdrawalPlanner.Plan(requirements, eligibleStacks);
             if (!plan.IsSatisfiable || plan.PlannedUnits != plan.RequiredUnits)
             {
-                failure = "nearby storage does not contain all required materials for this build piece";
+                failure = "nearby storage does not contain the exact recipe materials required for this build piece";
+                return false;
+            }
+            if (!PlanMatchesReservationRequirements(plan, capture, reservationRequirements))
+            {
+                failure = "nearby materials did not match the build-piece recipe identity exactly";
                 return false;
             }
             if (!NearbyResourceService.TryResolveRequiredContainers(player, plan, capture, out handles, out failure))
@@ -642,6 +666,43 @@ namespace Stackmaster
                 return false;
             }
             return true;
+        }
+
+        private static string StableIdentityKey(string prefabName, int quality)
+        {
+            return (prefabName ?? string.Empty) + "\u001f" + quality.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static bool PlanMatchesReservationRequirements(
+            ResourceWithdrawalPlan plan,
+            NearbyResourceCapture capture,
+            IReadOnlyList<ResourceRequirement> reservationRequirements)
+        {
+            if (plan == null || capture == null || reservationRequirements == null) return false;
+            var expected = reservationRequirements
+                .GroupBy(requirement => StableIdentityKey(requirement.ItemName, requirement.Quality), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Sum(requirement => requirement.Quantity), StringComparer.Ordinal);
+            var actual = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var step in plan.Steps)
+            {
+                RuntimeResourceStack runtime;
+                string prefabName;
+                int quality;
+                if (!capture.RuntimeStacks.TryGetValue(step.StackId, out runtime) ||
+                    !ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality))
+                {
+                    return false;
+                }
+                var key = StableIdentityKey(prefabName, quality);
+                int current;
+                actual.TryGetValue(key, out current);
+                actual[key] = checked(current + step.Quantity);
+            }
+            return expected.Count == actual.Count && expected.All(pair =>
+            {
+                int quantity;
+                return actual.TryGetValue(pair.Key, out quantity) && quantity == pair.Value;
+            });
         }
 
         private static bool TryPlanCapacity(

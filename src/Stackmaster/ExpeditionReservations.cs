@@ -85,8 +85,23 @@ namespace Stackmaster
                     failure = "the safe reservation limit was reached";
                     return false;
                 }
-                return result == ExpeditionReservationAddResult.Added ||
-                       result == ExpeditionReservationAddResult.Incremented;
+                if (result != ExpeditionReservationAddResult.Added &&
+                    result != ExpeditionReservationAddResult.Incremented)
+                {
+                    return false;
+                }
+                try
+                {
+                    // Validate the post-add payload, not merely the current one. This keeps an
+                    // oversized reservation from being discovered only after item transfer.
+                    preview.Serialize();
+                }
+                catch (InvalidOperationException)
+                {
+                    failure = "the safe reservation storage limit was reached";
+                    return false;
+                }
+                return true;
             }
             catch (Exception exception)
             {
@@ -261,6 +276,33 @@ namespace Stackmaster
             pieceKey = "prefab:" + prefabName;
             displayName = string.IsNullOrWhiteSpace(piece.m_name) ? prefabName : piece.m_name;
             return true;
+        }
+
+        internal static bool TryGetStableItemIdentity(
+            ItemDrop.ItemData item,
+            out string prefabName,
+            out int quality)
+        {
+            prefabName = null;
+            quality = -1;
+            if (item == null || item.m_dropPrefab == null)
+            {
+                return false;
+            }
+
+            prefabName = (item.m_dropPrefab.name ?? string.Empty).Trim();
+            while (prefabName.EndsWith(CloneSuffix, StringComparison.Ordinal))
+            {
+                prefabName = prefabName.Substring(0, prefabName.Length - CloneSuffix.Length).TrimEnd();
+            }
+            if (string.IsNullOrWhiteSpace(prefabName))
+            {
+                prefabName = null;
+                return false;
+            }
+
+            quality = item.m_quality;
+            return quality >= 0;
         }
 
         internal static bool TryGetStableRequirements(

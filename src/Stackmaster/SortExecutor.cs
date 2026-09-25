@@ -197,7 +197,7 @@ namespace Stackmaster
                 {
                     try
                     {
-                        FailedDepositWarnings.ReconcileAfterSuccessfulSort(originalOrder, backing);
+                        FailedDepositWarnings.ReconcileAfterSuccessfulSort(originalOrder, backing, plan.Placements);
                     }
                     catch (Exception warningException)
                     {

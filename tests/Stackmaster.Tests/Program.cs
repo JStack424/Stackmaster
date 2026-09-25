@@ -778,6 +778,19 @@ internal static class Program
                 "$piece_fixture",
                 new[] { new ResourceRequirement("Wood", 1) }),
             "oversized piece identities are rejected");
+
+        var oversizedPayload = new ExpeditionReservationState();
+        var largeRequirements = Enumerable.Range(0, ExpeditionReservationState.MaximumRequirementsPerPiece)
+            .Select(index => new ResourceRequirement(index + "_" + new string('x', 16380), 1))
+            .ToArray();
+        Equal(ExpeditionReservationAddResult.Added,
+            oversizedPayload.RecordSuccessfulQuickGrab(
+                "prefab:oversized_payload_fixture",
+                "$piece_oversized_payload_fixture",
+                largeRequirements),
+            "a structurally valid record may still exceed the serialized payload bound");
+        Throws<InvalidOperationException>(() => oversizedPayload.Serialize(),
+            "the post-add payload bound is enforced during serialization");
     }
 
     private static void ExpeditionReservationsReleaseOnlyReservationState()

@@ -130,33 +130,54 @@ namespace Stackmaster
 
         internal static void ReconcileAfterSuccessfulSort(
             IEnumerable<ItemDrop.ItemData> originalItems,
-            IEnumerable<ItemDrop.ItemData> survivingItems)
+            IEnumerable<ItemDrop.ItemData> survivingItems,
+            IEnumerable<SortPlacement> placements)
         {
-            if (originalItems == null || survivingItems == null) return;
+            if (originalItems == null || survivingItems == null || placements == null) return;
+            var originals = originalItems.Where(item => item != null).ToArray();
             var survivors = survivingItems.Where(item => item != null).ToArray();
-            var survivorSet = new HashSet<ItemDrop.ItemData>(survivors, ReferenceComparer<ItemDrop.ItemData>.Instance);
-            foreach (var removed in originalItems
-                .Where(item => item != null && !survivorSet.Contains(item) && Warnings.ContainsKey(item))
-                .ToArray())
+            var warningsByItemKey = originals
+                .Where(Warnings.ContainsKey)
+                .GroupBy(InventorySnapshots.PersistentItemKey, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Sum(item => Warnings[item]), StringComparer.Ordinal);
+            foreach (var original in originals)
             {
-                var remainingWarning = Warnings[removed];
-                Warnings.Remove(removed);
-                var itemKey = InventorySnapshots.PersistentItemKey(removed);
-                foreach (var survivor in survivors
-                    .Where(item => string.Equals(InventorySnapshots.PersistentItemKey(item), itemKey, StringComparison.Ordinal))
+                Warnings.Remove(original);
+            }
+
+            var width = Player.m_localPlayer?.GetInventory()?.GetWidth() ?? 0;
+            var reservedBySlot = placements.ToDictionary(
+                placement => placement.Slot,
+                placement => placement.ReservationQuantity);
+            foreach (var group in survivors
+                .GroupBy(InventorySnapshots.PersistentItemKey, StringComparer.Ordinal))
+            {
+                int remainingWarning;
+                if (!warningsByItemKey.TryGetValue(group.Key, out remainingWarning) || remainingWarning <= 0)
+                {
+                    continue;
+                }
+                foreach (var survivor in group
                     .OrderBy(item => item.m_gridPos.y)
                     .ThenBy(item => item.m_gridPos.x))
                 {
-                    int existing;
-                    Warnings.TryGetValue(survivor, out existing);
-                    var assigned = Math.Min(remainingWarning, Math.Max(0, survivor.m_stack - existing));
+                    var slot = width > 0 ? itemSlot(survivor, width) : -1;
+                    int reservedQuantity;
+                    reservedBySlot.TryGetValue(slot, out reservedQuantity);
+                    var ordinaryCapacity = Math.Max(0, survivor.m_stack - reservedQuantity);
+                    var assigned = Math.Min(remainingWarning, ordinaryCapacity);
                     if (assigned <= 0) continue;
-                    Warnings[survivor] = existing + assigned;
+                    Warnings[survivor] = assigned;
                     remainingWarning -= assigned;
                     if (remainingWarning == 0) break;
                 }
             }
             RequestRefreshIfNeeded();
+        }
+
+        private static int itemSlot(ItemDrop.ItemData item, int width)
+        {
+            return checked(item.m_gridPos.y * width + item.m_gridPos.x);
         }
 
         internal static void Reconcile()
