@@ -8,7 +8,8 @@ Started the persistent Expedition Kit reservation foundation without changing St
 - Repeated grabs of the same stable prefab identity increment a count. Records are local, versioned, bounded, and isolated by exact player and world.
 - Reservation recipes are normalized and aggregated with exact material quality and checked multiplication across reserved piece counts.
 - Successfully building a reserved piece deliberately leaves its reservation unchanged. Reservations persist until explicitly removed.
-- Material movement when a future reservation icon is removed, and precedence between reservation-derived requirements and explicit protected-item targets, remain intentionally undecided and unimplemented.
+- Removing a future top-row reserved-piece icon releases only that reservation. It does not move carried materials or start Quick Stack; the player can run Quick Stack later as a separate explicit action.
+- Precedence between reservation-derived requirements and explicit protected-item targets remains intentionally undecided and unimplemented.
 - Reservation persistence failures cannot roll back or invalidate a successful Quick Grab; the in-session record is retained even if durable writes must stop.
 
 ## 1.2.0
