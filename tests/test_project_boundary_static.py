@@ -1438,6 +1438,32 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('RequireProperty(failures, typeof(InventoryElement), "Position")', gate)
         self.assertIn("Quick Stack", plugin)
 
+    def test_quick_stack_ignores_canonical_non_stackables_before_routing_or_warning(self):
+        snapshots = (PLUGIN_DIR / "InventorySnapshots.cs").read_text(encoding="utf-8")
+        planner = (ROOT / "src" / "Stackmaster.Core" / "StorageTransferPlanner.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "FailedDepositPolicy.cs").read_text(encoding="utf-8")
+        warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")
+        sorter = (ROOT / "src" / "Stackmaster.Core" / "InventorySortPlanner.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+
+        self.assertIn("item.m_shared.m_maxStackSize", snapshots)
+        self.assertIn('typeof(ItemDrop.ItemData), "m_shared", typeof(ItemDrop.ItemData.SharedData), false', gate)
+        self.assertIn('typeof(ItemDrop.ItemData.SharedData), "m_maxStackSize", typeof(int), false', gate)
+
+        deposit = planner[
+            planner.index("private static DepositResult PlanDeposits"):
+            planner.index("private static int MoveIntoContainers")
+        ]
+        guard = "if (original.MaxStack <= 1) continue;"
+        self.assertIn(guard, deposit)
+        self.assertLess(deposit.index(guard), deposit.index("matchingContainers"))
+        self.assertLess(deposit.index(guard), deposit.index("rememberedDestinations.TryGetValue"))
+        self.assertIn("if (item.MaxStack <= 1) return 0;", policy)
+        self.assertIn("FailedDepositPolicy.AttemptedQuantity", warnings)
+        self.assertNotIn("Cultivator", planner)
+        self.assertNotIn("Cultivator", policy)
+        self.assertNotIn("MaxStack <= 1", sorter)
+
     def test_quick_stack_summary_is_an_unclipped_multiline_top_left_list(self):
         formatter = (ROOT / "src" / "Stackmaster.Core" / "QuickStackSummaryFormatter.cs").read_text(encoding="utf-8")
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")

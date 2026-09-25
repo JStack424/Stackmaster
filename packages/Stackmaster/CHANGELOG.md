@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1 (local test candidate)
+
+Narrow Quick Stack patch on top of the complete 1.3.0 reservation candidate. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
+
+- Quick Stack now ignores every carried item whose canonical Valheim maximum stack size is 1 or less, including equippable tools such as cultivators.
+- Ignored non-stackable items remain in the player inventory and are never routed to a currently matching chest or a remembered zero-stock destination.
+- Ignored items are not deposit attempts, never receive failed-deposit warnings, and never increase the `left behind` result count.
+- The rule is based only on the runtime `ItemDrop.ItemData.SharedData.m_maxStackSize` value captured in each immutable item snapshot; it does not guess from item names or categories.
+- The startup compatibility gate now validates both the item shared-data field and its integer maximum-stack field before item-changing hooks are installed.
+- Stackable resources retain the complete 1.3.0 behavior: personal and reservation targets remain additive, protected replenishment and ordinary deposits are unchanged, and newly freed slots can still receive reservation materials.
+- Player and chest auto-sort remain independent and continue sorting movable non-stackable items normally.
+
 ## 1.3.0 (local test candidate)
 
 Integrated durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. The complete automated release gate and focused source audit pass; live Valheim validation is still pending, and version 1.2.0 remains the production release.

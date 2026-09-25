@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Test-candidate status:** 1.3.0 integrates durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. The automated release gate and focused source audit pass; this local test build still requires live Valheim validation, and 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.1 adds a narrow Quick Stack rule on top of the 1.3.0 reservation candidate: items whose canonical Valheim maximum stack size is 1 or less stay carried and are never attempted for deposit. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
 
 ## About this project
 
@@ -65,6 +65,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Applies the same scope to Quick Stack, building, and crafting; a chest's **Auto-sort chest** checkbox never changes storage eligibility.
 - **Quick Stack**
   - Runs only when you press `Left Alt + E` while targeting or interacting with a vanilla chest.
+  - Completely ignores carried items whose canonical Valheim maximum stack size is 1 or less. Items such as cultivators stay in the backpack, never route to matching or remembered chests, never receive failed-deposit warnings, and never count as left behind.
   - Refills protected stacks, including ammo and consumables, to optional target quantities, then deposits eligible carried items.
   - Also retains and replenishes the material quantities required by current Quick Grab Materials reservations. Reservation requirements are additive: a personal target of 50 wood plus reservations requiring 20 wood keeps 70 total.
   - Keeps explicit personal targets in their fixed protected slots and assigns separate reservation quantities only to movable stacks or legal empty backpack slots.

@@ -117,6 +117,9 @@ namespace Stackmaster.Compatibility.Tests
                 ("ItemDrop", "m_itemData")
             };
             foreach (var field in fields) contract.Field(field.Type, field.Name);
+            contract.NestedField("ItemDrop", "ItemData", "m_shared", "SharedData", FieldAttributes.Public);
+            contract.NestedNestedField(
+                "ItemDrop", "ItemData", "SharedData", "m_maxStackSize", "System.Int32", FieldAttributes.Public);
 
             contract.Field("InventoryGrid", "m_onSelected");
             contract.Field("InventoryGrid", "m_onRightClick");
@@ -685,6 +688,30 @@ namespace Stackmaster.Compatibility.Tests
                     throw new InvalidOperationException(outerName + "." + nestedName + "." + fieldName + " signature/attributes mismatch");
                 _passed++;
                 Console.WriteLine("PASS field " + outerName + "." + nestedName + "." + fieldName);
+            }
+
+            internal void NestedNestedField(
+                string outerName, string middleName, string nestedName,
+                string fieldName, string fieldType, FieldAttributes required)
+            {
+                var outer = _reader.GetTypeDefinition(FindTopLevelHandle(outerName));
+                var middle = outer.GetNestedTypes()
+                    .Select(handle => _reader.GetTypeDefinition(handle))
+                    .Single(type => _reader.GetString(type.Name) == middleName);
+                var nested = middle.GetNestedTypes()
+                    .Select(handle => _reader.GetTypeDefinition(handle))
+                    .Single(type => _reader.GetString(type.Name) == nestedName);
+                var field = nested.GetFields()
+                    .Select(handle => _reader.GetFieldDefinition(handle))
+                    .Single(value => _reader.GetString(value.Name) == fieldName &&
+                                     value.DecodeSignature(_provider, null) == fieldType);
+                if ((field.Attributes & required) != required)
+                    throw new InvalidOperationException(
+                        outerName + "." + middleName + "." + nestedName + "." + fieldName +
+                        " signature/attributes mismatch");
+                _passed++;
+                Console.WriteLine(
+                    "PASS field " + outerName + "." + middleName + "." + nestedName + "." + fieldName);
             }
 
             internal void GenericMethodCall(

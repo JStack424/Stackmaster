@@ -7,6 +7,7 @@ namespace Stackmaster.Core
         public static int AttemptedQuantity(ItemStackSnapshot item)
         {
             if (item == null) throw new ArgumentNullException(nameof(item));
+            if (item.MaxStack <= 1) return 0;
             if (item.IsQuickBar || item.IsEquipped) return 0;
             if (!item.IsProtected) return item.Quantity;
             return item.ReplenishmentTarget.HasValue

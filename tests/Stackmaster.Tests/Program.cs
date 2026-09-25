@@ -21,6 +21,7 @@ internal static class Program
             SortReservesEmptyProtectedSlots,
             SortDoesNotMergeIncompatibleStacksWithEqualNames,
             SortPlacesReservationServedStacksAfterOrdinaryStacks,
+            SortStillMovesNonStackableItems,
             ReservationTargetsAreAdditiveToExplicitTargets,
             ReservationTargetsUseSpaceFreedByDepositForExactAdditiveTotal,
             ReservationTargetsReplenishIntoMovableAndEmptySlots,
@@ -28,6 +29,10 @@ internal static class Program
             ReservationTargetsUseTailStacksBeforeDepositingExcess,
             ReservationTargetsReportSafeCapacityShortage,
             DepositPreservesQuickBarEquippedAndProtectedSlots,
+            DepositIgnoresNonStackableMatchingItems,
+            DepositIgnoresNonStackableRememberedDestinations,
+            DepositMovesOnlyStackableItemsFromMixedInventory,
+            NonStackableDepositExclusionPreservesStackableReplenishment,
             DepositFillsEveryPartialStackBeforeCreatingAStack,
             DepositLeavesUnmatchedOverflowInPlayerInventory,
             DepositRoutesTargetThenNearestWithStableTies,
@@ -343,6 +348,17 @@ internal static class Program
         Valid(PlanValidator.ValidateSortConservation(inventory, plan));
     }
 
+    private static void SortStillMovesNonStackableItems()
+    {
+        var inventory = Player(4,
+            Item("cultivator", "cultivator", "Cultivator", 1, 1, 3));
+
+        var plan = new InventorySortPlanner().Plan(inventory);
+        Equal(1, plan.Placements.Count, "non-stackable item remains an ordinary auto-sort candidate");
+        Placement(plan, 0, "cultivator", 1, false);
+        Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
     private static void ReservationTargetsAreAdditiveToExplicitTargets()
     {
         var player = Player(5,
@@ -490,6 +506,76 @@ internal static class Program
         Equal(3, plan.Steps[0].Source.Slot, "movable source slot");
         Equal(5, plan.DepositedUnits, "only movable units deposited");
         Equal(0, plan.LeftBehindUnits, "fixed units are retained, not left-behind deposit candidates");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { target }, plan));
+    }
+
+    private static void DepositIgnoresNonStackableMatchingItems()
+    {
+        var player = Player(2,
+            Item("carried-cultivator", "cultivator", "Cultivator", 1, 1, 0));
+        var target = Chest("target", 0, true, 2,
+            Item("stored-cultivator", "cultivator", "Cultivator", 1, 1, 0));
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { target });
+        Equal(0, plan.Steps.Count, "matching chest never receives a non-stackable deposit step");
+        Equal(0, plan.DepositedUnits, "non-stackable item is not deposited");
+        Equal(0, plan.LeftBehindUnits, "ignored non-stackable item is not an attempted remainder");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { target }, plan));
+    }
+
+    private static void DepositIgnoresNonStackableRememberedDestinations()
+    {
+        var player = Player(2,
+            Item("carried-cultivator", "cultivator", "Cultivator", 1, 1, 0));
+        var rememberedChest = Chest("remembered", 0, true, 2);
+        var remembered = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["carried-cultivator"] = "remembered"
+        };
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { rememberedChest },
+            rememberedDestinations: remembered);
+        Equal(0, plan.Steps.Count, "remembered chest never receives a non-stackable deposit step");
+        Equal(0, plan.DepositedUnits, "remembered routing ignores non-stackable items");
+        Equal(0, plan.LeftBehindUnits, "ignored remembered item is not an attempted remainder");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { rememberedChest }, plan, remembered));
+    }
+
+    private static void DepositMovesOnlyStackableItemsFromMixedInventory()
+    {
+        var player = Player(3,
+            Item("carried-cultivator", "cultivator", "Cultivator", 1, 1, 0),
+            Item("carried-wood", "wood", "Wood", 12, 50, 1));
+        var target = Chest("target", 0, true, 4,
+            Item("stored-cultivator", "cultivator", "Cultivator", 1, 1, 0),
+            Item("stored-wood", "wood", "Wood", 38, 50, 1));
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { target });
+        Equal(1, plan.Steps.Count, "mixed inventory produces only the stackable deposit step");
+        Step(plan.Steps.Single(), TransferKind.Deposit, "target", 1, 12);
+        Equal(12, plan.DepositedUnits, "ordinary stackable materials still deposit");
+        Equal(0, plan.LeftBehindUnits, "ignored non-stackable item does not inflate the summary");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { target }, plan));
+    }
+
+    private static void NonStackableDepositExclusionPreservesStackableReplenishment()
+    {
+        var player = Player(3,
+            Item("protected-wood", "wood", "Wood", 1, 50, 0,
+                protectedSlot: true, target: 10, resourceItemName: "Wood"),
+            Item("carried-cultivator", "cultivator", "Cultivator", 1, 1, 1));
+        var target = Chest("target", 0, true, 4,
+            Item("stored-wood", "wood", "Wood", 9, 50, 0, resourceItemName: "Wood"),
+            Item("stored-cultivator", "cultivator", "Cultivator", 1, 1, 1));
+
+        var plan = new StorageTransferPlanner().Plan(player, new[] { target });
+        Equal(1, plan.Steps.Count, "stackable protected target still replenishes normally");
+        ReplenishmentStep(plan.Steps.Single(), "target", 9);
+        Equal(9, plan.ReplenishedUnits, "stackable target receives its full missing quantity");
+        Equal(0, plan.DepositedUnits, "non-stackable companion remains carried");
+        Equal(0, plan.LeftBehindUnits, "non-stackable companion is not an attempted remainder");
         Valid(PlanValidator.ValidateTransferConservation(player, new[] { target }, plan));
     }
 
@@ -1007,6 +1093,7 @@ internal static class Program
     private static void FailedDepositEligibilityExcludesRetainedQuantities()
     {
         Equal(20, FailedDepositPolicy.AttemptedQuantity(Item("ordinary", "wood", "Wood", 20, 50, 1)), "ordinary movable quantity is attempted");
+        Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("cultivator", "cultivator", "Cultivator", 1, 1, 1)), "non-stackable quantity is ignored rather than attempted");
         Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("quick", "wood", "Wood", 20, 50, 0, quickBar: true)), "quick-bar quantity is retained");
         Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("equipped", "wood", "Wood", 20, 50, 1, equipped: true)), "equipped quantity is retained");
         Equal(0, FailedDepositPolicy.AttemptedQuantity(Item("protected", "wood", "Wood", 20, 50, 1, protectedSlot: true)), "protection-only quantity is retained");
@@ -1020,6 +1107,9 @@ internal static class Program
         Equal(20, FailedDepositPolicy.FailedRemainder(ordinary, 20), "full ordinary failure is reported");
         Equal(7, FailedDepositPolicy.FailedRemainder(ordinary, 7), "partial ordinary failure reports the surviving remainder");
         Equal(0, FailedDepositPolicy.FailedRemainder(ordinary, 0), "fully deposited item has no warning");
+
+        var nonStackable = Item("cultivator", "cultivator", "Cultivator", 1, 1, 1);
+        Equal(0, FailedDepositPolicy.FailedRemainder(nonStackable, 1), "surviving non-stackable item never receives a warning");
 
         var target = Item("target", "wood", "Wood", 30, 50, 1, protectedSlot: true, target: 20);
         Equal(10, FailedDepositPolicy.FailedRemainder(target, 30), "full excess failure excludes target-retained quantity");

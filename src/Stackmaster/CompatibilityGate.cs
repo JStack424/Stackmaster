@@ -35,7 +35,7 @@ namespace Stackmaster
             var requiredTypes = new[]
             {
                 typeof(InventoryGui), typeof(Container), typeof(InventoryGrid),
-                typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier),
+                typeof(ItemDrop.ItemData), typeof(ItemDrop.ItemData.SharedData), typeof(Vector2i), typeof(InventoryGrid.Modifier),
                 typeof(GameObject), typeof(Transform), typeof(Piece.Requirement), typeof(Player),
                 typeof(Hud), typeof(BuildUi), typeof(ZDOID), typeof(ZDO), typeof(Inventory),
                 typeof(ZPackage), typeof(ZNetView), typeof(Humanoid), typeof(Game), typeof(ZNet),
@@ -171,6 +171,8 @@ namespace Stackmaster
             RequireField(failures, typeof(TextInput), "m_inputField");
             RequireProperty(failures, typeof(InventoryElement), "Position");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_gridPos");
+            RuntimeContractValidator.RequireField(failures, typeof(ItemDrop.ItemData), "m_shared", typeof(ItemDrop.ItemData.SharedData), false);
+            RuntimeContractValidator.RequireField(failures, typeof(ItemDrop.ItemData.SharedData), "m_maxStackSize", typeof(int), false);
             RequireField(failures, typeof(ItemDrop.ItemData), "m_stack");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_quality");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_dropPrefab");

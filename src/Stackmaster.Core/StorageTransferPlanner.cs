@@ -341,6 +341,11 @@ namespace Stackmaster.Core
 
             foreach (var original in player.Items.OrderBy(item => item.Slot))
             {
+                // Quick Stack never routes items which Valheim declares non-stackable. Keep the
+                // canonical runtime max-stack value on the snapshot as the only classification;
+                // item names, equipment categories, and current chest contents are not proxies.
+                if (original.MaxStack <= 1) continue;
+
                 var source = playerStacks[original.Slot];
                 var excess = original.IsProtected && original.ReplenishmentTarget.HasValue;
                 var reservationQuantity = reservationAllocations.TryGetValue(original.Slot, out var allocation)
