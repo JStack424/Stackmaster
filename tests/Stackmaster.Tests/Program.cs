@@ -22,6 +22,7 @@ internal static class Program
             SortDoesNotMergeIncompatibleStacksWithEqualNames,
             SortPlacesReservationServedStacksAfterOrdinaryStacks,
             ReservationTargetsAreAdditiveToExplicitTargets,
+            ReservationTargetsUseSpaceFreedByDepositForExactAdditiveTotal,
             ReservationTargetsReplenishIntoMovableAndEmptySlots,
             ReservationTargetsNeverDepositServedQuantities,
             ReservationTargetsUseTailStacksBeforeDepositingExcess,
@@ -360,6 +361,38 @@ internal static class Program
         Equal(1, plan.ReservationAllocations[0].PlayerSlot, "fixed explicit target stack is not reclassified");
         Equal(20, plan.ReservationAllocations[0].Quantity, "full additive reservation quantity");
         Equal(ReplenishmentReason.ExpeditionReservation, plan.Steps.Single().ReplenishmentReason, "step is identified as expedition replenishment");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
+    }
+
+    private static void ReservationTargetsUseSpaceFreedByDepositForExactAdditiveTotal()
+    {
+        // Real player snapshots can be full when Quick Stack begins. The ordinary deposit must
+        // free a legal backpack slot before reservation replenishment is planned; otherwise the
+        // explicit 50 target is retained but the additive 20 reservation is incorrectly left in
+        // storage despite the completed plan having room for it.
+        var player = Player(2,
+            Item("personal-wood", "wood", "Wood", 50, 50, 0,
+                protectedSlot: true, target: 50, resourceItemName: "Wood"),
+            Item("carried-stone", "stone", "Stone", 1, 50, 1, resourceItemName: "Stone"));
+        var chest = Chest("target", 0, true, 2,
+            Item("stored-wood", "wood", "Wood", 20, 50, 0, resourceItemName: "Wood"),
+            Item("stored-stone", "stone", "Stone", 49, 50, 1, resourceItemName: "Stone"));
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: new[] { new ResourceRequirement("Wood", 20, -1) });
+
+        Equal(2, plan.Steps.Count, "full inventory plan deposits before reservation replenishment");
+        Step(plan.Steps[0], TransferKind.Deposit, "target", 1, 1);
+        ReplenishmentStep(plan.Steps[1], "target", 20);
+        Equal(1, plan.Steps[1].Destination.Slot, "reservation replenishment uses the freed player slot");
+        Equal(ReplenishmentReason.ExpeditionReservation, plan.Steps[1].ReplenishmentReason,
+            "freed-slot replenishment is attributed to the reservation");
+        Equal(20, plan.ReplenishedUnits, "exact additive 50 plus 20 target is reached");
+        Equal(20, plan.ReservationAllocations.Single().Quantity,
+            "all twenty reservation units are retained separately from the protected fifty");
+        Equal(0, plan.ReservationShortages.Count, "completed 50 plus 20 target has no shortage");
         Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
     }
 

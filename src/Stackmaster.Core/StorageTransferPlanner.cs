@@ -59,13 +59,10 @@ namespace Stackmaster.Core
             var replenishedUnits = PlanReplenishment(player, playerStacks, routedContainers, steps, shortages, explicitTargets);
             var reservationShortages = new List<ReservationReplenishmentShortage>();
             var reservationAllocations = new Dictionary<int, WorkingReservationAllocation>();
-            replenishedUnits += PlanReservationRetention(
+            var remainingReservationRequirements = PlanReservationRetention(
                 player,
                 playerStacks,
-                routedContainers,
                 reservationRequirements ?? Array.Empty<ResourceRequirement>(),
-                steps,
-                reservationShortages,
                 reservationAllocations);
             var depositResult = PlanDeposits(
                 player,
@@ -75,6 +72,14 @@ namespace Stackmaster.Core
                 rememberedDestinations ?? new Dictionary<string, string>(StringComparer.Ordinal),
                 reservationAllocations,
                 explicitTargets);
+            replenishedUnits += PlanReservationReplenishment(
+                player,
+                playerStacks,
+                routedContainers,
+                remainingReservationRequirements,
+                steps,
+                reservationShortages,
+                reservationAllocations);
 
             return new TransferPlan(
                 steps,
@@ -150,15 +155,13 @@ namespace Stackmaster.Core
             return replenished;
         }
 
-        private static int PlanReservationRetention(
+        private static IReadOnlyList<ResourceRequirement> PlanReservationRetention(
             InventorySnapshot player,
             IDictionary<int, WorkingStack> playerStacks,
-            IList<WorkingContainer> containers,
             IEnumerable<ResourceRequirement> requirements,
-            IList<TransferStep> steps,
-            IList<ReservationReplenishmentShortage> shortages,
             IDictionary<int, WorkingReservationAllocation> allocations)
         {
+            var remaining = new List<ResourceRequirement>();
             var normalized = requirements
                 .Where(requirement => requirement != null && requirement.Quantity > 0)
                 .GroupBy(requirement => new ResourceIdentity(requirement.ItemName, requirement.Quality))
@@ -169,7 +172,6 @@ namespace Stackmaster.Core
                 .OrderBy(requirement => requirement.ItemName, StringComparer.Ordinal)
                 .ThenBy(requirement => requirement.Quality)
                 .ToArray();
-            var replenished = 0;
 
             foreach (var requirement in normalized)
             {
@@ -193,6 +195,28 @@ namespace Stackmaster.Core
                     needed -= assigned;
                 }
 
+                if (needed > 0)
+                {
+                    remaining.Add(new ResourceRequirement(requirement.ItemName, needed, requirement.Quality));
+                }
+            }
+
+            return remaining;
+        }
+
+        private static int PlanReservationReplenishment(
+            InventorySnapshot player,
+            IDictionary<int, WorkingStack> playerStacks,
+            IList<WorkingContainer> containers,
+            IEnumerable<ResourceRequirement> remainingRequirements,
+            IList<TransferStep> steps,
+            IList<ReservationReplenishmentShortage> shortages,
+            IDictionary<int, WorkingReservationAllocation> allocations)
+        {
+            var replenished = 0;
+            foreach (var requirement in remainingRequirements)
+            {
+                var needed = requirement.Quantity;
                 foreach (var container in containers)
                 {
                     foreach (var source in container.Stacks
@@ -202,6 +226,9 @@ namespace Stackmaster.Core
                     {
                         while (needed > 0 && source.Value.Quantity > 0)
                         {
+                            // Deposits are planned before this pass. A fully deposited ordinary
+                            // player stack has therefore become a genuinely legal empty slot which
+                            // can receive the additive reservation quantity in the same plan.
                             var destinationSlot = FindReservationDestination(player, playerStacks, source.Value);
                             if (!destinationSlot.HasValue) break;
 
@@ -367,6 +394,13 @@ namespace Stackmaster.Core
                 }
 
                 leftBehind += remaining;
+                if (source.Quantity == 0)
+                {
+                    // Keep the working inventory aligned with the ordered transfer steps. A later
+                    // reservation replenishment may reuse this now-empty player slot, while fixed
+                    // and partially retained stacks remain represented exactly as before.
+                    playerStacks.Remove(original.Slot);
+                }
             }
 
             return new DepositResult(deposited, leftBehind);

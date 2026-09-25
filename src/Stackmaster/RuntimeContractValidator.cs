@@ -96,6 +96,24 @@ namespace Stackmaster
                          (matches.Length == 0 ? " missing" : " ambiguous (" + matches.Length + " matches)"));
         }
 
+        internal static void RequireField(
+            ICollection<string> failures,
+            Type type,
+            string name,
+            Type fieldType,
+            bool mustBeStatic)
+        {
+            var matches = type.GetFields(AllMembers)
+                .Where(field => field.Name == name)
+                .Where(field => field.FieldType == fieldType)
+                .Where(field => field.IsStatic == mustBeStatic)
+                .ToArray();
+            if (matches.Length == 1) return;
+
+            failures.Add(type.Name + "." + name + " : " + fieldType.Name +
+                         (matches.Length == 0 ? " missing" : " ambiguous (" + matches.Length + " exact matches)"));
+        }
+
         internal static void RequireProperty(ICollection<string> failures, Type type, string name)
         {
             var matches = type.GetProperties(AllMembers).Where(property => property.Name == name).ToArray();

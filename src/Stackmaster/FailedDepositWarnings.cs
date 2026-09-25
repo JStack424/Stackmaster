@@ -46,11 +46,21 @@ namespace Stackmaster
             if (inventory == null || snapshot == null) return result;
             var retainedBySlot = (reservationAllocations ?? Array.Empty<ReservationSlotAllocation>())
                 .GroupBy(item => item.PlayerSlot)
-                .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity));
+                .ToDictionary(group => group.Key, group => group.ToArray());
             foreach (var itemSnapshot in snapshot.Items)
             {
-                int reservationRetained;
-                retainedBySlot.TryGetValue(itemSnapshot.Slot, out reservationRetained);
+                ReservationSlotAllocation[] slotAllocations;
+                var reservationRetained = retainedBySlot.TryGetValue(itemSnapshot.Slot, out slotAllocations)
+                    ? slotAllocations
+                        .Where(allocation =>
+                            string.Equals(allocation.CompatibilityKey, itemSnapshot.CompatibilityKey, StringComparison.Ordinal) &&
+                            string.Equals(allocation.ItemName, itemSnapshot.ResourceItemName, StringComparison.Ordinal) &&
+                            allocation.Quality == itemSnapshot.ResourceQuality)
+                        .Sum(allocation => allocation.Quantity)
+                    : 0;
+                // A single validated plan can deposit an ordinary stack and later replenish a
+                // different reservation item into the newly empty slot. Slot equality alone must
+                // never make that original deposit candidate look reservation-retained.
                 var attempted = Math.Max(
                     0,
                     FailedDepositPolicy.AttemptedQuantity(itemSnapshot) - reservationRetained);

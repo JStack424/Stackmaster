@@ -112,6 +112,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("Container", "m_nview"), ("Container", "m_wagon"),
                 ("Inventory", "m_onChanged"), ("Inventory", "m_inventory"),
                 ("Player", "m_customData"), ("Player", "m_noPlacementCost"),
+                ("Piece", "m_name"), ("Piece", "m_icon"),
                 ("KeyHints", "m_buildMenuHintsKB"), ("KeyHints", "m_buildMenuHintsGP"),
                 ("ItemDrop", "m_itemData")
             };
@@ -341,6 +342,21 @@ namespace Stackmaster.Compatibility.Tests
             Equal(1, failures.Count, "missing required field fails closed");
 
             failures.Clear();
+            global::Stackmaster.RuntimeContractValidator.RequireField(
+                failures, typeof(ValidRuntime), "Field", typeof(int), false);
+            Equal(0, failures.Count, "exact field type and staticness pass");
+
+            failures.Clear();
+            global::Stackmaster.RuntimeContractValidator.RequireField(
+                failures, typeof(ValidRuntime), "Field", typeof(string), false);
+            Equal(1, failures.Count, "wrong field type fails closed");
+
+            failures.Clear();
+            global::Stackmaster.RuntimeContractValidator.RequireField(
+                failures, typeof(ValidRuntime), "StaticField", typeof(int), false);
+            Equal(1, failures.Count, "wrong field staticness fails closed");
+
+            failures.Clear();
             global::Stackmaster.RuntimeContractValidator.RequireProperty(failures, typeof(ValidRuntime), "MissingProperty");
             Equal(1, failures.Count, "missing required property fails closed");
 
@@ -447,6 +463,7 @@ namespace Stackmaster.Compatibility.Tests
         private sealed class ValidRuntime
         {
             public int Field;
+            public static int StaticField = 1;
             public string Property { get; } = string.Empty;
             public void Target(int value) => Field = value;
             public static void StaticHook() { }

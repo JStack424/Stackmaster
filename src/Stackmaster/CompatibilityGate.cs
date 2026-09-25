@@ -177,6 +177,7 @@ namespace Stackmaster
             RequireField(failures, typeof(ItemDrop.ItemData), "m_worldLevel");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_equipped");
             RequireField(failures, typeof(Piece), "m_resources");
+            RuntimeContractValidator.RequireField(failures, typeof(Piece), "m_name", typeof(string), false);
             RequireField(failures, typeof(Piece.Requirement), "m_resItem");
             RequireField(failures, typeof(Piece.Requirement), "m_amount");
             RequireField(failures, typeof(Piece), "m_craftingStation");
@@ -186,6 +187,18 @@ namespace Stackmaster
             return failures.Count == 0
                 ? new CompatibilityResult(true, "verified runtime contract", diagnostics)
                 : new CompatibilityResult(false, string.Join("; ", failures), diagnostics);
+        }
+
+        internal static CompatibilityResult EvaluateExpeditionReservationUi()
+        {
+            // Piece.m_icon is used only by the optional reservation strip. A changed or missing
+            // icon field disables that surface without disabling persistence, Quick Grab, Quick
+            // Stack, sorting, protection, or any other gameplay behavior.
+            var failures = new List<string>();
+            RuntimeContractValidator.RequireField(failures, typeof(Piece), "m_icon", typeof(Sprite), false);
+            return failures.Count == 0
+                ? new CompatibilityResult(true, "verified optional reservation UI contract")
+                : new CompatibilityResult(false, string.Join("; ", failures));
         }
 
         private static string DescribeRuntimeIdentity()

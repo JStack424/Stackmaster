@@ -10,11 +10,13 @@ Integrated durable **Quick Grab Materials reservations** with Quick Stack, playe
 - Successfully building a reserved piece deliberately leaves its reservation unchanged. Reservations persist until explicitly released.
 - A horizontal row above the player inventory shows reserved-piece icons and counts. One ordinary icon click releases exactly one count; it moves no items and never starts Quick Stack.
 - Quick Stack retains and replenishes reservation requirements in addition to explicit personal targets. A personal target of 50 wood plus reservations requiring 20 wood therefore keeps 70 total.
+- If the backpack starts full, Quick Stack can first deposit an ordinary eligible stack and then reuse that newly emptied slot for the additive reservation replenishment in the same validated plan.
 - Fixed quick-bar, equipped, and explicitly protected quantities remain personal. Reservation stock is assigned only to movable stacks or legal empty backpack slots.
 - Reservation-served quantities are excluded from deposits and failed-deposit warnings. Capacity or stock shortages leave the genuinely missing reservation quantity reported without inventing an allocation.
 - Player sorting keeps fixed slots untouched and places reservation-served quantities in the final available sortable positions after every ordinary-only movable stack.
 - Reservation-served material quantities use a distinct orange border and `Rquantity` label. Optional reservation-row or orange-highlight failures cannot mutate items or disable the existing blue protection overlays.
 - Missing piece prefabs render a harmless fallback icon, and malformed or unavailable reservation state fails closed before reservation-aware item movement or player sorting.
+- The startup compatibility gate now validates the piece-name field required for persistent identity. The piece-icon field is checked separately so a changed optional icon contract disables only the reservation strip, never gameplay.
 - Reservation persistence remains a post-commit observer: a write failure cannot roll back or invalidate an already successful Quick Grab. Its in-session reservation stays active, while further reservation writes fail closed for that session.
 
 ## 1.2.0

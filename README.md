@@ -68,6 +68,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Refills protected stacks, including ammo and consumables, to optional target quantities, then deposits eligible carried items.
   - Also retains and replenishes the material quantities required by current Quick Grab Materials reservations. Reservation requirements are additive: a personal target of 50 wood plus reservations requiring 20 wood keeps 70 total.
   - Keeps explicit personal targets in their fixed protected slots and assigns separate reservation quantities only to movable stacks or legal empty backpack slots.
+  - If the backpack begins full, an ordinary eligible deposit can free a slot which the same validated plan then uses for reservation replenishment.
   - Fills current matching stacks first, prioritizing the targeted chest and then searching nearest to farthest.
   - Remembers the last directly opened or targeted chest for each exact item type. If no current matching chest accepts any quantity, Quick Stack can return that item to its remembered chest even after the chest reaches zero stock.
   - A remembered destination is only a local hint: it must still be loaded, inside the active scope, accessible, idle, compatible, and exactly the same network chest at execution time. Missing, destroyed, unloaded, blocked, busy, full, or otherwise ineligible destinations leave the item safely in the player inventory.

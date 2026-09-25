@@ -1344,6 +1344,13 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("HorizontalLayoutGroup", ui)
         self.assertIn("ZNetScene.instance.GetPrefab", ui)
         self.assertIn("Disable(\"Reservation icons could not be refreshed safely\"", ui)
+        self.assertIn("CompatibilityGate.EvaluateExpeditionReservationUi()", ui)
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        critical_gate = gate[:gate.index("internal static CompatibilityResult EvaluateExpeditionReservationUi")]
+        optional_gate = gate[gate.index("internal static CompatibilityResult EvaluateExpeditionReservationUi"):]
+        self.assertIn('typeof(Piece), "m_name", typeof(string), false', critical_gate)
+        self.assertNotIn('"m_icon"', critical_gate)
+        self.assertIn('typeof(Piece), "m_icon", typeof(Sprite), false', optional_gate)
         self.assertIn("ExpeditionBorderColor", inventory)
         self.assertIn('quantityLabel.text = "R" + reservedQuantity', inventory)
         self.assertIn("ExpeditionMaterialVisuals.TryAllocate", inventory)
@@ -1373,6 +1380,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("resourceQuality: item.m_quality", snapshots)
         self.assertIn("candidate.ReservationRetainedQuantity", warnings)
         self.assertIn("reservationRetainedQuantity", warnings)
+        self.assertIn("allocation.CompatibilityKey, itemSnapshot.CompatibilityKey", warnings)
+        self.assertIn("allocation.ItemName, itemSnapshot.ResourceItemName", warnings)
+        self.assertIn("allocation.Quality == itemSnapshot.ResourceQuality", warnings)
         self.assertIn("reservationRequirements", planner)
         self.assertIn("PlanReservationRetention", planner)
         self.assertIn("Math.Max(0, source.Quantity - reservationQuantity)", planner)

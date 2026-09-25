@@ -34,6 +34,13 @@ namespace Stackmaster
             if (_disabled || _root != null || gui == null || gui.m_player == null) return;
             try
             {
+                var compatibility = CompatibilityGate.EvaluateExpeditionReservationUi();
+                if (!compatibility.IsCompatible)
+                {
+                    Disable("Reservation icons are unavailable because the optional UI contract changed: " + compatibility.Reason);
+                    return;
+                }
+
                 _gui = gui;
                 _root = new GameObject(RootName, typeof(RectTransform), typeof(Image));
                 _root.transform.SetParent(gui.m_player, false);
@@ -337,13 +344,18 @@ namespace Stackmaster
             }
         }
 
-        private static void Disable(string message, Exception exception)
+        private static void Disable(string message)
         {
             Destroy();
             _disabled = true;
             if (_failureLogged || RuntimeContext.Plugin == null) return;
             _failureLogged = true;
-            RuntimeContext.Plugin.Log.LogWarning(message + ": " + exception);
+            RuntimeContext.Plugin.Log.LogWarning(message);
+        }
+
+        private static void Disable(string message, Exception exception)
+        {
+            Disable(message + ": " + exception);
         }
     }
 }
