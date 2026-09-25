@@ -4,6 +4,8 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
+> **Development status:** the 1.3.0 source branch currently contains the persistent Expedition Kit reservation foundation only. The final inventory-row UI and material-lock integration are not built or packaged yet; 1.2.0 remains the production release.
+
 ## About this project
 
 I'm a Valheim-loving software engineer with an interest in mild game design. I built Stackmaster with the assistance of AI as a personal quality-of-life project: smooth out the frustrating bits, preserve the developers' intended experience, and never make progression feel cheesed. I didn't set out to build a widely used mod, but it's been lovely to see people enjoying it. If you've been using Stackmaster and enjoy it, please share any issues or requests through [GitHub Issues](https://github.com/JStack424/Stackmaster/issues). I keep playing, testing, and looking for further improvements, so I'll take thoughtful ideas into account.

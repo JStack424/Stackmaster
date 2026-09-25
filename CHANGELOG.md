@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 (development foundation; not packaged)
+
+Started the persistent Expedition Kit reservation foundation without changing Stackmaster 1.2.0 gameplay or adding the final inventory UI yet.
+
+- Every successfully committed **Quick Grab Materials** click records one reserved build piece after the atomic transfer succeeds; rejected, failed, or rolled-back clicks record nothing.
+- Repeated grabs of the same stable prefab identity increment a count. Records are local, versioned, bounded, and isolated by exact player and world.
+- Reservation recipes are normalized and aggregated with exact material quality and checked multiplication across reserved piece counts.
+- Successfully building a reserved piece deliberately leaves its reservation unchanged. Reservations persist until explicitly removed.
+- Material movement when a future reservation icon is removed, and precedence between reservation-derived requirements and explicit protected-item targets, remain intentionally undecided and unimplemented.
+- Reservation persistence failures cannot roll back or invalidate a successful Quick Grab; the in-session record is retained even if durable writes must stop.
+
 ## 1.2.0
 
 A clearer, safer Quick Stack update, live-tested before release.
