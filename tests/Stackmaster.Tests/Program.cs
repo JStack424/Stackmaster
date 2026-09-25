@@ -36,6 +36,7 @@ internal static class Program
             ExpeditionReservationsAggregateRecipeRequirements,
             ExpeditionReservationsRejectRecipeDriftAndMalformedState,
             ExpeditionReservationsRejectBoundsAndOverflow,
+            ExpeditionReservationsReleaseOnlyReservationState,
             ExpeditionReservationsPersistAfterSuccessfulBuild,
             RememberedDestinationFallbackRoutesOnlyToExactChest,
             RememberedDestinationsStayExactPerPlayerStack,
@@ -649,6 +650,42 @@ internal static class Program
                 "$piece_fixture",
                 new[] { new ResourceRequirement("Wood", 1) }),
             "oversized piece identities are rejected");
+    }
+
+    private static void ExpeditionReservationsReleaseOnlyReservationState()
+    {
+        True(!ExpeditionReservationRemovalPolicy.MovesCarriedMaterialsAfterRelease,
+            "removing a reserved-piece icon never moves carried materials");
+        True(!ExpeditionReservationRemovalPolicy.StartsQuickStackAfterRelease,
+            "removing a reserved-piece icon never starts Quick Stack");
+        Equal(2, ExpeditionReservationRemovalPolicy.RemainingCountAfterExplicitRelease(3, 1),
+            "an explicit release changes only the requested reservation count");
+
+        var state = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord(
+                "prefab:portal_wood",
+                "$piece_portal_wood",
+                3,
+                new[] { new ResourceRequirement("FineWood", 20), new ResourceRequirement("SurtlingCore", 2) })
+        });
+        True(state.TryReleaseReservation("prefab:portal_wood", 1),
+            "explicit top-row removal releases the selected reservation count");
+        Equal(2, state.Records.Single().Count, "other identical reservations remain counted");
+        Equal(40, state.AggregateRequirements().Single(requirement => requirement.ItemName == "FineWood").Quantity,
+            "aggregate lock requirement shrinks with the released reservation only");
+        Equal(4, state.AggregateRequirements().Single(requirement => requirement.ItemName == "SurtlingCore").Quantity,
+            "all remaining material requirements stay represented");
+
+        True(state.TryReleaseReservation("prefab:portal_wood", 2),
+            "explicit removal can release the rest of the reservation record");
+        Equal(0, state.Records.Count, "fully released piece disappears from reservation state");
+        Equal(0, state.AggregateRequirements().Count, "fully released piece contributes no locked requirement");
+        True(!state.TryReleaseReservation("prefab:portal_wood", 1),
+            "releasing a missing reservation is inert");
+        Throws<ArgumentOutOfRangeException>(
+            () => ExpeditionReservationRemovalPolicy.RemainingCountAfterExplicitRelease(1, 2),
+            "release policy rejects more than the existing reservation count");
     }
 
     private static void ExpeditionReservationsPersistAfterSuccessfulBuild()

@@ -94,8 +94,8 @@ namespace Stackmaster.Core
     /// <summary>
     /// Versioned local reservation state. The integration layer scopes each serialized value by
     /// player id and world id; this pure model owns exact piece counts and recipe aggregation only.
-    /// It deliberately does not decide material-vs-explicit-target precedence or what removing a
-    /// future UI icon should do to physical items.
+    /// Explicit icon removal releases only reservation state; this model deliberately does not
+    /// decide material-vs-explicit-target precedence or mutate physical items.
     /// </summary>
     public sealed class ExpeditionReservationState
     {
@@ -182,7 +182,11 @@ namespace Stackmaster.Core
             return ExpeditionReservationAddResult.Added;
         }
 
-        public bool TryRemove(string pieceKey, int quantity)
+        /// <summary>
+        /// Releases only the persistent reservation count. This pure state transition cannot move
+        /// carried items or invoke Quick Stack; those remain separate, explicit player actions.
+        /// </summary>
+        public bool TryReleaseReservation(string pieceKey, int quantity)
         {
             if (string.IsNullOrWhiteSpace(pieceKey)) throw new ArgumentException("A stable piece key is required.", nameof(pieceKey));
             if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
@@ -192,11 +196,15 @@ namespace Stackmaster.Core
             {
                 return false;
             }
-            if (quantity == existing.Count)
+
+            var remaining = ExpeditionReservationRemovalPolicy.RemainingCountAfterExplicitRelease(
+                existing.Count,
+                quantity);
+            if (remaining == 0)
             {
                 return _records.Remove(pieceKey);
             }
-            _records[pieceKey] = existing.WithCountAndDisplayName(existing.Count - quantity, existing.DisplayName);
+            _records[pieceKey] = existing.WithCountAndDisplayName(remaining, existing.DisplayName);
             return true;
         }
 
@@ -406,6 +414,25 @@ namespace Stackmaster.Core
 
             public override bool Equals(object? obj) => Equals(obj as RequirementIdentity);
             public override int GetHashCode() => unchecked((StringComparer.Ordinal.GetHashCode(ItemName) * 397) ^ Quality);
+        }
+    }
+
+    /// <summary>
+    /// Settled policy for a top-row reservation-icon removal: release reservation state only.
+    /// Carried items stay exactly where they are, and any later deposit must come from a separate,
+    /// explicit Quick Stack action.
+    /// </summary>
+    public static class ExpeditionReservationRemovalPolicy
+    {
+        public const bool MovesCarriedMaterialsAfterRelease = false;
+        public const bool StartsQuickStackAfterRelease = false;
+
+        public static int RemainingCountAfterExplicitRelease(int currentCount, int releasedCount)
+        {
+            if (currentCount <= 0) throw new ArgumentOutOfRangeException(nameof(currentCount));
+            if (releasedCount <= 0 || releasedCount > currentCount)
+                throw new ArgumentOutOfRangeException(nameof(releasedCount));
+            return currentCount - releasedCount;
         }
     }
 
