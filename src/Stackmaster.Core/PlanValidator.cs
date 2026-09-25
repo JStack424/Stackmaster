@@ -17,6 +17,8 @@ namespace Stackmaster.Core
             var duplicateSlots = plan.Placements.GroupBy(item => item.Slot).Where(group => group.Count() > 1).Select(group => group.Key);
             foreach (var slot in duplicateSlots) errors.Add("The sort plan places more than one stack in slot " + slot + ".");
             if (plan.Placements.Any(item => item.Slot >= source.Capacity)) errors.Add("The sort plan uses a slot outside the inventory capacity.");
+            if (plan.Placements.Any(item => item.ReservationQuantity < 0 || item.ReservationQuantity > item.Quantity))
+                errors.Add("A sort placement has invalid reservation attribution.");
 
             foreach (var fixedItem in source.Items.Where(item => item.IsFixed))
             {
@@ -62,6 +64,25 @@ namespace Stackmaster.Core
                     step,
                     rememberedDestinations ?? new Dictionary<string, string>(StringComparer.Ordinal),
                     errors);
+            }
+            foreach (var duplicate in plan.ReservationAllocations
+                .GroupBy(item => item.PlayerSlot)
+                .Where(group => group.Count() > 1))
+            {
+                errors.Add("Reservation allocation slot " + duplicate.Key + " is duplicated.");
+            }
+            foreach (var allocation in plan.ReservationAllocations)
+            {
+                Cell? finalStack;
+                if (!state.TryGetValue(Key(InventoryLocationKind.Player, player.InventoryId, allocation.PlayerSlot), out finalStack))
+                {
+                    errors.Add("A reservation allocation targets an empty final player slot.");
+                }
+                else if (!string.Equals(finalStack.CompatibilityKey, allocation.CompatibilityKey, StringComparison.Ordinal) ||
+                         finalStack.Quantity < allocation.Quantity)
+                {
+                    errors.Add("A reservation allocation does not match the final player stack.");
+                }
             }
             var after = Count(state.Values);
             CompareCounts(before, after, errors);

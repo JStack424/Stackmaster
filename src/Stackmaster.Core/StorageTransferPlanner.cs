@@ -14,7 +14,8 @@ namespace Stackmaster.Core
             InventorySnapshot player,
             IEnumerable<ContainerSnapshot> containers,
             IPlanningBudget? budget = null,
-            IReadOnlyDictionary<string, string>? rememberedDestinations = null)
+            IReadOnlyDictionary<string, string>? rememberedDestinations = null,
+            IEnumerable<ResourceRequirement>? reservationRequirements = null)
         {
             if (player == null) throw new ArgumentNullException(nameof(player));
             if (containers == null) throw new ArgumentNullException(nameof(containers));
@@ -54,17 +55,34 @@ namespace Stackmaster.Core
             var playerStacks = player.Items.ToDictionary(item => item.Slot, item => new WorkingStack(item));
             var steps = new List<TransferStep>();
             var shortages = new List<ReplenishmentShortage>();
-            var replenishedUnits = PlanReplenishment(player, playerStacks, routedContainers, steps, shortages);
+            var explicitTargets = new Dictionary<int, int>();
+            var replenishedUnits = PlanReplenishment(player, playerStacks, routedContainers, steps, shortages, explicitTargets);
+            var reservationShortages = new List<ReservationReplenishmentShortage>();
+            var reservationAllocations = new Dictionary<int, WorkingReservationAllocation>();
+            replenishedUnits += PlanReservationRetention(
+                player,
+                playerStacks,
+                routedContainers,
+                reservationRequirements ?? Array.Empty<ResourceRequirement>(),
+                steps,
+                reservationShortages,
+                reservationAllocations);
             var depositResult = PlanDeposits(
                 player,
                 playerStacks,
                 routedContainers,
                 steps,
-                rememberedDestinations ?? new Dictionary<string, string>(StringComparer.Ordinal));
+                rememberedDestinations ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                reservationAllocations,
+                explicitTargets);
 
             return new TransferPlan(
                 steps,
                 shortages,
+                reservationShortages,
+                reservationAllocations
+                    .OrderBy(pair => pair.Key)
+                    .Select(pair => pair.Value.ToSnapshot(pair.Key)),
                 skipped,
                 inspectedIds,
                 depositResult.Deposited,
@@ -78,7 +96,8 @@ namespace Stackmaster.Core
             IDictionary<int, WorkingStack> playerStacks,
             IList<WorkingContainer> containers,
             IList<TransferStep> steps,
-            IList<ReplenishmentShortage> shortages)
+            IList<ReplenishmentShortage> shortages,
+            IDictionary<int, int> explicitTargets)
         {
             var replenished = 0;
             foreach (var protectedItem in player.Items
@@ -87,6 +106,7 @@ namespace Stackmaster.Core
             {
                 var playerStack = playerStacks[protectedItem.Slot];
                 var target = protectedItem.ReplenishmentTarget!.Value;
+                explicitTargets[protectedItem.Slot] = target;
                 var needed = Math.Max(0, target - playerStack.Quantity);
                 if (needed == 0) continue;
 
@@ -111,7 +131,8 @@ namespace Stackmaster.Core
                             protectedItem.VisibleName,
                             moved,
                             protectedItem.MaxStack,
-                            source.Value.PersistentItemKey));
+                            source.Value.PersistentItemKey,
+                            ReplenishmentReason.ExplicitProtectedTarget));
                         if (source.Value.Quantity == 0) container.Stacks.Remove(source.Key);
                     }
                     if (needed == 0) break;
@@ -129,12 +150,164 @@ namespace Stackmaster.Core
             return replenished;
         }
 
+        private static int PlanReservationRetention(
+            InventorySnapshot player,
+            IDictionary<int, WorkingStack> playerStacks,
+            IList<WorkingContainer> containers,
+            IEnumerable<ResourceRequirement> requirements,
+            IList<TransferStep> steps,
+            IList<ReservationReplenishmentShortage> shortages,
+            IDictionary<int, WorkingReservationAllocation> allocations)
+        {
+            var normalized = requirements
+                .Where(requirement => requirement != null && requirement.Quantity > 0)
+                .GroupBy(requirement => new ResourceIdentity(requirement.ItemName, requirement.Quality))
+                .Select(group => new ResourceRequirement(
+                    group.Key.ItemName,
+                    checked(group.Sum(requirement => requirement.Quantity)),
+                    group.Key.Quality))
+                .OrderBy(requirement => requirement.ItemName, StringComparer.Ordinal)
+                .ThenBy(requirement => requirement.Quality)
+                .ToArray();
+            var replenished = 0;
+
+            foreach (var requirement in normalized)
+            {
+                var needed = requirement.Quantity;
+
+                // Reservation quantities are additive to explicit protected-slot targets. Fixed
+                // quickbar/equipped/protected units are not silently reclassified as expedition
+                // stock; only otherwise movable carried units serve the reservation first.
+                foreach (var original in player.Items.OrderBy(item => item.Slot))
+                {
+                    if (needed == 0) break;
+                    var stack = playerStacks[original.Slot];
+                    if (original.IsFixed || !Matches(stack, requirement)) continue;
+                    var alreadyReserved = allocations.TryGetValue(original.Slot, out var existingAllocation)
+                        ? existingAllocation.Quantity
+                        : 0;
+                    var available = Math.Max(0, stack.Quantity - alreadyReserved);
+                    var assigned = Math.Min(available, needed);
+                    if (assigned == 0) continue;
+                    AddAllocation(allocations, original.Slot, stack, assigned);
+                    needed -= assigned;
+                }
+
+                foreach (var container in containers)
+                {
+                    foreach (var source in container.Stacks
+                        .Where(pair => Matches(pair.Value, requirement) && pair.Value.Quantity > 0)
+                        .OrderBy(pair => pair.Key)
+                        .ToList())
+                    {
+                        while (needed > 0 && source.Value.Quantity > 0)
+                        {
+                            var destinationSlot = FindReservationDestination(player, playerStacks, source.Value);
+                            if (!destinationSlot.HasValue) break;
+
+                            var destinationExists = playerStacks.TryGetValue(destinationSlot.Value, out var destination);
+                            var capacity = destinationExists ? destination!.MaxStack - destination.Quantity : source.Value.MaxStack;
+                            var moved = Math.Min(needed, Math.Min(source.Value.Quantity, capacity));
+                            if (moved <= 0) break;
+
+                            if (destinationExists)
+                            {
+                                destination!.Quantity += moved;
+                            }
+                            else
+                            {
+                                destination = new WorkingStack(
+                                    source.Value.CompatibilityKey,
+                                    source.Value.VisibleName,
+                                    moved,
+                                    source.Value.MaxStack,
+                                    source.Value.PersistentItemKey,
+                                    source.Value.ResourceItemName,
+                                    source.Value.ResourceQuality);
+                                playerStacks.Add(destinationSlot.Value, destination);
+                            }
+                            source.Value.Quantity -= moved;
+                            AddAllocation(allocations, destinationSlot.Value, destination!, moved);
+                            steps.Add(new TransferStep(
+                                TransferKind.Replenishment,
+                                new InventoryLocation(InventoryLocationKind.Container, container.Id, source.Key),
+                                new InventoryLocation(InventoryLocationKind.Player, player.InventoryId, destinationSlot.Value),
+                                source.Value.CompatibilityKey,
+                                source.Value.VisibleName,
+                                moved,
+                                source.Value.MaxStack,
+                                source.Value.PersistentItemKey,
+                                ReplenishmentReason.ExpeditionReservation));
+                            needed -= moved;
+                            replenished += moved;
+                        }
+                        if (source.Value.Quantity == 0) container.Stacks.Remove(source.Key);
+                        if (needed == 0) break;
+                    }
+                    if (needed == 0) break;
+                }
+
+                if (needed > 0)
+                {
+                    shortages.Add(new ReservationReplenishmentShortage(
+                        requirement.ItemName,
+                        requirement.Quality,
+                        needed));
+                }
+            }
+
+            return replenished;
+        }
+
+        private static int? FindReservationDestination(
+            InventorySnapshot player,
+            IDictionary<int, WorkingStack> playerStacks,
+            WorkingStack source)
+        {
+            var partial = playerStacks
+                .Where(pair => !pair.Value.IsFixed &&
+                               pair.Value.CompatibilityKey == source.CompatibilityKey &&
+                               pair.Value.Quantity < pair.Value.MaxStack)
+                .OrderBy(pair => pair.Key)
+                .Select(pair => (int?)pair.Key)
+                .FirstOrDefault();
+            if (partial.HasValue) return partial;
+
+            var unavailable = new HashSet<int>(player.ReservedSlots);
+            unavailable.UnionWith(playerStacks.Keys);
+            for (var slot = 0; slot < player.Capacity; slot++)
+            {
+                if (!unavailable.Contains(slot)) return slot;
+            }
+            return null;
+        }
+
+        private static bool Matches(WorkingStack stack, ResourceRequirement requirement)
+            => string.Equals(stack.ResourceItemName, requirement.ItemName, StringComparison.Ordinal) &&
+               (requirement.Quality < 0 || stack.ResourceQuality == requirement.Quality);
+
+        private static void AddAllocation(
+            IDictionary<int, WorkingReservationAllocation> allocations,
+            int slot,
+            WorkingStack stack,
+            int quantity)
+        {
+            if (allocations.TryGetValue(slot, out var allocation))
+            {
+                allocation.Quantity = checked(allocation.Quantity + quantity);
+                return;
+            }
+            allocations.Add(slot, new WorkingReservationAllocation(stack, quantity));
+        }
+
         private static DepositResult PlanDeposits(
             InventorySnapshot player,
             IDictionary<int, WorkingStack> playerStacks,
             IList<WorkingContainer> containers,
             IList<TransferStep> steps,
-            IReadOnlyDictionary<string, string> rememberedDestinations)
+            IReadOnlyDictionary<string, string> rememberedDestinations,
+            IReadOnlyDictionary<int, WorkingReservationAllocation> reservationAllocations,
+            IReadOnlyDictionary<int, int> explicitTargets)
         {
             var deposited = 0;
             var leftBehind = 0;
@@ -143,9 +316,15 @@ namespace Stackmaster.Core
             {
                 var source = playerStacks[original.Slot];
                 var excess = original.IsProtected && original.ReplenishmentTarget.HasValue;
+                var reservationQuantity = reservationAllocations.TryGetValue(original.Slot, out var allocation)
+                    ? allocation.Quantity
+                    : 0;
+                var explicitQuantity = explicitTargets.TryGetValue(original.Slot, out var target)
+                    ? Math.Min(target, source.Quantity)
+                    : 0;
                 var available = excess
-                    ? Math.Max(0, source.Quantity - original.ReplenishmentTarget!.Value)
-                    : original.IsFixed ? 0 : source.Quantity;
+                    ? Math.Max(0, source.Quantity - explicitQuantity - reservationQuantity)
+                    : original.IsFixed ? 0 : Math.Max(0, source.Quantity - reservationQuantity);
                 if (available == 0) continue;
 
                 var matchingContainers = containers
@@ -237,7 +416,9 @@ namespace Stackmaster.Core
                             source.VisibleName,
                             moved,
                             source.MaxStack,
-                            source.PersistentItemKey));
+                            source.PersistentItemKey,
+                            source.ResourceItemName,
+                            source.ResourceQuality));
                         remaining -= moved;
                     }
                     if (remaining == 0) break;
@@ -315,24 +496,84 @@ namespace Stackmaster.Core
         private sealed class WorkingStack
         {
             public WorkingStack(ItemStackSnapshot snapshot)
-                : this(snapshot.CompatibilityKey, snapshot.VisibleName, snapshot.Quantity, snapshot.MaxStack, snapshot.PersistentItemKey)
+                : this(
+                    snapshot.CompatibilityKey,
+                    snapshot.VisibleName,
+                    snapshot.Quantity,
+                    snapshot.MaxStack,
+                    snapshot.PersistentItemKey,
+                    snapshot.ResourceItemName,
+                    snapshot.ResourceQuality,
+                    snapshot.IsFixed)
             {
             }
 
-            public WorkingStack(string compatibilityKey, string visibleName, int quantity, int maxStack, string persistentItemKey)
+            public WorkingStack(
+                string compatibilityKey,
+                string visibleName,
+                int quantity,
+                int maxStack,
+                string persistentItemKey,
+                string resourceItemName,
+                int resourceQuality,
+                bool isFixed = false)
             {
                 CompatibilityKey = compatibilityKey;
                 VisibleName = visibleName;
                 Quantity = quantity;
                 MaxStack = maxStack;
                 PersistentItemKey = persistentItemKey;
+                ResourceItemName = resourceItemName;
+                ResourceQuality = resourceQuality;
+                IsFixed = isFixed;
             }
 
             public string CompatibilityKey { get; }
             public string VisibleName { get; }
             public string PersistentItemKey { get; }
+            public string ResourceItemName { get; }
+            public int ResourceQuality { get; }
+            public bool IsFixed { get; }
             public int Quantity { get; set; }
             public int MaxStack { get; }
+        }
+
+        private sealed class ResourceIdentity : IEquatable<ResourceIdentity>
+        {
+            public ResourceIdentity(string itemName, int quality)
+            {
+                ItemName = itemName;
+                Quality = quality;
+            }
+
+            public string ItemName { get; }
+            public int Quality { get; }
+
+            public bool Equals(ResourceIdentity? other)
+                => other != null && Quality == other.Quality &&
+                   string.Equals(ItemName, other.ItemName, StringComparison.Ordinal);
+            public override bool Equals(object? obj) => Equals(obj as ResourceIdentity);
+            public override int GetHashCode()
+                => unchecked((StringComparer.Ordinal.GetHashCode(ItemName) * 397) ^ Quality);
+        }
+
+        private sealed class WorkingReservationAllocation
+        {
+            public WorkingReservationAllocation(WorkingStack stack, int quantity)
+            {
+                CompatibilityKey = stack.CompatibilityKey;
+                ItemName = stack.ResourceItemName;
+                Quality = stack.ResourceQuality;
+                Quantity = quantity;
+            }
+
+            public string CompatibilityKey { get; }
+            public string ItemName { get; }
+            public int Quality { get; }
+            public int Quantity { get; set; }
+
+            public ReservationSlotAllocation ToSnapshot(int slot)
+                => new ReservationSlotAllocation(slot, CompatibilityKey, ItemName, Quality, Quantity);
         }
 
         private sealed class DepositResult

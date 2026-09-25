@@ -20,6 +20,11 @@ internal static class Program
             SortNeverUsesEmptyQuickBarSlots,
             SortReservesEmptyProtectedSlots,
             SortDoesNotMergeIncompatibleStacksWithEqualNames,
+            SortPlacesReservationServedStacksAfterOrdinaryStacks,
+            ReservationTargetsAreAdditiveToExplicitTargets,
+            ReservationTargetsReplenishIntoMovableAndEmptySlots,
+            ReservationTargetsNeverDepositServedQuantities,
+            ReservationTargetsReportSafeCapacityShortage,
             DepositPreservesQuickBarEquippedAndProtectedSlots,
             DepositFillsEveryPartialStackBeforeCreatingAStack,
             DepositLeavesUnmatchedOverflowInPlayerInventory,
@@ -313,6 +318,108 @@ internal static class Program
         Equal("wood:q1", plan.Placements[0].CompatibilityKey, "deterministic compatibility-key tie breaker");
         Equal("wood:q2", plan.Placements[1].CompatibilityKey, "deterministic compatibility-key tie breaker");
         Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
+    private static void SortPlacesReservationServedStacksAfterOrdinaryStacks()
+    {
+        var inventory = Player(6,
+            Item("apple-a", "apple", "Apple", 40, 50, 1, resourceItemName: "Apple"),
+            Item("apple-b", "apple", "Apple", 20, 50, 2, resourceItemName: "Apple"),
+            Item("wood", "wood", "Wood", 1, 50, 3, resourceItemName: "Wood"));
+        var allocations = new[]
+        {
+            new ReservationSlotAllocation(2, "apple", "Apple", 1, 10)
+        };
+
+        var plan = new InventorySortPlanner().Plan(inventory, allocations);
+        Equal(3, plan.Placements.Count, "minimal packed stack count is preserved");
+        Placement(plan, 0, "apple", 50, false);
+        Placement(plan, 1, "wood", 1, false);
+        Placement(plan, 2, "apple", 10, false);
+        Equal(0, plan.Placements.Single(item => item.Slot == 0).ReservationQuantity, "ordinary apple stack stays in the ordinary region");
+        Equal(10, plan.Placements.Single(item => item.Slot == 2).ReservationQuantity, "reserved apple stack moves to the final sortable position");
+        Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
+    private static void ReservationTargetsAreAdditiveToExplicitTargets()
+    {
+        var player = Player(5,
+            Item("personal-wood", "wood", "Wood", 50, 100, 0,
+                protectedSlot: true, target: 50, resourceItemName: "Wood"));
+        var chest = Chest("target", 0, true, 3,
+            Item("stored-wood", "wood", "Wood", 30, 100, 0, resourceItemName: "Wood"));
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: new[] { new ResourceRequirement("Wood", 20, -1) });
+
+        Equal(20, plan.ReplenishedUnits, "reservation target adds twenty beyond the explicit target of fifty");
+        Equal(1, plan.ReservationAllocations.Count, "reservation is assigned to one movable stack");
+        Equal(1, plan.ReservationAllocations[0].PlayerSlot, "fixed explicit target stack is not reclassified");
+        Equal(20, plan.ReservationAllocations[0].Quantity, "full additive reservation quantity");
+        Equal(ReplenishmentReason.ExpeditionReservation, plan.Steps.Single().ReplenishmentReason, "step is identified as expedition replenishment");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
+    }
+
+    private static void ReservationTargetsReplenishIntoMovableAndEmptySlots()
+    {
+        var player = Player(5,
+            Item("carried-wood", "wood", "Wood", 30, 50, 1, resourceItemName: "Wood"));
+        var chest = Chest("target", 0, true, 2,
+            Item("stored-wood", "wood", "Wood", 40, 50, 0, resourceItemName: "Wood"));
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: new[] { new ResourceRequirement("Wood", 60, -1) });
+
+        Equal(30, plan.ReplenishedUnits, "missing reservation quantity is replenished");
+        Equal(2, plan.Steps.Count, "existing stack is filled before an empty slot is used");
+        Equal(1, plan.Steps[0].Destination.Slot, "existing movable stack destination");
+        Equal(20, plan.Steps[0].Quantity, "existing stack fill quantity");
+        Equal(0, plan.Steps[1].Destination.Slot, "first legal empty slot destination");
+        Equal(10, plan.Steps[1].Quantity, "new stack quantity");
+        SequenceEqual(new[] { 0, 1 }, plan.ReservationAllocations.Select(item => item.PlayerSlot), "both reservation-serving stacks are attributed");
+        Equal(0, plan.ReservationShortages.Count, "complete reservation has no shortage");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
+    }
+
+    private static void ReservationTargetsNeverDepositServedQuantities()
+    {
+        var player = Player(3,
+            Item("carried-wood", "wood", "Wood", 40, 50, 1, resourceItemName: "Wood"));
+        var chest = Chest("target", 0, true, 3,
+            Item("stored-wood", "wood", "Wood", 10, 50, 0, resourceItemName: "Wood"));
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: new[] { new ResourceRequirement("Wood", 25, -1) });
+
+        Equal(25, plan.ReservationAllocations.Single().Quantity, "reserved carried quantity");
+        Equal(15, plan.DepositedUnits, "only true excess is deposited");
+        Equal(15, plan.Steps.Single().Quantity, "deposit step excludes reserved units");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
+    }
+
+    private static void ReservationTargetsReportSafeCapacityShortage()
+    {
+        var player = Player(1,
+            Item("stone", "stone", "Stone", 1, 50, 0, resourceItemName: "Stone"));
+        var chest = Chest("target", 0, true, 2,
+            Item("stored-wood", "wood", "Wood", 10, 50, 0, resourceItemName: "Wood"));
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: new[] { new ResourceRequirement("Wood", 10, -1) });
+
+        Equal(0, plan.ReplenishedUnits, "no player capacity means no replenishment move");
+        Equal(1, plan.ReservationShortages.Count, "capacity shortage is reported");
+        Equal(10, plan.ReservationShortages[0].MissingQuantity, "full reservation remains missing");
+        Equal(0, plan.ReservationAllocations.Count, "no phantom reservation allocation is emitted");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
     }
 
     private static void DepositPreservesQuickBarEquippedAndProtectedSlots()
@@ -2732,8 +2839,23 @@ internal static class Program
         bool equipped = false,
         bool protectedSlot = false,
         int? target = null,
-        string? persistentItemKey = null)
-        => new ItemStackSnapshot(id, key, name, quantity, max, slot, quickBar, equipped, protectedSlot, target, persistentItemKey);
+        string? persistentItemKey = null,
+        string? resourceItemName = null,
+        int resourceQuality = 1)
+        => new ItemStackSnapshot(
+            id,
+            key,
+            name,
+            quantity,
+            max,
+            slot,
+            quickBar,
+            equipped,
+            protectedSlot,
+            target,
+            persistentItemKey,
+            resourceItemName,
+            resourceQuality);
 
     private static void Placement(SortPlan plan, int slot, string key, int quantity, bool fixedPlacement)
     {

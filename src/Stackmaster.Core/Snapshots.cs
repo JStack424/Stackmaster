@@ -23,7 +23,9 @@ namespace Stackmaster.Core
             bool isEquipped = false,
             bool isProtected = false,
             int? replenishmentTarget = null,
-            string? persistentItemKey = null)
+            string? persistentItemKey = null,
+            string? resourceItemName = null,
+            int resourceQuality = 1)
         {
             if (string.IsNullOrWhiteSpace(stackId)) throw new ArgumentException("A stack id is required.", nameof(stackId));
             if (string.IsNullOrWhiteSpace(compatibilityKey)) throw new ArgumentException("A compatibility key is required.", nameof(compatibilityKey));
@@ -37,6 +39,9 @@ namespace Stackmaster.Core
                 throw new ArgumentOutOfRangeException(nameof(replenishmentTarget));
             if (persistentItemKey != null && string.IsNullOrWhiteSpace(persistentItemKey))
                 throw new ArgumentException("A supplied persistent item key cannot be empty.", nameof(persistentItemKey));
+            if (resourceItemName != null && string.IsNullOrWhiteSpace(resourceItemName))
+                throw new ArgumentException("A supplied resource item name cannot be empty.", nameof(resourceItemName));
+            if (resourceQuality <= 0) throw new ArgumentOutOfRangeException(nameof(resourceQuality));
 
             StackId = stackId;
             CompatibilityKey = compatibilityKey;
@@ -49,6 +54,8 @@ namespace Stackmaster.Core
             IsProtected = isProtected;
             ReplenishmentTarget = replenishmentTarget;
             PersistentItemKey = persistentItemKey ?? compatibilityKey;
+            ResourceItemName = resourceItemName ?? compatibilityKey;
+            ResourceQuality = resourceQuality;
         }
 
         public string StackId { get; }
@@ -62,6 +69,8 @@ namespace Stackmaster.Core
         public bool IsProtected { get; }
         public int? ReplenishmentTarget { get; }
         public string PersistentItemKey { get; }
+        public string ResourceItemName { get; }
+        public int ResourceQuality { get; }
 
         public bool IsFixed => IsQuickBar || IsEquipped || IsProtected;
     }

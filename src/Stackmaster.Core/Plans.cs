@@ -13,13 +13,15 @@ namespace Stackmaster.Core
             int quantity,
             int maxStack,
             bool isFixed,
-            IEnumerable<string> sourceStackIds)
+            IEnumerable<string> sourceStackIds,
+            int reservationQuantity = 0)
         {
             if (slot < 0) throw new ArgumentOutOfRangeException(nameof(slot));
             if (string.IsNullOrWhiteSpace(compatibilityKey)) throw new ArgumentException("A compatibility key is required.", nameof(compatibilityKey));
             if (visibleName == null) throw new ArgumentNullException(nameof(visibleName));
             if (quantity <= 0 || maxStack <= 0 || quantity > maxStack) throw new ArgumentOutOfRangeException(nameof(quantity));
             if (sourceStackIds == null) throw new ArgumentNullException(nameof(sourceStackIds));
+            if (reservationQuantity < 0 || reservationQuantity > quantity) throw new ArgumentOutOfRangeException(nameof(reservationQuantity));
 
             Slot = slot;
             CompatibilityKey = compatibilityKey;
@@ -28,6 +30,7 @@ namespace Stackmaster.Core
             MaxStack = maxStack;
             IsFixed = isFixed;
             SourceStackIds = new ReadOnlyCollection<string>(new List<string>(sourceStackIds));
+            ReservationQuantity = reservationQuantity;
         }
 
         public int Slot { get; }
@@ -37,6 +40,8 @@ namespace Stackmaster.Core
         public int MaxStack { get; }
         public bool IsFixed { get; }
         public IReadOnlyList<string> SourceStackIds { get; }
+        public int ReservationQuantity { get; }
+        public bool IsReservationServed => ReservationQuantity > 0;
     }
 
     public sealed class SortPlan
@@ -90,7 +95,8 @@ namespace Stackmaster.Core
             string visibleName,
             int quantity,
             int maxStack,
-            string? sourcePersistentItemKey = null)
+            string? sourcePersistentItemKey = null,
+            ReplenishmentReason replenishmentReason = ReplenishmentReason.None)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (destination == null) throw new ArgumentNullException(nameof(destination));
@@ -100,6 +106,8 @@ namespace Stackmaster.Core
             if (maxStack <= 0) throw new ArgumentOutOfRangeException(nameof(maxStack));
             if (sourcePersistentItemKey != null && string.IsNullOrWhiteSpace(sourcePersistentItemKey))
                 throw new ArgumentException("A supplied source item identity cannot be empty.", nameof(sourcePersistentItemKey));
+            if (kind != TransferKind.Replenishment && replenishmentReason != ReplenishmentReason.None)
+                throw new ArgumentException("Only replenishment steps can declare a replenishment reason.", nameof(replenishmentReason));
             Kind = kind;
             Source = source;
             Destination = destination;
@@ -108,6 +116,7 @@ namespace Stackmaster.Core
             Quantity = quantity;
             MaxStack = maxStack;
             SourcePersistentItemKey = sourcePersistentItemKey ?? compatibilityKey;
+            ReplenishmentReason = replenishmentReason;
         }
 
         public TransferKind Kind { get; }
@@ -118,6 +127,8 @@ namespace Stackmaster.Core
         public int Quantity { get; }
         public int MaxStack { get; }
         public string SourcePersistentItemKey { get; }
+        public ReplenishmentReason ReplenishmentReason { get; }
+        public bool ServesExpeditionReservation => ReplenishmentReason == ReplenishmentReason.ExpeditionReservation;
     }
 
     public sealed class ReplenishmentShortage
@@ -163,12 +174,39 @@ namespace Stackmaster.Core
             int replenishedUnits,
             int leftBehindUnits,
             bool searchTruncated)
+            : this(
+                steps,
+                shortages,
+                Array.Empty<ReservationReplenishmentShortage>(),
+                Array.Empty<ReservationSlotAllocation>(),
+                skippedContainers,
+                inspectedContainerIds,
+                depositedUnits,
+                replenishedUnits,
+                leftBehindUnits,
+                searchTruncated)
+        {
+        }
+
+        public TransferPlan(
+            IEnumerable<TransferStep> steps,
+            IEnumerable<ReplenishmentShortage> shortages,
+            IEnumerable<ReservationReplenishmentShortage> reservationShortages,
+            IEnumerable<ReservationSlotAllocation> reservationAllocations,
+            IEnumerable<SkippedContainer> skippedContainers,
+            IEnumerable<string> inspectedContainerIds,
+            int depositedUnits,
+            int replenishedUnits,
+            int leftBehindUnits,
+            bool searchTruncated)
         {
             if (depositedUnits < 0) throw new ArgumentOutOfRangeException(nameof(depositedUnits));
             if (replenishedUnits < 0) throw new ArgumentOutOfRangeException(nameof(replenishedUnits));
             if (leftBehindUnits < 0) throw new ArgumentOutOfRangeException(nameof(leftBehindUnits));
             Steps = new ReadOnlyCollection<TransferStep>(new List<TransferStep>(steps ?? throw new ArgumentNullException(nameof(steps))));
             Shortages = new ReadOnlyCollection<ReplenishmentShortage>(new List<ReplenishmentShortage>(shortages ?? throw new ArgumentNullException(nameof(shortages))));
+            ReservationShortages = new ReadOnlyCollection<ReservationReplenishmentShortage>(new List<ReservationReplenishmentShortage>(reservationShortages ?? throw new ArgumentNullException(nameof(reservationShortages))));
+            ReservationAllocations = new ReadOnlyCollection<ReservationSlotAllocation>(new List<ReservationSlotAllocation>(reservationAllocations ?? throw new ArgumentNullException(nameof(reservationAllocations))));
             SkippedContainers = new ReadOnlyCollection<SkippedContainer>(new List<SkippedContainer>(skippedContainers ?? throw new ArgumentNullException(nameof(skippedContainers))));
             InspectedContainerIds = new ReadOnlyCollection<string>(new List<string>(inspectedContainerIds ?? throw new ArgumentNullException(nameof(inspectedContainerIds))));
             DepositedUnits = depositedUnits;
@@ -179,6 +217,8 @@ namespace Stackmaster.Core
 
         public IReadOnlyList<TransferStep> Steps { get; }
         public IReadOnlyList<ReplenishmentShortage> Shortages { get; }
+        public IReadOnlyList<ReservationReplenishmentShortage> ReservationShortages { get; }
+        public IReadOnlyList<ReservationSlotAllocation> ReservationAllocations { get; }
         public IReadOnlyList<SkippedContainer> SkippedContainers { get; }
         public IReadOnlyList<string> InspectedContainerIds { get; }
         public int DepositedUnits { get; }
