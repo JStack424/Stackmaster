@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Development status:** the 1.3.0 source branch integrates durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. It is still an un-packaged test candidate pending the complete release gate and live validation; 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.0 integrates durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. This local test build still requires live validation; 1.2.0 remains the production release.
 
 ## About this project
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 (development test candidate; not packaged)
+## 1.3.0 (local test candidate)
 
 Integrated durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. Version 1.2.0 remains the production release while the complete release gate and live validation are pending.
 
