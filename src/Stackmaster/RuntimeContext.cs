@@ -29,6 +29,7 @@ namespace Stackmaster
             Compatibility = compatibility;
             ChestSortPreferences.Initialize();
             RememberedChestDestinations.Initialize();
+            ExpeditionReservations.Initialize();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
@@ -77,6 +78,7 @@ namespace Stackmaster
                 QuickGrabMaterialsAction.RearmSession();
                 ChestSortPreferences.Initialize();
                 RememberedChestDestinations.Initialize();
+                ExpeditionReservations.Initialize();
                 StorageScopeProvider.Reset();
                 NearbyResourceService.ResetCaches();
                 NearbyBuildHudPatch.ResetCache();
@@ -142,6 +144,7 @@ namespace Stackmaster
                 completedSafely &= TryCleanup("Inventory session cleanup", InventoryIntegration.OnSessionDisconnected);
                 completedSafely &= TryCleanup("Chest-sort preference session cleanup", ChestSortPreferences.Shutdown);
                 completedSafely &= TryCleanup("Remembered Quick Stack destination cleanup", RememberedChestDestinations.Shutdown);
+                completedSafely &= TryCleanup("Expedition reservation cleanup", ExpeditionReservations.Shutdown);
                 completedSafely &= TryCleanup("Storage scope cleanup", StorageScopeProvider.Reset);
                 completedSafely &= TryCleanup("Nearby resource cache cleanup", NearbyResourceService.ResetCaches);
                 completedSafely &= TryCleanup("Build HUD cache cleanup", NearbyBuildHudPatch.ResetCache);
@@ -183,6 +186,7 @@ namespace Stackmaster
             InventoryIntegration.OnSessionDisconnected();
             ChestSortPreferences.Shutdown();
             RememberedChestDestinations.Shutdown();
+            ExpeditionReservations.Shutdown();
             StorageScopeProvider.Reset();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();

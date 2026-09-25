@@ -234,8 +234,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("QuickGrabClickPolicy.ShouldIntercept", action)
         self.assertIn("return true;", action[action.index("internal static class QuickGrabMaterialsClickPatch"):action.index("internal sealed class QuickGrabInventoryBackup")])
         self.assertIn("return !intercepting;", action)
-        self.assertIn("PendingRequests.Enqueue(Tuple.Create(player, piece))", action)
-        self.assertIn("ReferenceEquals(candidate.Item1, Player.m_localPlayer)", action)
+        self.assertIn("PendingRequests.Enqueue(new PendingQuickGrabRequest(player, piece, pieceKey, displayName))", action)
+        self.assertIn("ReferenceEquals(candidate.Player, Player.m_localPlayer)", action)
         self.assertIn("!ReferenceEquals(player, Player.m_localPlayer)", action)
         self.assertIn("return states.Length > 0 && states.All(state => state)", core)
         click_patch = action[action.index("internal static class QuickGrabMaterialsClickPatch"):action.index("internal sealed class QuickGrabInventoryBackup")]
@@ -1262,6 +1262,41 @@ class ProjectBoundaryTests(unittest.TestCase):
             'RequireStaticMethod(failures, typeof(PlayerPrefs), "SetString", typeof(string), typeof(string))',
         ):
             self.assertIn(signature, gate)
+
+    def test_expedition_reservations_record_only_committed_quick_grabs_and_stay_policy_isolated(self):
+        state = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationState.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
+        context = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        integration_sources = "\n".join(path.read_text(encoding="utf-8") for path in PLUGIN_DIR.glob("*.cs"))
+
+        self.assertIn("player.GetPlayerID()", runtime)
+        self.assertIn("ZNet.instance.GetWorldUID()", runtime)
+        self.assertIn("ExpeditionReservationState.TryParse", runtime)
+        self.assertIn("PlayerPrefs.SetString", runtime)
+        self.assertIn('pieceKey = "prefab:" + prefabName', runtime)
+        self.assertNotIn("m_customData[", runtime)
+        self.assertEqual(2, context.count("ExpeditionReservations.Initialize()"))
+        self.assertEqual(2, context.count("ExpeditionReservations.Shutdown"))
+
+        commit = action.index("if (!ExecuteAtomic(player, capture, plan, capacity, reservations, out failure))")
+        capture = action.index("ExpeditionReservations.TryGetStablePieceIdentity(piece, out pieceKey, out displayName)")
+        enqueue = action.index("PendingRequests.Enqueue(new PendingQuickGrabRequest")
+        record = action.index("ExpeditionReservations.RecordSuccessfulQuickGrab(player, pieceKey, displayName, requirements)")
+        notify = action.index('RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials ("')
+        self.assertLess(capture, enqueue)
+        self.assertLess(commit, record)
+        self.assertLess(record, notify)
+        self.assertEqual(1, action.count("ExpeditionReservations.RecordSuccessfulQuickGrab"))
+
+        self.assertIn("MaximumRecords = 128", state)
+        self.assertIn("AggregateRequirements()", state)
+        self.assertIn("checked(requirement.Quantity * record.Count)", state)
+        self.assertIn("return currentCount;", state)
+        self.assertNotIn("ExpeditionReservationBuildPolicy", integration_sources)
+        self.assertNotIn("StorageTransferPlanner", state)
+        self.assertNotIn("ProtectionState", state)
+        self.assertNotIn("Inventory", state)
 
     def test_failed_deposit_warning_is_ephemeral_pointer_driven_and_quantity_exact(self):
         warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")

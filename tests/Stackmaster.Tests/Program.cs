@@ -31,6 +31,12 @@ internal static class Program
             RememberedDestinationStateRoundTripsReplacesAndRetainsZeroStock,
             RememberedDestinationStateRejectsMalformedPayloads,
             RememberedDestinationStatePrunesAndCaps,
+            ExpeditionReservationKeysSeparatePlayersAndWorlds,
+            ExpeditionReservationsCountIdenticalPiecesAndRoundTrip,
+            ExpeditionReservationsAggregateRecipeRequirements,
+            ExpeditionReservationsRejectRecipeDriftAndMalformedState,
+            ExpeditionReservationsRejectBoundsAndOverflow,
+            ExpeditionReservationsPersistAfterSuccessfulBuild,
             RememberedDestinationFallbackRoutesOnlyToExactChest,
             RememberedDestinationsStayExactPerPlayerStack,
             TransferValidationRejectsChangedPersistentSourceIdentity,
@@ -496,6 +502,174 @@ internal static class Program
         Equal(RememberedDestinationState.MaximumEntries, many.Records.Count, "destination state is bounded");
         True(!many.Records.Any(record => record.ItemKey == "item-0"), "oldest hint is evicted first");
         True(many.Records.Any(record => record.ItemKey == "item-" + (RememberedDestinationState.MaximumEntries + 6)), "newest hint is retained");
+    }
+
+    private static void ExpeditionReservationKeysSeparatePlayersAndWorlds()
+    {
+        var first = ExpeditionReservationPreferencePolicy.Key(101, 201);
+        Equal("com.jstack424.stackmaster/expedition-reservations/v1/101/201", first,
+            "reservation key is culture-invariant and includes both identities");
+        True(first != ExpeditionReservationPreferencePolicy.Key(102, 201),
+            "different players in one world never share reservation state");
+        True(first != ExpeditionReservationPreferencePolicy.Key(101, 202),
+            "one player in different worlds never shares reservation state");
+    }
+
+    private static void ExpeditionReservationsCountIdenticalPiecesAndRoundTrip()
+    {
+        ExpeditionReservationState empty;
+        True(ExpeditionReservationState.TryParse(new ExpeditionReservationState().Serialize(), out empty),
+            "empty reservation state round trips");
+        Equal(0, empty.Records.Count, "empty reservation round trip stays empty");
+
+        var state = new ExpeditionReservationState();
+        Equal(ExpeditionReservationAddResult.Added,
+            state.RecordSuccessfulQuickGrab(
+                "prefab:portal_wood",
+                "$piece_portal_wood",
+                new[] { new ResourceRequirement("FineWood", 10), new ResourceRequirement("FineWood", 10), new ResourceRequirement("SurtlingCore", 2) }),
+            "first successful Quick Grab creates one reservation");
+        Equal(ExpeditionReservationAddResult.Incremented,
+            state.RecordSuccessfulQuickGrab(
+                "prefab:portal_wood",
+                "$piece_portal_wood",
+                new[] { new ResourceRequirement("SurtlingCore", 2), new ResourceRequirement("FineWood", 20) }),
+            "second identical Quick Grab increments the same piece record");
+
+        var record = state.Records.Single();
+        Equal("prefab:portal_wood", record.PieceKey, "stable piece key is retained");
+        Equal(2, record.Count, "identical pieces are represented by a count");
+        Equal(2, record.Requirements.Count, "duplicate recipe rows are normalized before persistence");
+        Equal(20, record.Requirements.Single(requirement => requirement.ItemName == "FineWood").Quantity,
+            "normalized recipe preserves exact per-piece quantity");
+
+        ExpeditionReservationState parsed;
+        True(ExpeditionReservationState.TryParse(state.Serialize(), out parsed), "reservation state round trips");
+        Equal(state.Serialize(), parsed.Serialize(), "reservation serialization is deterministic");
+        Equal(2, parsed.Records.Single().Count, "round trip preserves piece count");
+    }
+
+    private static void ExpeditionReservationsAggregateRecipeRequirements()
+    {
+        var state = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord(
+                "prefab:portal_wood",
+                "$piece_portal_wood",
+                2,
+                new[]
+                {
+                    new ResourceRequirement("FineWood", 20),
+                    new ResourceRequirement("SurtlingCore", 2),
+                    new ResourceRequirement("GreydwarfEye", 10)
+                }),
+            new ExpeditionReservationRecord(
+                "prefab:karve",
+                "$piece_karve",
+                1,
+                new[]
+                {
+                    new ResourceRequirement("FineWood", 30),
+                    new ResourceRequirement("BronzeNails", 10),
+                    new ResourceRequirement("DeerHide", 10)
+                }),
+            new ExpeditionReservationRecord(
+                "prefab:quality_fixture",
+                "$piece_quality_fixture",
+                1,
+                new[] { new ResourceRequirement("FineWood", 3, 2) })
+        });
+
+        var aggregate = state.AggregateRequirements();
+        Equal(6, aggregate.Count, "aggregate has one row per exact material and quality");
+        Equal(70, aggregate.Single(requirement => requirement.ItemName == "FineWood" && requirement.Quality == -1).Quantity,
+            "shared materials add across piece counts");
+        Equal(3, aggregate.Single(requirement => requirement.ItemName == "FineWood" && requirement.Quality == 2).Quantity,
+            "same-name materials at different qualities stay distinct");
+        Equal(4, aggregate.Single(requirement => requirement.ItemName == "SurtlingCore").Quantity,
+            "count multiplies each per-piece requirement");
+        Equal(10, aggregate.Single(requirement => requirement.ItemName == "BronzeNails").Quantity,
+            "single-piece requirements remain exact");
+        Equal(10, aggregate.Single(requirement => requirement.ItemName == "DeerHide").Quantity,
+            "independent materials remain present");
+    }
+
+    private static void ExpeditionReservationsRejectRecipeDriftAndMalformedState()
+    {
+        var state = new ExpeditionReservationState();
+        Equal(ExpeditionReservationAddResult.Added,
+            state.RecordSuccessfulQuickGrab("prefab:workbench", "$piece_workbench", new[] { new ResourceRequirement("Wood", 10) }),
+            "initial recipe is accepted");
+        Equal(ExpeditionReservationAddResult.RecipeChanged,
+            state.RecordSuccessfulQuickGrab("prefab:workbench", "$piece_workbench", new[] { new ResourceRequirement("Wood", 11) }),
+            "a changed recipe is not silently merged into an existing counted reservation");
+        Equal(1, state.Records.Single().Count, "recipe drift leaves the existing reservation unchanged");
+        Equal(10, state.AggregateRequirements().Single().Quantity, "recipe drift leaves aggregate quantities unchanged");
+
+        ExpeditionReservationState parsed;
+        True(!ExpeditionReservationState.TryParse("v999", out parsed), "unknown reservation versions are rejected");
+        True(!ExpeditionReservationState.TryParse("v1;%%%bad%%%,bmFtZQ==,1,V29vZA==:10:-1", out parsed),
+            "malformed piece identity is rejected");
+        var encodedRecord = state.Serialize().Split(';')[1];
+        True(!ExpeditionReservationState.TryParse("v1;" + encodedRecord + ";" + encodedRecord, out parsed),
+            "duplicate piece identities reject the whole payload");
+        Equal(0, parsed.Records.Count, "malformed reservation state never exposes partial records");
+    }
+
+    private static void ExpeditionReservationsRejectBoundsAndOverflow()
+    {
+        var overflow = new ExpeditionReservationState();
+        Equal(ExpeditionReservationAddResult.Added,
+            overflow.RecordSuccessfulQuickGrab(
+                "prefab:overflow_fixture",
+                "$piece_overflow_fixture",
+                new[] { new ResourceRequirement("Wood", int.MaxValue) }),
+            "an individually representable aggregate is accepted");
+        Equal(ExpeditionReservationAddResult.CapacityExceeded,
+            overflow.RecordSuccessfulQuickGrab(
+                "prefab:overflow_fixture",
+                "$piece_overflow_fixture",
+                new[] { new ResourceRequirement("Wood", int.MaxValue) }),
+            "count multiplication overflow is rejected without mutation");
+        Equal(1, overflow.Records.Single().Count, "overflow leaves the existing count unchanged");
+
+        var tooMany = Enumerable.Range(0, ExpeditionReservationState.MaximumRecords + 1)
+            .Select(index => new ExpeditionReservationRecord(
+                "prefab:fixture_" + index,
+                "$piece_fixture_" + index,
+                1,
+                new[] { new ResourceRequirement("Wood", 1) }))
+            .ToArray();
+        Throws<ArgumentException>(() => new ExpeditionReservationState(tooMany),
+            "the reservation-state constructor rejects too many records");
+
+        var oversizedKey = "prefab:" + new string('x', 2000);
+        Throws<ArgumentException>(() => overflow.RecordSuccessfulQuickGrab(
+                oversizedKey,
+                "$piece_fixture",
+                new[] { new ResourceRequirement("Wood", 1) }),
+            "oversized piece identities are rejected");
+    }
+
+    private static void ExpeditionReservationsPersistAfterSuccessfulBuild()
+    {
+        Equal(0, ExpeditionReservationBuildPolicy.CountAfterSuccessfulBuild(0),
+            "a successful build cannot create a reservation");
+        Equal(3, ExpeditionReservationBuildPolicy.CountAfterSuccessfulBuild(3),
+            "successfully building a reserved piece does not decrement its reservation");
+
+        var state = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord(
+                "prefab:portal_wood",
+                "$piece_portal_wood",
+                3,
+                new[] { new ResourceRequirement("FineWood", 20) })
+        });
+        var before = state.Serialize();
+        var retained = ExpeditionReservationBuildPolicy.CountAfterSuccessfulBuild(state.Records.Single().Count);
+        Equal(3, retained, "build completion policy retains the exact count until explicit removal");
+        Equal(before, state.Serialize(), "build completion has no reservation-state side effect");
     }
 
     private static void RememberedDestinationFallbackRoutesOnlyToExactChest()

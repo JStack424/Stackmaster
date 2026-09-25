@@ -128,6 +128,22 @@ namespace Stackmaster
         internal ContainerReservation Reservation { get; }
     }
 
+    internal sealed class PendingQuickGrabRequest
+    {
+        internal PendingQuickGrabRequest(Player player, Piece piece, string pieceKey, string displayName)
+        {
+            Player = player;
+            Piece = piece;
+            PieceKey = pieceKey;
+            DisplayName = displayName;
+        }
+
+        internal Player Player { get; }
+        internal Piece Piece { get; }
+        internal string PieceKey { get; }
+        internal string DisplayName { get; }
+    }
+
     internal static class QuickGrabMaterialsAction
     {
         private const float OwnershipTimeoutSeconds = 2f;
@@ -138,7 +154,7 @@ namespace Stackmaster
             "AddItem",
             new[] { typeof(ItemDrop.ItemData), typeof(int), typeof(int), typeof(int), typeof(bool) });
         private static readonly FieldInfo InventoryItemsField = AccessTools.Field(typeof(Inventory), "m_inventory");
-        private static readonly Queue<Tuple<Player, Piece>> PendingRequests = new Queue<Tuple<Player, Piece>>();
+        private static readonly Queue<PendingQuickGrabRequest> PendingRequests = new Queue<PendingQuickGrabRequest>();
         private static bool _running;
         private static int _generation;
 
@@ -149,9 +165,13 @@ namespace Stackmaster
                 return;
             }
 
-            // Every recognized click represents another complete set of materials. Serialize queued clicks so
-            // each gets a fresh storage, capacity, ownership, and transaction decision.
-            PendingRequests.Enqueue(Tuple.Create(player, piece));
+            // Every recognized click represents another complete set of materials. Capture the
+            // immutable reservation identity before queuing while retaining the live Piece only for
+            // the existing fresh recipe and transaction checks.
+            string pieceKey;
+            string displayName;
+            ExpeditionReservations.TryGetStablePieceIdentity(piece, out pieceKey, out displayName);
+            PendingRequests.Enqueue(new PendingQuickGrabRequest(player, piece, pieceKey, displayName));
             StartNext();
         }
 
@@ -162,11 +182,11 @@ namespace Stackmaster
                 return;
             }
 
-            Tuple<Player, Piece> request = null;
+            PendingQuickGrabRequest request = null;
             while (PendingRequests.Count > 0)
             {
                 var candidate = PendingRequests.Dequeue();
-                if (ReferenceEquals(candidate.Item1, Player.m_localPlayer))
+                if (ReferenceEquals(candidate.Player, Player.m_localPlayer))
                 {
                     request = candidate;
                     break;
@@ -174,8 +194,8 @@ namespace Stackmaster
             }
             if (request == null) return;
 
-            var player = request.Item1;
-            var piece = request.Item2;
+            var player = request.Player;
+            var piece = request.Piece;
             var generation = _generation;
             _running = true;
             try
@@ -212,13 +232,20 @@ namespace Stackmaster
                     .ToArray();
                 if (unowned.Length == 0)
                 {
-                    Finish(player, piece, plan, null);
+                    Finish(player, piece, request.PieceKey, request.DisplayName, plan, null);
                     Complete(generation);
                     return;
                 }
 
                 RuntimeContext.ShowTopLeft("Stackmaster: checking storage for materials…");
-                RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(player, piece, plan, unowned, generation));
+                RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(
+                    player,
+                    piece,
+                    request.PieceKey,
+                    request.DisplayName,
+                    plan,
+                    unowned,
+                    generation));
             }
             catch (Exception exception)
             {
@@ -257,6 +284,8 @@ namespace Stackmaster
         private static IEnumerator FinishAfterOwnership(
             Player player,
             Piece piece,
+            string pieceKey,
+            string displayName,
             ResourceWithdrawalPlan expectedPlan,
             ContainerHandle[] unownedHandles,
             int generation)
@@ -328,7 +357,7 @@ namespace Stackmaster
                     }
                     else
                     {
-                        Finish(player, piece, expectedPlan, ownership);
+                        Finish(player, piece, pieceKey, displayName, expectedPlan, ownership);
                     }
                 }
                 catch (Exception exception)
@@ -385,6 +414,8 @@ namespace Stackmaster
         private static void Finish(
             Player player,
             Piece piece,
+            string pieceKey,
+            string displayName,
             ResourceWithdrawalPlan expectedPlan,
             OwnershipBatch ownership)
         {
@@ -449,6 +480,11 @@ namespace Stackmaster
                     ShowFailure(failure);
                     return;
                 }
+
+                // Reservation persistence is a post-commit observer. It can never authorize or
+                // roll back the proven 1.2.0 transfer path, and a storage failure leaves the
+                // successful material grab intact.
+                ExpeditionReservations.RecordSuccessfulQuickGrab(player, pieceKey, displayName, requirements);
 
                 try
                 {
