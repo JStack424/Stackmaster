@@ -173,9 +173,12 @@ namespace Stackmaster
             RequireField(failures, typeof(ItemDrop.ItemData), "m_gridPos");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_stack");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_quality");
+            RequireField(failures, typeof(ItemDrop.ItemData), "m_dropPrefab");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_worldLevel");
             RequireField(failures, typeof(ItemDrop.ItemData), "m_equipped");
             RequireField(failures, typeof(Piece), "m_resources");
+            RequireField(failures, typeof(Piece.Requirement), "m_resItem");
+            RequireField(failures, typeof(Piece.Requirement), "m_amount");
             RequireField(failures, typeof(Piece), "m_craftingStation");
             RequireField(failures, typeof(Recipe), "m_resources");
             RequireField(failures, typeof(Recipe), "m_requireOnlyOneIngredient");

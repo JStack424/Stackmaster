@@ -178,7 +178,7 @@ namespace Stackmaster.Core
                 // Reservation quantities are additive to explicit protected-slot targets. Fixed
                 // quickbar/equipped/protected units are not silently reclassified as expedition
                 // stock; only otherwise movable carried units serve the reservation first.
-                foreach (var original in player.Items.OrderBy(item => item.Slot))
+                foreach (var original in player.Items.OrderByDescending(item => item.Slot))
                 {
                     if (needed == 0) break;
                     var stack = playerStacks[original.Slot];

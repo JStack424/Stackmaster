@@ -24,6 +24,7 @@ internal static class Program
             ReservationTargetsAreAdditiveToExplicitTargets,
             ReservationTargetsReplenishIntoMovableAndEmptySlots,
             ReservationTargetsNeverDepositServedQuantities,
+            ReservationTargetsUseTailStacksBeforeDepositingExcess,
             ReservationTargetsReportSafeCapacityShortage,
             DepositPreservesQuickBarEquippedAndProtectedSlots,
             DepositFillsEveryPartialStackBeforeCreatingAStack,
@@ -400,6 +401,26 @@ internal static class Program
         Equal(25, plan.ReservationAllocations.Single().Quantity, "reserved carried quantity");
         Equal(15, plan.DepositedUnits, "only true excess is deposited");
         Equal(15, plan.Steps.Single().Quantity, "deposit step excludes reserved units");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
+    }
+
+    private static void ReservationTargetsUseTailStacksBeforeDepositingExcess()
+    {
+        var player = Player(4,
+            Item("wood-ordinary", "wood", "Wood", 10, 50, 1, resourceItemName: "Wood"),
+            Item("wood-reserved", "wood", "Wood", 10, 50, 3, resourceItemName: "Wood"));
+        var chest = Chest("target", 0, true, 3,
+            Item("stored-wood", "wood", "Wood", 1, 50, 0, resourceItemName: "Wood"));
+
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: new[] { new ResourceRequirement("Wood", 10, -1) });
+
+        Equal(3, plan.ReservationAllocations.Single().PlayerSlot, "reservation attribution starts at the sortable tail");
+        Equal(10, plan.ReservationAllocations.Single().Quantity, "tail stack serves the complete reservation");
+        Equal(1, plan.Steps.Single().Source.Slot, "ordinary earlier stack is the deposited excess");
+        Equal(10, plan.Steps.Single().Quantity, "only the earlier ordinary stack is deposited");
         Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
     }
 

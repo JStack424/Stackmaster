@@ -1,16 +1,21 @@
 # Changelog
 
-## 1.3.0 (development foundation; not packaged)
+## 1.3.0 (development test candidate; not packaged)
 
-Started the persistent Expedition Kit reservation foundation without changing Stackmaster 1.2.0 gameplay or adding the final inventory UI yet.
+Integrated durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. Version 1.2.0 remains the production release while the complete release gate and live validation are pending.
 
 - Every successfully committed **Quick Grab Materials** click records one reserved build piece after the atomic transfer succeeds; rejected, failed, or rolled-back clicks record nothing.
-- Repeated grabs of the same stable prefab identity increment a count. Records are local, versioned, bounded, and isolated by exact player and world.
-- Reservation recipes are normalized and aggregated with exact material quality and checked multiplication across reserved piece counts.
-- Successfully building a reserved piece deliberately leaves its reservation unchanged. Reservations persist until explicitly removed.
-- Removing a future top-row reserved-piece icon releases only that reservation. It does not move carried materials or start Quick Stack; the player can run Quick Stack later as a separate explicit action.
-- Precedence between reservation-derived requirements and explicit protected-item targets remains intentionally undecided and unimplemented.
-- Reservation persistence failures cannot roll back or invalidate a successful Quick Grab; the in-session record is retained even if durable writes must stop.
+- Repeated grabs of the same stable piece-prefab identity increment a count. Records are local, versioned, bounded, and isolated by exact player and world.
+- Reservation recipes use stable resource-prefab identity and exact material quality, then normalize and aggregate with checked multiplication across reserved piece counts.
+- Successfully building a reserved piece deliberately leaves its reservation unchanged. Reservations persist until explicitly released.
+- A horizontal row above the player inventory shows reserved-piece icons and counts. One ordinary icon click releases exactly one count; it moves no items and never starts Quick Stack.
+- Quick Stack retains and replenishes reservation requirements in addition to explicit personal targets. A personal target of 50 wood plus reservations requiring 20 wood therefore keeps 70 total.
+- Fixed quick-bar, equipped, and explicitly protected quantities remain personal. Reservation stock is assigned only to movable stacks or legal empty backpack slots.
+- Reservation-served quantities are excluded from deposits and failed-deposit warnings. Capacity or stock shortages leave the genuinely missing reservation quantity reported without inventing an allocation.
+- Player sorting keeps fixed slots untouched and places reservation-served quantities in the final available sortable positions after every ordinary-only movable stack.
+- Reservation-served material quantities use a distinct orange border and `Rquantity` label. Optional reservation-row or orange-highlight failures cannot mutate items or disable the existing blue protection overlays.
+- Missing piece prefabs render a harmless fallback icon, and malformed or unavailable reservation state fails closed before reservation-aware item movement or player sorting.
+- Reservation persistence remains a post-commit observer: a write failure cannot roll back or invalidate an already successful Quick Grab. Its in-session reservation stays active, while further reservation writes fail closed for that session.
 
 ## 1.2.0
 

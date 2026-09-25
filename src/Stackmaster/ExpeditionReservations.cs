@@ -8,9 +8,9 @@ using UnityEngine;
 namespace Stackmaster
 {
     /// <summary>
-    /// Persistent local expedition reservations, scoped to one character and one world. This
-    /// foundation records only a successfully committed Quick Grab. It does not hook building,
-    /// inventory-icon removal, sorting, or Quick Stack material precedence.
+    /// Persistent local Quick Grab Materials reservations, scoped to one character and one world.
+    /// The saved counts feed additive Quick Stack retention, player sorting, and optional UI.
+    /// Building never mutates this state; only an explicit reservation-icon click releases it.
     /// </summary>
     internal static class ExpeditionReservations
     {
@@ -38,6 +38,64 @@ namespace Stackmaster
             _writesHealthy = false;
         }
 
+        internal static bool CanCommitQuickGrab(Player player)
+        {
+            try
+            {
+                return _storageHealthy && _writesHealthy && player != null && EnsureLoaded(player);
+            }
+            catch (Exception exception)
+            {
+                DisableStorage("Expedition reservations could not be prepared and were disabled for this session: " + exception.GetType().Name);
+                return false;
+            }
+        }
+
+        internal static bool CanRecordQuickGrab(
+            Player player,
+            string pieceKey,
+            string displayName,
+            IReadOnlyList<ResourceRequirement> requirements,
+            out string failure)
+        {
+            failure = null;
+            try
+            {
+                if (!CanCommitQuickGrab(player) || string.IsNullOrEmpty(pieceKey) ||
+                    string.IsNullOrEmpty(displayName) || requirements == null)
+                {
+                    failure = "reservations are unavailable";
+                    return false;
+                }
+
+                ExpeditionReservationState preview;
+                if (!ExpeditionReservationState.TryParse(_state.Serialize(), out preview))
+                {
+                    failure = "reservation state could not be validated";
+                    return false;
+                }
+                var result = preview.RecordSuccessfulQuickGrab(pieceKey, displayName, requirements);
+                if (result == ExpeditionReservationAddResult.RecipeChanged)
+                {
+                    failure = "the reserved build-piece recipe changed";
+                    return false;
+                }
+                if (result == ExpeditionReservationAddResult.CapacityExceeded)
+                {
+                    failure = "the safe reservation limit was reached";
+                    return false;
+                }
+                return result == ExpeditionReservationAddResult.Added ||
+                       result == ExpeditionReservationAddResult.Incremented;
+            }
+            catch (Exception exception)
+            {
+                DisableStorage("Expedition reservations could not be validated and were disabled for this session: " + exception.GetType().Name);
+                failure = "reservations are unavailable";
+                return false;
+            }
+        }
+
         internal static bool RecordSuccessfulQuickGrab(
             Player player,
             string pieceKey,
@@ -46,7 +104,7 @@ namespace Stackmaster
         {
             try
             {
-                if (!_storageHealthy || player == null || string.IsNullOrEmpty(pieceKey) ||
+                if (!_storageHealthy || !_writesHealthy || player == null || string.IsNullOrEmpty(pieceKey) ||
                     string.IsNullOrEmpty(displayName) || requirements == null || !EnsureLoaded(player))
                 {
                     if (player != null && (string.IsNullOrEmpty(pieceKey) || string.IsNullOrEmpty(displayName)))
@@ -70,7 +128,7 @@ namespace Stackmaster
 
                 Save();
                 InventoryIntegration.RequestExpeditionRefresh();
-                return _storageHealthy;
+                return _storageHealthy && _writesHealthy;
             }
             catch (Exception exception)
             {
@@ -127,7 +185,7 @@ namespace Stackmaster
         {
             try
             {
-                if (!_storageHealthy || player == null || string.IsNullOrEmpty(pieceKey) || !EnsureLoaded(player))
+                if (!_storageHealthy || !_writesHealthy || player == null || string.IsNullOrEmpty(pieceKey) || !EnsureLoaded(player))
                 {
                     return false;
                 }
@@ -140,7 +198,7 @@ namespace Stackmaster
                 // transfers inventory nor invokes Quick Stack.
                 Save();
                 InventoryIntegration.RequestExpeditionRefresh();
-                return _storageHealthy;
+                return _storageHealthy && _writesHealthy;
             }
             catch (Exception exception)
             {
@@ -171,6 +229,50 @@ namespace Stackmaster
             pieceKey = "prefab:" + prefabName;
             displayName = string.IsNullOrWhiteSpace(piece.m_name) ? prefabName : piece.m_name;
             return true;
+        }
+
+        internal static bool TryGetStableRequirements(
+            Piece piece,
+            out IReadOnlyList<ResourceRequirement> requirements)
+        {
+            requirements = Array.Empty<ResourceRequirement>();
+            if (piece == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var stable = new List<ResourceRequirement>();
+                foreach (var requirement in piece.m_resources ?? Array.Empty<Piece.Requirement>())
+                {
+                    if (requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0)
+                    {
+                        continue;
+                    }
+                    var prefab = requirement.m_resItem.gameObject;
+                    var prefabName = prefab == null ? string.Empty : (prefab.name ?? string.Empty).Trim();
+                    while (prefabName.EndsWith(CloneSuffix, StringComparison.Ordinal))
+                    {
+                        prefabName = prefabName.Substring(0, prefabName.Length - CloneSuffix.Length).TrimEnd();
+                    }
+                    if (string.IsNullOrWhiteSpace(prefabName))
+                    {
+                        return false;
+                    }
+                    stable.Add(new ResourceRequirement(
+                        prefabName,
+                        requirement.m_amount,
+                        requirement.m_resItem.m_itemData.m_quality));
+                }
+                requirements = stable;
+                return stable.Count > 0;
+            }
+            catch
+            {
+                requirements = Array.Empty<ResourceRequirement>();
+                return false;
+            }
         }
 
         private static bool EnsureLoaded(Player player)

@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Development status:** the 1.3.0 source branch currently contains the persistent Expedition Kit reservation foundation only. The final inventory-row UI and material-lock integration are not built or packaged yet; 1.2.0 remains the production release.
+> **Development status:** the 1.3.0 source branch integrates durable **Quick Grab Materials reservations** with Quick Stack, player sorting, and the inventory UI. It is still an un-packaged test candidate pending the complete release gate and live validation; 1.2.0 remains the production release.
 
 ## About this project
 
@@ -18,6 +18,7 @@ Stackmaster removes repetitive container management without adding free resource
 
 - Automatically sort your backpack and opted-in vanilla chests.
 - Use **Quick Stack** to deposit matching items and replenish protected targets with one deliberate shortcut.
+- Keep durable per-player, per-world material reservations from successful **Quick Grab Materials** actions.
 - Build and craft using materials from accessible chests.
 
 ## Controls
@@ -65,6 +66,8 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
 - **Quick Stack**
   - Runs only when you press `Left Alt + E` while targeting or interacting with a vanilla chest.
   - Refills protected stacks, including ammo and consumables, to optional target quantities, then deposits eligible carried items.
+  - Also retains and replenishes the material quantities required by current Quick Grab Materials reservations. Reservation requirements are additive: a personal target of 50 wood plus reservations requiring 20 wood keeps 70 total.
+  - Keeps explicit personal targets in their fixed protected slots and assigns separate reservation quantities only to movable stacks or legal empty backpack slots.
   - Fills current matching stacks first, prioritizing the targeted chest and then searching nearest to farthest.
   - Remembers the last directly opened or targeted chest for each exact item type. If no current matching chest accepts any quantity, Quick Stack can return that item to its remembered chest even after the chest reaches zero stock.
   - A remembered destination is only a local hint: it must still be loaded, inside the active scope, accessible, idle, compatible, and exactly the same network chest at execution time. Missing, destroyed, unloaded, blocked, busy, full, or otherwise ineligible destinations leave the item safely in the player inventory.
@@ -91,6 +94,10 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Treats every modified click as one full additional material grab; materials you already carry never reduce the requested quantities.
   - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
   - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity.
+  - After a successful committed grab, records one durable reservation for that piece. Repeated grabs of the same piece increase its count; failed or rolled-back grabs record nothing.
+  - Shows reserved-piece icons and counts in a horizontal row above the player inventory. Clicking one icon releases exactly one reservation and never moves items or starts Quick Stack.
+  - Building a reserved piece does not consume its reservation; it remains until explicitly released.
+  - Marks the exact reservation-served quantities in orange with `Rquantity`. Player sorting places those quantities in the final available sortable positions, after ordinary movable stacks.
 - **Safety**
   - Reads nearby build and craft totals without claiming chest ownership.
   - Requests ownership only for required chests, then rechecks active-scope membership, access, ownership, chest use, serialized revision, stack identity, and quantity before removal.
@@ -100,6 +107,8 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Ends logical in-use reservations before releasing matching ownership. If exact same-client cleanup fails transiently, it is retained and retried before that ownership can be relinquished, including during disable and hot unload; later or unrelated owners are never cleared.
   - Never mutates inaccessible, unknown, unsupported, or actively used containers.
   - Shows compact totals, shortages, meaningful skips, and incomplete-search notices.
+  - Treats malformed or unavailable reservation state as a fail-closed condition before reservation-aware item movement or player sorting.
+  - Keeps reservation-row and orange-highlight failures isolated from item state and from the existing blue protection overlays.
   - Disables all item-changing behavior if its runtime compatibility checks fail.
 
 ## Configuration

@@ -138,7 +138,11 @@ namespace Stackmaster
                 isEquipped: item.m_equipped || (player != null && player.IsItemEquiped(item)),
                 isProtected: isProtected,
                 replenishmentTarget: target,
-                persistentItemKey: PersistentItemKey(item));
+                persistentItemKey: PersistentItemKey(item),
+                resourceItemName: item.m_dropPrefab != null && !string.IsNullOrWhiteSpace(item.m_dropPrefab.name)
+                    ? item.m_dropPrefab.name
+                    : "missing-prefab:" + catalog.KeyFor(item),
+                resourceQuality: item.m_quality);
         }
 
         internal static string PersistentItemKey(ItemDrop.ItemData item)

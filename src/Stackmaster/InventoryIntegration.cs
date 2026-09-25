@@ -44,6 +44,8 @@ namespace Stackmaster
         private static bool _sortingChestOnClose;
         private static bool _overlaysDisabled;
         private static bool _overlayFailureLogged;
+        private static bool _expeditionOverlaysDisabled;
+        private static bool _expeditionOverlayFailureLogged;
 
         internal static void EnsureToggle(InventoryGui gui)
         {
@@ -377,11 +379,7 @@ namespace Stackmaster
                     ProtectionOverlays[stale].Destroy();
                     ProtectionOverlays.Remove(stale);
                 }
-                foreach (var stale in ExpeditionOverlays.Keys.Where(element => element == null || !currentElements.Contains(element)).ToArray())
-                {
-                    ExpeditionOverlays[stale].Destroy();
-                    ExpeditionOverlays.Remove(stale);
-                }
+                RefreshExpeditionOverlaySet(currentElements);
                 foreach (var stale in FailedDepositOverlays.Keys.Where(element => element == null || !currentElements.Contains(element)).ToArray())
                 {
                     FailedDepositOverlays[stale].Destroy();
@@ -396,12 +394,6 @@ namespace Stackmaster
                         overlay = ProtectionOverlay.Create(element);
                         ProtectionOverlays.Add(element, overlay);
                     }
-                    ExpeditionOverlay expeditionOverlay;
-                    if (!ExpeditionOverlays.TryGetValue(element, out expeditionOverlay))
-                    {
-                        expeditionOverlay = ExpeditionOverlay.Create(element);
-                        ExpeditionOverlays.Add(element, expeditionOverlay);
-                    }
                     FailedDepositOverlay failedOverlay;
                     if (!FailedDepositOverlays.TryGetValue(element, out failedOverlay))
                     {
@@ -412,8 +404,7 @@ namespace Stackmaster
                     ProtectionRecord record;
                     overlay.Apply(resolution.TryGet(new Slot(element.Position.x, element.Position.y), out record) ? record : null);
                     var item = player.GetInventory().GetItemAt(element.Position.x, element.Position.y);
-                    var expeditionQuantity = 0;
-                    expeditionOverlay.Apply(item != null && expeditionAllocations.TryGetValue(item, out expeditionQuantity), expeditionQuantity);
+                    RefreshExpeditionOverlay(element, item, expeditionAllocations);
                     var failedQuantity = 0;
                     failedOverlay.Apply(item != null && FailedDepositWarnings.TryGet(item, out failedQuantity), failedQuantity);
                 }
@@ -427,6 +418,71 @@ namespace Stackmaster
                     _overlayFailureLogged = true;
                     RuntimeContext.Plugin.Log.LogWarning("Protected-item indicators could not be shown safely: " + exception);
                 }
+            }
+        }
+
+        private static void RefreshExpeditionOverlaySet(ISet<InventoryElement> currentElements)
+        {
+            if (_expeditionOverlaysDisabled) return;
+            try
+            {
+                foreach (var stale in ExpeditionOverlays.Keys
+                    .Where(element => element == null || !currentElements.Contains(element))
+                    .ToArray())
+                {
+                    ExpeditionOverlays[stale].Destroy();
+                    ExpeditionOverlays.Remove(stale);
+                }
+            }
+            catch (Exception exception)
+            {
+                DisableExpeditionOverlays(exception);
+            }
+        }
+
+        private static void RefreshExpeditionOverlay(
+            InventoryElement element,
+            ItemDrop.ItemData item,
+            IReadOnlyDictionary<ItemDrop.ItemData, int> allocations)
+        {
+            if (_expeditionOverlaysDisabled) return;
+            try
+            {
+                ExpeditionOverlay overlay;
+                if (!ExpeditionOverlays.TryGetValue(element, out overlay))
+                {
+                    overlay = ExpeditionOverlay.Create(element);
+                    ExpeditionOverlays.Add(element, overlay);
+                }
+                var quantity = 0;
+                overlay.Apply(item != null && allocations.TryGetValue(item, out quantity), quantity);
+            }
+            catch (Exception exception)
+            {
+                DisableExpeditionOverlays(exception);
+            }
+        }
+
+        private static void DisableExpeditionOverlays(Exception exception)
+        {
+            _expeditionOverlaysDisabled = true;
+            foreach (var overlay in ExpeditionOverlays.Values.ToArray())
+            {
+                try
+                {
+                    overlay.Destroy();
+                }
+                catch
+                {
+                    // Optional orange decoration cleanup must not affect protection indicators.
+                }
+            }
+            ExpeditionOverlays.Clear();
+            if (!_expeditionOverlayFailureLogged && RuntimeContext.Plugin != null)
+            {
+                _expeditionOverlayFailureLogged = true;
+                RuntimeContext.Plugin.Log.LogWarning(
+                    "Expedition material indicators were disabled safely: " + exception.GetType().Name);
             }
         }
 
@@ -452,6 +508,8 @@ namespace Stackmaster
             _sortingChestOnClose = false;
             _overlaysDisabled = false;
             _overlayFailureLogged = false;
+            _expeditionOverlaysDisabled = false;
+            _expeditionOverlayFailureLogged = false;
             if (_toggleAnchor != null)
             {
                 _toggleAnchor.SetActive(true);
@@ -506,6 +564,8 @@ namespace Stackmaster
             FailedDepositWarnings.Clear();
             _overlaysDisabled = false;
             _overlayFailureLogged = false;
+            _expeditionOverlaysDisabled = false;
+            _expeditionOverlayFailureLogged = false;
             _sortedThisOpen = false;
             _sortingChestOnClose = false;
         }
@@ -699,9 +759,19 @@ namespace Stackmaster
             {
                 overlay.Apply(null);
             }
-            foreach (var overlay in ExpeditionOverlays.Values)
+            if (!_expeditionOverlaysDisabled)
             {
-                overlay.Apply(false, 0);
+                try
+                {
+                    foreach (var overlay in ExpeditionOverlays.Values)
+                    {
+                        overlay.Apply(false, 0);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    DisableExpeditionOverlays(exception);
+                }
             }
             foreach (var overlay in FailedDepositOverlays.Values)
             {
@@ -716,9 +786,16 @@ namespace Stackmaster
                 overlay.Destroy();
             }
             ProtectionOverlays.Clear();
-            foreach (var overlay in ExpeditionOverlays.Values)
+            foreach (var overlay in ExpeditionOverlays.Values.ToArray())
             {
-                overlay.Destroy();
+                try
+                {
+                    overlay.Destroy();
+                }
+                catch
+                {
+                    // Optional orange decoration cleanup must not affect other overlays.
+                }
             }
             ExpeditionOverlays.Clear();
             foreach (var overlay in FailedDepositOverlays.Values)

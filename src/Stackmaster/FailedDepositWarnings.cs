@@ -10,14 +10,19 @@ namespace Stackmaster
 {
     internal sealed class FailedDepositCandidate
     {
-        internal FailedDepositCandidate(ItemDrop.ItemData item, ItemStackSnapshot snapshot)
+        internal FailedDepositCandidate(
+            ItemDrop.ItemData item,
+            ItemStackSnapshot snapshot,
+            int reservationRetainedQuantity)
         {
             Item = item;
             Snapshot = snapshot;
+            ReservationRetainedQuantity = Math.Max(0, reservationRetainedQuantity);
         }
 
         internal ItemDrop.ItemData Item { get; }
         internal ItemStackSnapshot Snapshot { get; }
+        internal int ReservationRetainedQuantity { get; }
     }
 
     /// <summary>
@@ -31,19 +36,30 @@ namespace Stackmaster
             new Dictionary<ItemDrop.ItemData, int>(ReferenceComparer<ItemDrop.ItemData>.Instance);
         private static int _playerSortDepth;
 
-        internal static IReadOnlyList<FailedDepositCandidate> CaptureCandidates(Player player, InventorySnapshot snapshot)
+        internal static IReadOnlyList<FailedDepositCandidate> CaptureCandidates(
+            Player player,
+            InventorySnapshot snapshot,
+            IEnumerable<ReservationSlotAllocation> reservationAllocations = null)
         {
             var result = new List<FailedDepositCandidate>();
             var inventory = player?.GetInventory();
             if (inventory == null || snapshot == null) return result;
+            var retainedBySlot = (reservationAllocations ?? Array.Empty<ReservationSlotAllocation>())
+                .GroupBy(item => item.PlayerSlot)
+                .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity));
             foreach (var itemSnapshot in snapshot.Items)
             {
-                if (FailedDepositPolicy.AttemptedQuantity(itemSnapshot) == 0) continue;
+                int reservationRetained;
+                retainedBySlot.TryGetValue(itemSnapshot.Slot, out reservationRetained);
+                var attempted = Math.Max(
+                    0,
+                    FailedDepositPolicy.AttemptedQuantity(itemSnapshot) - reservationRetained);
+                if (attempted == 0) continue;
                 var position = InventorySnapshots.PositionForSlot(inventory, itemSnapshot.Slot);
                 var item = inventory.GetItemAt(position.x, position.y);
                 if (item != null)
                 {
-                    result.Add(new FailedDepositCandidate(item, itemSnapshot));
+                    result.Add(new FailedDepositCandidate(item, itemSnapshot, reservationRetained));
                 }
             }
             return result;
@@ -58,7 +74,20 @@ namespace Stackmaster
                 foreach (var candidate in candidates)
                 {
                     if (candidate?.Item == null || !inventory.ContainsItem(candidate.Item)) continue;
-                    var failed = FailedDepositPolicy.FailedRemainder(candidate.Snapshot, candidate.Item.m_stack);
+                    var attempted = Math.Max(
+                        0,
+                        FailedDepositPolicy.AttemptedQuantity(candidate.Snapshot) -
+                        candidate.ReservationRetainedQuantity);
+                    var explicitlyRetained = candidate.Snapshot.IsProtected &&
+                                             candidate.Snapshot.ReplenishmentTarget.HasValue
+                        ? candidate.Snapshot.ReplenishmentTarget.Value
+                        : 0;
+                    var failed = Math.Min(
+                        attempted,
+                        Math.Max(
+                            0,
+                            candidate.Item.m_stack - explicitlyRetained -
+                            candidate.ReservationRetainedQuantity));
                     if (failed > 0)
                     {
                         replacement[candidate.Item] = failed;

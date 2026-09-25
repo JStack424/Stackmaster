@@ -193,6 +193,13 @@ namespace Stackmaster
                     _actionRunning = false;
                     return;
                 }
+                IReadOnlyList<ResourceRequirement> reservationRequirements;
+                if (!ExpeditionReservations.TryGetAggregateRequirements(player, out reservationRequirements))
+                {
+                    RuntimeContext.ShowTopLeft("Stackmaster: reservations are unavailable, so Quick Stack left every item unchanged.");
+                    _actionRunning = false;
+                    return;
+                }
                 var catalog = new CompatibilityCatalog();
                 var playerSnapshot = InventorySnapshots.CapturePlayer(
                     player,
@@ -221,13 +228,19 @@ namespace Stackmaster
                 var plan = planner.Plan(
                     playerSnapshot,
                     discovery.Containers.Select(handle => handle.Snapshot),
-                    rememberedDestinations: rememberedDestinations);
-                var depositCandidates = FailedDepositWarnings.CaptureCandidates(player, playerSnapshot);
+                    rememberedDestinations: rememberedDestinations,
+                    reservationRequirements: reservationRequirements);
+                var depositCandidates = FailedDepositWarnings.CaptureCandidates(
+                    player,
+                    playerSnapshot,
+                    plan.ReservationAllocations);
                 if (discovery.Truncated && !plan.SearchTruncated)
                 {
                     plan = new TransferPlan(
                         plan.Steps,
                         plan.Shortages,
+                        plan.ReservationShortages,
+                        plan.ReservationAllocations,
                         plan.SkippedContainers,
                         plan.InspectedContainerIds,
                         plan.DepositedUnits,
@@ -345,6 +358,12 @@ namespace Stackmaster
                 {
                     yield break;
                 }
+                IReadOnlyList<ResourceRequirement> freshReservationRequirements;
+                if (!ExpeditionReservations.TryGetAggregateRequirements(player, out freshReservationRequirements))
+                {
+                    RuntimeContext.ShowTopLeft("Stackmaster: reservations are unavailable, so Quick Stack left every item unchanged.");
+                    yield break;
+                }
 
                 // Ownership transfer can cause Container.Load to replace every ItemData instance.
                 // Re-capture and re-plan from the synchronized inventories so no pre-RPC object
@@ -375,13 +394,19 @@ namespace Stackmaster
                 var freshPlan = new StorageTransferPlanner().Plan(
                     freshPlayer,
                     freshDiscovery.Containers.Select(handle => handle.Snapshot),
-                    rememberedDestinations: freshRememberedDestinations);
-                var freshDepositCandidates = FailedDepositWarnings.CaptureCandidates(player, freshPlayer);
+                    rememberedDestinations: freshRememberedDestinations,
+                    reservationRequirements: freshReservationRequirements);
+                var freshDepositCandidates = FailedDepositWarnings.CaptureCandidates(
+                    player,
+                    freshPlayer,
+                    freshPlan.ReservationAllocations);
                 if (freshDiscovery.Truncated && !freshPlan.SearchTruncated)
                 {
                     freshPlan = new TransferPlan(
                         freshPlan.Steps,
                         freshPlan.Shortages,
+                        freshPlan.ReservationShortages,
+                        freshPlan.ReservationAllocations,
                         freshPlan.SkippedContainers,
                         freshPlan.InspectedContainerIds,
                         freshPlan.DepositedUnits,
@@ -480,6 +505,35 @@ namespace Stackmaster
             foreach (var dormant in protection.Records.Where(record => record.TargetQuantity.HasValue && !assignedRecords.Contains(record)))
             {
                 shortageNames.Add("target item missing");
+            }
+
+            IReadOnlyList<ResourceRequirement> reservationRequirements;
+            if (ExpeditionReservations.TryGetAggregateRequirements(player, out reservationRequirements))
+            {
+                var reservationSnapshot = InventorySnapshots.CapturePlayer(
+                    player,
+                    protection,
+                    new CompatibilityCatalog());
+                foreach (var requirement in reservationRequirements)
+                {
+                    var available = reservationSnapshot.Items
+                        .Where(item => !item.IsFixed &&
+                                       string.Equals(item.ResourceItemName, requirement.ItemName, StringComparison.Ordinal) &&
+                                       (requirement.Quality < 0 || item.ResourceQuality == requirement.Quality))
+                        .Sum(item => item.Quantity);
+                    var missing = Math.Max(0, requirement.Quantity - available);
+                    if (missing > 0)
+                    {
+                        var visibleName = reservationSnapshot.Items
+                            .Where(item => string.Equals(
+                                item.ResourceItemName,
+                                requirement.ItemName,
+                                StringComparison.Ordinal))
+                            .Select(item => item.VisibleName)
+                            .FirstOrDefault() ?? requirement.ItemName;
+                        shortageNames.Add(visibleName + " " + missing + " reserved");
+                    }
+                }
             }
             if (shortageNames.Count > 0)
             {

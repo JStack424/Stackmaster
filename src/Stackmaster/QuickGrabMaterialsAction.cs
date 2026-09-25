@@ -130,18 +130,25 @@ namespace Stackmaster
 
     internal sealed class PendingQuickGrabRequest
     {
-        internal PendingQuickGrabRequest(Player player, Piece piece, string pieceKey, string displayName)
+        internal PendingQuickGrabRequest(
+            Player player,
+            Piece piece,
+            string pieceKey,
+            string displayName,
+            IReadOnlyList<ResourceRequirement> reservationRequirements)
         {
             Player = player;
             Piece = piece;
             PieceKey = pieceKey;
             DisplayName = displayName;
+            ReservationRequirements = reservationRequirements;
         }
 
         internal Player Player { get; }
         internal Piece Piece { get; }
         internal string PieceKey { get; }
         internal string DisplayName { get; }
+        internal IReadOnlyList<ResourceRequirement> ReservationRequirements { get; }
     }
 
     internal static class QuickGrabMaterialsAction
@@ -165,13 +172,35 @@ namespace Stackmaster
                 return;
             }
 
-            // Every recognized click represents another complete set of materials. Capture the
-            // immutable reservation identity before queuing while retaining the live Piece only for
-            // the existing fresh recipe and transaction checks.
+            // Every recognized click represents another complete set of materials. Capture immutable
+            // prefab identities before queuing while retaining the live Piece only
+            // for the existing fresh recipe and transaction checks.
             string pieceKey;
             string displayName;
-            ExpeditionReservations.TryGetStablePieceIdentity(piece, out pieceKey, out displayName);
-            PendingRequests.Enqueue(new PendingQuickGrabRequest(player, piece, pieceKey, displayName));
+            IReadOnlyList<ResourceRequirement> reservationRequirements;
+            if (!ExpeditionReservations.TryGetStablePieceIdentity(piece, out pieceKey, out displayName) ||
+                !ExpeditionReservations.TryGetStableRequirements(piece, out reservationRequirements))
+            {
+                RuntimeContext.ShowCenter("Stackmaster could not identify that piece safely; no materials were grabbed.");
+                return;
+            }
+            string reservationFailure;
+            if (!ExpeditionReservations.CanRecordQuickGrab(
+                    player,
+                    pieceKey,
+                    displayName,
+                    reservationRequirements,
+                    out reservationFailure))
+            {
+                ShowFailure(reservationFailure);
+                return;
+            }
+            PendingRequests.Enqueue(new PendingQuickGrabRequest(
+                player,
+                piece,
+                pieceKey,
+                displayName,
+                reservationRequirements));
             StartNext();
         }
 
@@ -200,6 +229,20 @@ namespace Stackmaster
             _running = true;
             try
             {
+                string reservationFailure = null;
+                if (!ReservationRequirementsMatch(piece, request.ReservationRequirements) ||
+                    !ExpeditionReservations.CanRecordQuickGrab(
+                        player,
+                        request.PieceKey,
+                        request.DisplayName,
+                        request.ReservationRequirements,
+                        out reservationFailure))
+                {
+                    ShowFailure(reservationFailure ?? "the build-piece recipe changed");
+                    Complete(generation);
+                    return;
+                }
+
                 IReadOnlyList<ResourceRequirement> requirements;
                 NearbyResourceCapture capture;
                 ResourceWithdrawalPlan plan;
@@ -232,7 +275,14 @@ namespace Stackmaster
                     .ToArray();
                 if (unowned.Length == 0)
                 {
-                    Finish(player, piece, request.PieceKey, request.DisplayName, plan, null);
+                    Finish(
+                        player,
+                        piece,
+                        request.PieceKey,
+                        request.DisplayName,
+                        request.ReservationRequirements,
+                        plan,
+                        null);
                     Complete(generation);
                     return;
                 }
@@ -243,6 +293,7 @@ namespace Stackmaster
                     piece,
                     request.PieceKey,
                     request.DisplayName,
+                    request.ReservationRequirements,
                     plan,
                     unowned,
                     generation));
@@ -286,6 +337,7 @@ namespace Stackmaster
             Piece piece,
             string pieceKey,
             string displayName,
+            IReadOnlyList<ResourceRequirement> reservationRequirements,
             ResourceWithdrawalPlan expectedPlan,
             ContainerHandle[] unownedHandles,
             int generation)
@@ -357,7 +409,14 @@ namespace Stackmaster
                     }
                     else
                     {
-                        Finish(player, piece, pieceKey, displayName, expectedPlan, ownership);
+                        Finish(
+                            player,
+                            piece,
+                            pieceKey,
+                            displayName,
+                            reservationRequirements,
+                            expectedPlan,
+                            ownership);
                     }
                 }
                 catch (Exception exception)
@@ -416,9 +475,23 @@ namespace Stackmaster
             Piece piece,
             string pieceKey,
             string displayName,
+            IReadOnlyList<ResourceRequirement> reservationRequirements,
             ResourceWithdrawalPlan expectedPlan,
             OwnershipBatch ownership)
         {
+            string reservationFailure = null;
+            if (!ReservationRequirementsMatch(piece, reservationRequirements) ||
+                !ExpeditionReservations.CanRecordQuickGrab(
+                    player,
+                    pieceKey,
+                    displayName,
+                    reservationRequirements,
+                    out reservationFailure))
+            {
+                ShowFailure(reservationFailure ?? "the build-piece recipe changed");
+                return;
+            }
+
             IReadOnlyList<ResourceRequirement> requirements;
             NearbyResourceCapture capture;
             ResourceWithdrawalPlan plan;
@@ -484,7 +557,11 @@ namespace Stackmaster
                 // Reservation persistence is a post-commit observer. It can never authorize or
                 // roll back the proven 1.2.0 transfer path, and a storage failure leaves the
                 // successful material grab intact.
-                ExpeditionReservations.RecordSuccessfulQuickGrab(player, pieceKey, displayName, requirements);
+                ExpeditionReservations.RecordSuccessfulQuickGrab(
+                    player,
+                    pieceKey,
+                    displayName,
+                    reservationRequirements);
 
                 try
                 {
@@ -1038,6 +1115,34 @@ namespace Stackmaster
             {
                 RuntimeContext.Plugin?.Log.LogError("Stackmaster fatal-disable fallback failed: " + exception);
             }
+        }
+
+        private static bool ReservationRequirementsMatch(
+            Piece piece,
+            IReadOnlyList<ResourceRequirement> captured)
+        {
+            IReadOnlyList<ResourceRequirement> current;
+            if (captured == null ||
+                !ExpeditionReservations.TryGetStableRequirements(piece, out current))
+            {
+                return false;
+            }
+
+            Func<IEnumerable<ResourceRequirement>, ResourceRequirement[]> normalize = values => values
+                .GroupBy(value => new { value.ItemName, value.Quality })
+                .Select(group => new ResourceRequirement(
+                    group.Key.ItemName,
+                    checked(group.Sum(value => value.Quantity)),
+                    group.Key.Quality))
+                .OrderBy(value => value.ItemName, StringComparer.Ordinal)
+                .ThenBy(value => value.Quality)
+                .ToArray();
+            var left = normalize(captured);
+            var right = normalize(current);
+            return left.Length == right.Length && left.Zip(right, (a, b) =>
+                string.Equals(a.ItemName, b.ItemName, StringComparison.Ordinal) &&
+                a.Quality == b.Quality &&
+                a.Quantity == b.Quantity).All(equal => equal);
         }
 
         private static void ShowFailure(string failure)

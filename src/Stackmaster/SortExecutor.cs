@@ -20,7 +20,17 @@ namespace Stackmaster
                 var catalog = new CompatibilityCatalog();
                 var inventoryId = isPlayer ? "player" : "opened-container";
                 var source = InventorySnapshots.CaptureInventory(inventoryId, inventory, catalog, isPlayer, player, protection);
-                var plan = new InventorySortPlanner().Plan(source);
+                IReadOnlyList<ReservationSlotAllocation> reservationAllocations =
+                    Array.Empty<ReservationSlotAllocation>();
+                if (isPlayer && !ExpeditionMaterialVisuals.TryAllocateSlots(
+                        player,
+                        source,
+                        out reservationAllocations))
+                {
+                    failure = "Expedition reservations are unavailable; player sorting was skipped without changing items.";
+                    return false;
+                }
+                var plan = new InventorySortPlanner().Plan(source, reservationAllocations);
                 var validation = PlanValidator.ValidateSortConservation(source, plan);
                 if (!validation.IsValid)
                 {
