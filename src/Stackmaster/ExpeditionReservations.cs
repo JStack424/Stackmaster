@@ -1,6 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Stackmaster.Core;
 using UnityEngine;
 
@@ -68,6 +69,7 @@ namespace Stackmaster
                 }
 
                 Save();
+                InventoryIntegration.RequestExpeditionRefresh();
                 return _storageHealthy;
             }
             catch (Exception exception)
@@ -95,6 +97,54 @@ namespace Stackmaster
             {
                 DisableStorage("Expedition reservations could not be read and were disabled for this session: " + exception.GetType().Name);
                 requirements = Array.Empty<ResourceRequirement>();
+                return false;
+            }
+        }
+
+        internal static bool TryGetRecords(
+            Player player,
+            out IReadOnlyList<ExpeditionReservationRecord> records)
+        {
+            records = Array.Empty<ExpeditionReservationRecord>();
+            try
+            {
+                if (!_storageHealthy || player == null || !EnsureLoaded(player))
+                {
+                    return false;
+                }
+                records = _state.Records.ToArray();
+                return true;
+            }
+            catch (Exception exception)
+            {
+                DisableStorage("Expedition reservations could not be read and were disabled for this session: " + exception.GetType().Name);
+                records = Array.Empty<ExpeditionReservationRecord>();
+                return false;
+            }
+        }
+
+        internal static bool TryReleaseOne(Player player, string pieceKey)
+        {
+            try
+            {
+                if (!_storageHealthy || player == null || string.IsNullOrEmpty(pieceKey) || !EnsureLoaded(player))
+                {
+                    return false;
+                }
+                if (!_state.TryReleaseReservation(pieceKey, 1))
+                {
+                    return false;
+                }
+
+                // The settled interaction changes saved intent only. It deliberately neither
+                // transfers inventory nor invokes Quick Stack.
+                Save();
+                InventoryIntegration.RequestExpeditionRefresh();
+                return _storageHealthy;
+            }
+            catch (Exception exception)
+            {
+                DisableStorage("An expedition reservation could not be released safely: " + exception.GetType().Name);
                 return false;
             }
         }

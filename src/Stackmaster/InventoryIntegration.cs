@@ -19,11 +19,14 @@ namespace Stackmaster
         private const string ChestToggleName = "StackmasterChestAutoSortToggle";
         private const string ChestToggleAnchorName = "StackmasterChestAutoSortAnchor";
         private const string ProtectionOverlayName = "StackmasterProtectionOverlay";
+        private const string ExpeditionOverlayName = "StackmasterExpeditionOverlay";
         private const string FailedDepositOverlayName = "StackmasterFailedDepositOverlay";
         private static readonly FieldInfo GridElementsField = AccessTools.Field(typeof(InventoryGrid), "m_elements");
         private static readonly Dictionary<InventoryElement, ProtectionOverlay> ProtectionOverlays = new Dictionary<InventoryElement, ProtectionOverlay>();
+        private static readonly Dictionary<InventoryElement, ExpeditionOverlay> ExpeditionOverlays = new Dictionary<InventoryElement, ExpeditionOverlay>();
         private static readonly Dictionary<InventoryElement, FailedDepositOverlay> FailedDepositOverlays = new Dictionary<InventoryElement, FailedDepositOverlay>();
         private static readonly Color ProtectedBorderColor = new Color(0.22f, 0.78f, 0.84f, 0.82f);
+        private static readonly Color ExpeditionBorderColor = new Color(1f, 0.48f, 0.08f, 0.94f);
         private static readonly Color FailedDepositBorderColor = new Color(0.96f, 0.18f, 0.14f, 0.92f);
         private static GameObject _toggleAnchor;
         private static GameObject _toggleCheckmark;
@@ -36,6 +39,7 @@ namespace Stackmaster
         private static Inventory _observedPlayerInventory;
         private static readonly Action InventoryChangedHandler = OnObservedInventoryChanged;
         private static bool _overlayRefreshPending;
+        private static bool _expeditionRefreshPending;
         private static bool _sortedThisOpen;
         private static bool _sortingChestOnClose;
         private static bool _overlaysDisabled;
@@ -360,6 +364,11 @@ namespace Stackmaster
                     return;
                 }
                 var resolution = InventorySnapshots.ResolveProtection(player, state);
+                IReadOnlyDictionary<ItemDrop.ItemData, int> expeditionAllocations;
+                if (!ExpeditionMaterialVisuals.TryAllocate(player, state, out expeditionAllocations))
+                {
+                    expeditionAllocations = new Dictionary<ItemDrop.ItemData, int>();
+                }
                 FailedDepositWarnings.Reconcile();
 
                 var currentElements = new HashSet<InventoryElement>(elements.Where(element => element != null));
@@ -367,6 +376,11 @@ namespace Stackmaster
                 {
                     ProtectionOverlays[stale].Destroy();
                     ProtectionOverlays.Remove(stale);
+                }
+                foreach (var stale in ExpeditionOverlays.Keys.Where(element => element == null || !currentElements.Contains(element)).ToArray())
+                {
+                    ExpeditionOverlays[stale].Destroy();
+                    ExpeditionOverlays.Remove(stale);
                 }
                 foreach (var stale in FailedDepositOverlays.Keys.Where(element => element == null || !currentElements.Contains(element)).ToArray())
                 {
@@ -382,6 +396,12 @@ namespace Stackmaster
                         overlay = ProtectionOverlay.Create(element);
                         ProtectionOverlays.Add(element, overlay);
                     }
+                    ExpeditionOverlay expeditionOverlay;
+                    if (!ExpeditionOverlays.TryGetValue(element, out expeditionOverlay))
+                    {
+                        expeditionOverlay = ExpeditionOverlay.Create(element);
+                        ExpeditionOverlays.Add(element, expeditionOverlay);
+                    }
                     FailedDepositOverlay failedOverlay;
                     if (!FailedDepositOverlays.TryGetValue(element, out failedOverlay))
                     {
@@ -392,6 +412,8 @@ namespace Stackmaster
                     ProtectionRecord record;
                     overlay.Apply(resolution.TryGet(new Slot(element.Position.x, element.Position.y), out record) ? record : null);
                     var item = player.GetInventory().GetItemAt(element.Position.x, element.Position.y);
+                    var expeditionQuantity = 0;
+                    expeditionOverlay.Apply(item != null && expeditionAllocations.TryGetValue(item, out expeditionQuantity), expeditionQuantity);
                     var failedQuantity = 0;
                     failedOverlay.Apply(item != null && FailedDepositWarnings.TryGet(item, out failedQuantity), failedQuantity);
                 }
@@ -426,6 +448,7 @@ namespace Stackmaster
         internal static void OnSessionRearmed()
         {
             OnInventoryHidden();
+            ExpeditionReservationUi.RearmSession();
             _sortingChestOnClose = false;
             _overlaysDisabled = false;
             _overlayFailureLogged = false;
@@ -442,6 +465,8 @@ namespace Stackmaster
         internal static void Shutdown()
         {
             _overlayRefreshPending = false;
+            _expeditionRefreshPending = false;
+            ExpeditionReservationUi.Destroy();
             UnbindPlayerInventory();
             UnbindChestToggle();
             if (RuntimeContext.Plugin != null && RuntimeContext.Plugin.AutoSortEnabled != null)
@@ -528,11 +553,18 @@ namespace Stackmaster
             // Inventory.m_onChanged can run before InventoryGrid rebuilds its element positions.
             // Defer the actual overlay walk until the matching player grid has finished UpdateGui.
             _overlayRefreshPending = true;
+            _expeditionRefreshPending = true;
         }
 
         internal static void RequestProtectionOverlayRefresh()
         {
             _overlayRefreshPending = true;
+        }
+
+        internal static void RequestExpeditionRefresh()
+        {
+            _overlayRefreshPending = true;
+            _expeditionRefreshPending = true;
         }
 
         internal static void HideFailedDepositOverlay(InventoryElement element)
@@ -554,7 +586,7 @@ namespace Stackmaster
 
         internal static void FlushPendingProtectionOverlayRefresh(InventoryGrid grid, Inventory inventory)
         {
-            if (!_overlayRefreshPending || grid == null || inventory == null)
+            if ((!_overlayRefreshPending && !_expeditionRefreshPending) || grid == null || inventory == null)
             {
                 return;
             }
@@ -567,8 +599,16 @@ namespace Stackmaster
                 return;
             }
 
-            _overlayRefreshPending = false;
-            RefreshProtectionOverlays();
+            if (_overlayRefreshPending)
+            {
+                _overlayRefreshPending = false;
+                RefreshProtectionOverlays();
+            }
+            if (_expeditionRefreshPending)
+            {
+                _expeditionRefreshPending = false;
+                ExpeditionReservationUi.Refresh(player);
+            }
         }
 
         internal static void SortOpenedInventories(Container container)
@@ -646,9 +686,11 @@ namespace Stackmaster
             _sortedThisOpen = false;
             FailedDepositWarnings.Clear();
             _overlayRefreshPending = false;
+            _expeditionRefreshPending = false;
             UnbindPlayerInventory();
             UnbindChestToggle();
             HideProtectionOverlays();
+            ExpeditionReservationUi.Hide();
         }
 
         private static void HideProtectionOverlays()
@@ -656,6 +698,10 @@ namespace Stackmaster
             foreach (var overlay in ProtectionOverlays.Values)
             {
                 overlay.Apply(null);
+            }
+            foreach (var overlay in ExpeditionOverlays.Values)
+            {
+                overlay.Apply(false, 0);
             }
             foreach (var overlay in FailedDepositOverlays.Values)
             {
@@ -670,6 +716,11 @@ namespace Stackmaster
                 overlay.Destroy();
             }
             ProtectionOverlays.Clear();
+            foreach (var overlay in ExpeditionOverlays.Values)
+            {
+                overlay.Destroy();
+            }
+            ExpeditionOverlays.Clear();
             foreach (var overlay in FailedDepositOverlays.Values)
             {
                 overlay.Destroy();
@@ -696,6 +747,79 @@ namespace Stackmaster
             rect.sizeDelta = size;
         }
 
+
+        private sealed class ExpeditionOverlay
+        {
+            private readonly GameObject _root;
+            private readonly TMP_Text _quantityLabel;
+
+            private ExpeditionOverlay(GameObject root, TMP_Text quantityLabel)
+            {
+                _root = root;
+                _quantityLabel = quantityLabel;
+            }
+
+            internal static ExpeditionOverlay Create(InventoryElement element)
+            {
+                var slotRoot = element.GetElementRectTransform();
+                if (slotRoot == null || element.m_amount == null)
+                {
+                    throw new InvalidOperationException("An inventory item slot does not expose the expected UI elements.");
+                }
+                var previous = slotRoot.Find(ExpeditionOverlayName);
+                if (previous != null) Object.Destroy(previous.gameObject);
+
+                var root = new GameObject(ExpeditionOverlayName, typeof(RectTransform));
+                root.transform.SetParent(slotRoot, false);
+                root.transform.SetAsLastSibling();
+                var rootRect = (RectTransform)root.transform;
+                rootRect.anchorMin = Vector2.zero;
+                rootRect.anchorMax = Vector2.one;
+                rootRect.offsetMin = new Vector2(2f, 2f);
+                rootRect.offsetMax = new Vector2(-2f, -2f);
+
+                ConfigureEdge(CreateImage(root.transform, "Top", ExpeditionBorderColor).rectTransform,
+                    new Vector2(0f, 1f), Vector2.one, new Vector2(0.5f, 1f), new Vector2(0f, 3f));
+                ConfigureEdge(CreateImage(root.transform, "Bottom", ExpeditionBorderColor).rectTransform,
+                    Vector2.zero, new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 3f));
+                ConfigureEdge(CreateImage(root.transform, "Left", ExpeditionBorderColor).rectTransform,
+                    Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(3f, 0f));
+                ConfigureEdge(CreateImage(root.transform, "Right", ExpeditionBorderColor).rectTransform,
+                    new Vector2(1f, 0f), Vector2.one, new Vector2(1f, 0.5f), new Vector2(3f, 0f));
+
+                var quantityLabel = Object.Instantiate(element.m_amount, root.transform, false);
+                quantityLabel.gameObject.name = "ReservedQuantity";
+                quantityLabel.gameObject.SetActive(true);
+                quantityLabel.alignment = TextAlignmentOptions.BottomLeft;
+                quantityLabel.textWrappingMode = TextWrappingModes.NoWrap;
+                quantityLabel.fontSize = Mathf.Max(11f, quantityLabel.fontSize * 0.72f);
+                quantityLabel.color = ExpeditionBorderColor;
+                quantityLabel.outlineColor = new Color32(48, 15, 0, 255);
+                quantityLabel.outlineWidth = 0.22f;
+                quantityLabel.raycastTarget = false;
+                var quantityRect = quantityLabel.rectTransform;
+                quantityRect.anchorMin = Vector2.zero;
+                quantityRect.anchorMax = Vector2.zero;
+                quantityRect.pivot = Vector2.zero;
+                quantityRect.anchoredPosition = new Vector2(3f, 2f);
+                quantityRect.sizeDelta = new Vector2(34f, 18f);
+
+                root.SetActive(false);
+                return new ExpeditionOverlay(root, quantityLabel);
+            }
+
+            internal void Apply(bool visible, int reservedQuantity)
+            {
+                if (_root == null) return;
+                _root.SetActive(visible);
+                if (visible) _quantityLabel.text = "R" + reservedQuantity;
+            }
+
+            internal void Destroy()
+            {
+                if (_root != null) Object.Destroy(_root);
+            }
+        }
 
         private sealed class FailedDepositOverlay
         {
@@ -906,6 +1030,7 @@ namespace Stackmaster
             if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
             InventoryIntegration.EnsureChestToggle(__instance);
+            ExpeditionReservationUi.Ensure(__instance);
         }
     }
 
@@ -941,11 +1066,13 @@ namespace Stackmaster
             if (!RuntimeContext.Compatibility.IsCompatible) return;
             InventoryIntegration.EnsureToggle(__instance);
             InventoryIntegration.EnsureChestToggle(__instance);
+            ExpeditionReservationUi.Ensure(__instance);
             InventoryIntegration.BindPlayerInventory(Player.m_localPlayer);
             RememberedChestDestinations.ObserveDirect(container);
             InventoryIntegration.BindChestToggle(container);
             InventoryIntegration.SortOpenedInventories(container);
             InventoryIntegration.RequestProtectionOverlayRefresh();
+            InventoryIntegration.RequestExpeditionRefresh();
         }
     }
 }

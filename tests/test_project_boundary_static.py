@@ -1303,6 +1303,32 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ProtectionState", state)
         self.assertNotIn("Inventory", state)
 
+    def test_expedition_reservation_ui_is_optional_inventory_neutral_and_visually_distinct(self):
+        runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
+        ui = (PLUGIN_DIR / "ExpeditionReservationUi.cs").read_text(encoding="utf-8")
+        visuals = (PLUGIN_DIR / "ExpeditionMaterialVisuals.cs").read_text(encoding="utf-8")
+        inventory = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+
+        self.assertIn("TryGetRecords", runtime)
+        self.assertIn("TryReleaseOne", runtime)
+        self.assertIn("_state.TryReleaseReservation(pieceKey, 1)", runtime)
+        self.assertIn("RequestExpeditionRefresh", runtime)
+        self.assertNotIn("StorageAction.", ui)
+        self.assertNotIn("TransferExecutor", ui)
+        self.assertIn("button.onClick.AddListener", ui)
+        self.assertIn("ExpeditionReservations.TryReleaseOne", ui)
+        self.assertIn("released 1 ×", ui)
+        self.assertIn("RectMask2D", ui)
+        self.assertIn("HorizontalLayoutGroup", ui)
+        self.assertIn("ZNetScene.instance.GetPrefab", ui)
+        self.assertIn("Disable(\"Reservation icons could not be refreshed safely\"", ui)
+        self.assertIn("ExpeditionBorderColor", inventory)
+        self.assertIn('quantityLabel.text = "R" + reservedQuantity', inventory)
+        self.assertIn("ExpeditionMaterialVisuals.TryAllocate", inventory)
+        self.assertIn("item.m_gridPos.y != 0", visuals)
+        self.assertIn("!protectedSlots.Contains", visuals)
+        self.assertIn("OrderByDescending(item => item.m_gridPos.y)", visuals)
+
     def test_failed_deposit_warning_is_ephemeral_pointer_driven_and_quantity_exact(self):
         warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")
         policy = (ROOT / "src" / "Stackmaster.Core" / "FailedDepositPolicy.cs").read_text(encoding="utf-8")
