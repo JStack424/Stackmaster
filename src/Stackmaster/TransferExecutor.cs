@@ -12,6 +12,8 @@ namespace Stackmaster
         internal int ReplenishedUnits { get; set; }
         internal bool FatalPostconditionFailure { get; set; }
         internal Dictionary<string, string> FailedContainers { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
+        internal HashSet<string> SortedDestinationContainerIds { get; } = new HashSet<string>(StringComparer.Ordinal);
+        internal Dictionary<string, string> DestinationSortFailures { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
     }
 
     internal static class TransferExecutor
@@ -33,6 +35,7 @@ namespace Stackmaster
                 pair => pair.Key,
                 pair => pair.Value.ObservedDataRevision,
                 StringComparer.Ordinal);
+            var touchedDestinationIds = new SuccessfulDepositDestinationSet();
             foreach (var step in plan.Steps)
             {
                 var containerId = step.Source.Kind == InventoryLocationKind.Container
@@ -74,7 +77,23 @@ namespace Stackmaster
                 else
                 {
                     result.DepositedUnits += step.Quantity;
+                    touchedDestinationIds.Add(containerId);
                 }
+            }
+
+            // Sorting is a post-deposit convenience, never part of transfer commit. Run it once
+            // per distinct successfully mutated destination only after all planned moves finish.
+            // SortExecutor owns its own rollback, so a sort rejection cannot undo or corrupt a
+            // successful deposit and no later transfer step can observe a reordered chest.
+            if (!result.FatalPostconditionFailure)
+            {
+                QuickStackDestinationSorter.SortTouched(
+                    player,
+                    executionScope,
+                    handles,
+                    touchedDestinationIds.OrderedIds,
+                    expectedDataRevisions,
+                    result);
             }
 
             return result;
@@ -177,7 +196,7 @@ namespace Stackmaster
             return StepOutcome.FatalPostconditionFailure;
         }
 
-        private static bool RevalidateAndOwn(
+        internal static bool RevalidateAndOwn(
             Player player,
             StorageScope executionScope,
             ContainerHandle handle,

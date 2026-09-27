@@ -15,18 +15,22 @@ internal static class Program
             ChestSortDefaultsToEnabled,
             ChestSortKeyScopesPlayerWorldAndChest,
             ChestSortRejectsUnsafeIdentityAndStoredValues,
+            SuccessfulDepositsDeduplicateTouchedDestinations,
+            UntouchedFailedAndReplenishmentDestinationsAreNotScheduled,
             EmptyInventorySortsWithoutPlacements,
             SortKeepsFixedSlotsAndMergesMovableStacks,
             SortNeverUsesEmptyQuickBarSlots,
             SortReservesEmptyProtectedSlots,
             SortDoesNotMergeIncompatibleStacksWithEqualNames,
-            SortPlacesReservationServedStacksAfterOrdinaryStacks,
+            SortPlacesReservationServedStacksBeforeOrdinaryStacks,
+            SortReservationBoundaryUsesExactPartialFrontShare,
+            SortReservationRemovalRestoresOrdinaryOrdering,
             SortStillMovesNonStackableItems,
             ReservationTargetsAreAdditiveToExplicitTargets,
             ReservationTargetsUseSpaceFreedByDepositForExactAdditiveTotal,
             ReservationTargetsReplenishIntoMovableAndEmptySlots,
             ReservationTargetsNeverDepositServedQuantities,
-            ReservationTargetsUseTailStacksBeforeDepositingExcess,
+            ReservationTargetsUseFrontStacksBeforeDepositingExcess,
             ReservationTargetsReportSafeCapacityShortage,
             DepositPreservesQuickBarEquippedAndProtectedSlots,
             DepositIgnoresNonStackableMatchingItems,
@@ -246,6 +250,38 @@ internal static class Program
         True(!enabled, "unknown stored value never enables sorting");
     }
 
+    private static void SuccessfulDepositsDeduplicateTouchedDestinations()
+    {
+        var touched = new SuccessfulDepositDestinationSet();
+        touched.Add("remembered-chest");
+        touched.Add("remembered-chest");
+        touched.Add("target-chest");
+        touched.Add("nearby-chest");
+        touched.Add("target-chest");
+
+        SequenceEqual(new[] { "remembered-chest", "target-chest", "nearby-chest" }, touched.OrderedIds,
+            "multiple item stacks into one chest schedule one sort and distinct touched chests retain first-touch order");
+    }
+
+    private static void UntouchedFailedAndReplenishmentDestinationsAreNotScheduled()
+    {
+        var touched = new SuccessfulDepositDestinationSet();
+        var outcomes = new[]
+        {
+            (ContainerId: "successful", IsDeposit: true, Succeeded: true),
+            (ContainerId: "replenishment-source", IsDeposit: false, Succeeded: true),
+            (ContainerId: "failed-deposit", IsDeposit: true, Succeeded: false),
+            (ContainerId: "unplanned", IsDeposit: false, Succeeded: false)
+        };
+        foreach (var outcome in outcomes.Where(value => value.IsDeposit && value.Succeeded))
+        {
+            touched.Add(outcome.ContainerId);
+        }
+
+        SequenceEqual(new[] { "successful" }, touched.OrderedIds,
+            "only committed deposit destinations are eligible for one end-of-transaction sort");
+    }
+
     private static void EmptyInventorySortsWithoutPlacements()
     {
         var inventory = Player(8);
@@ -327,7 +363,7 @@ internal static class Program
         Valid(PlanValidator.ValidateSortConservation(inventory, plan));
     }
 
-    private static void SortPlacesReservationServedStacksAfterOrdinaryStacks()
+    private static void SortPlacesReservationServedStacksBeforeOrdinaryStacks()
     {
         var inventory = Player(6,
             Item("apple-a", "apple", "Apple", 40, 50, 1, resourceItemName: "Apple"),
@@ -341,11 +377,52 @@ internal static class Program
         var plan = new InventorySortPlanner().Plan(inventory, allocations);
         Equal(3, plan.Placements.Count, "minimal packed stack count is preserved");
         Placement(plan, 0, "apple", 50, false);
-        Placement(plan, 1, "wood", 1, false);
-        Placement(plan, 2, "apple", 10, false);
-        Equal(0, plan.Placements.Single(item => item.Slot == 0).ReservationQuantity, "ordinary apple stack stays in the ordinary region");
-        Equal(10, plan.Placements.Single(item => item.Slot == 2).ReservationQuantity, "reserved apple stack moves to the final sortable position");
+        Placement(plan, 1, "apple", 10, false);
+        Placement(plan, 2, "wood", 1, false);
+        Equal(10, plan.Placements.Single(item => item.Slot == 0).ReservationQuantity, "front packed apple stack carries the exact reserved share");
+        Equal(0, plan.Placements.Single(item => item.Slot == 1).ReservationQuantity, "second apple stack remains ordinary");
+        True(plan.Placements.Where(item => !item.IsFixed).TakeWhile(item => item.ReservationQuantity > 0).Any(),
+            "positive reservation placements lead the sortable region");
         Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
+    private static void SortReservationBoundaryUsesExactPartialFrontShare()
+    {
+        var inventory = Player(7,
+            Item("fixed", "wood", "Wood", 50, 50, 0, protectedSlot: true, target: 50, resourceItemName: "Wood"),
+            Item("wood-a", "wood", "Wood", 50, 50, 3, resourceItemName: "Wood"),
+            Item("wood-b", "wood", "Wood", 50, 50, 4, resourceItemName: "Wood"),
+            Item("wood-c", "wood", "Wood", 20, 50, 5, resourceItemName: "Wood"));
+        var allocations = new[]
+        {
+            new ReservationSlotAllocation(3, "wood", "Wood", 1, 50),
+            new ReservationSlotAllocation(4, "wood", "Wood", 1, 10)
+        };
+
+        var plan = new InventorySortPlanner().Plan(inventory, allocations);
+        Equal(50, plan.Placements.Single(item => item.Slot == 0).Quantity, "fixed personal target stays in its protected slot");
+        True(plan.Placements.Single(item => item.Slot == 0).IsFixed, "front never means overwriting a fixed slot");
+        Equal(50, plan.Placements.Single(item => item.Slot == 1).ReservationQuantity, "first sortable duplicate is fully reserved");
+        Equal(10, plan.Placements.Single(item => item.Slot == 2).ReservationQuantity, "boundary duplicate shows only the exact partial share");
+        Equal(0, plan.Placements.Single(item => item.Slot == 3).ReservationQuantity, "remaining duplicate is ordinary");
+        Valid(PlanValidator.ValidateSortConservation(inventory, plan));
+    }
+
+    private static void SortReservationRemovalRestoresOrdinaryOrdering()
+    {
+        var inventory = Player(5,
+            Item("wood", "wood", "Wood", 10, 50, 3, resourceItemName: "Wood"),
+            Item("apple", "apple", "Apple", 10, 50, 4, resourceItemName: "Apple"));
+        var reserved = new InventorySortPlanner().Plan(inventory, new[]
+        {
+            new ReservationSlotAllocation(3, "wood", "Wood", 1, 5)
+        });
+        var released = new InventorySortPlanner().Plan(inventory);
+
+        Equal("wood", reserved.Placements.Single(item => item.Slot == 0).CompatibilityKey, "reserved wood moves to the sortable front");
+        Equal("apple", released.Placements.Single(item => item.Slot == 0).CompatibilityKey, "after release ordinary alphabetical ordering is restored");
+        True(released.Placements.All(item => item.ReservationQuantity == 0), "release removes every reserved share");
+        Valid(PlanValidator.ValidateSortConservation(inventory, released));
     }
 
     private static void SortStillMovesNonStackableItems()
@@ -453,7 +530,7 @@ internal static class Program
         Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
     }
 
-    private static void ReservationTargetsUseTailStacksBeforeDepositingExcess()
+    private static void ReservationTargetsUseFrontStacksBeforeDepositingExcess()
     {
         var player = Player(4,
             Item("wood-ordinary", "wood", "Wood", 10, 50, 1, resourceItemName: "Wood"),
@@ -466,10 +543,10 @@ internal static class Program
             new[] { chest },
             reservationRequirements: new[] { new ResourceRequirement("Wood", 10, -1) });
 
-        Equal(3, plan.ReservationAllocations.Single().PlayerSlot, "reservation attribution starts at the sortable tail");
-        Equal(10, plan.ReservationAllocations.Single().Quantity, "tail stack serves the complete reservation");
-        Equal(1, plan.Steps.Single().Source.Slot, "ordinary earlier stack is the deposited excess");
-        Equal(10, plan.Steps.Single().Quantity, "only the earlier ordinary stack is deposited");
+        Equal(1, plan.ReservationAllocations.Single().PlayerSlot, "reservation attribution starts at the sortable front");
+        Equal(10, plan.ReservationAllocations.Single().Quantity, "front stack serves the complete reservation");
+        Equal(3, plan.Steps.Single().Source.Slot, "later ordinary stack is the deposited excess");
+        Equal(10, plan.Steps.Single().Quantity, "only the later ordinary stack is deposited");
         Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
     }
 

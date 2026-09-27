@@ -493,6 +493,35 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('RequireMethod(failures, typeof(ZNet), "GetWorldUID")', gate)
         self.assertIn('RequireField(failures, typeof(InventoryGui), "m_container")', gate)
 
+    def test_quick_stack_sorts_each_successfully_touched_enabled_destination_once_at_safe_end(self):
+        executor = (PLUGIN_DIR / "TransferExecutor.cs").read_text(encoding="utf-8")
+        sorter = (PLUGIN_DIR / "QuickStackDestinationSorter.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+
+        tracker = (ROOT / "src" / "Stackmaster.Core" / "SuccessfulDepositDestinationSet.cs").read_text(encoding="utf-8")
+        self.assertIn("var touchedDestinationIds = new SuccessfulDepositDestinationSet()", executor)
+        self.assertIn("touchedDestinationIds.Add(containerId)", executor)
+        self.assertIn("touchedDestinationIds.OrderedIds", executor)
+        self.assertIn("if (_seen.Add(containerId))", tracker)
+        self.assertIn("result.DepositedUnits += step.Quantity", executor)
+        self.assertIn("QuickStackDestinationSorter.SortTouched", executor)
+        self.assertLess(executor.index("foreach (var step in plan.Steps)"),
+                        executor.index("QuickStackDestinationSorter.SortTouched"))
+        self.assertIn("if (!result.FatalPostconditionFailure)", executor)
+        self.assertIn("result.FailedContainers.ContainsKey(containerId)", sorter)
+        self.assertIn("TransferExecutor.RevalidateAndOwn", sorter)
+        self.assertIn("expectedDataRevision", sorter)
+        self.assertIn("ChestSortPreferences.TryGet(handle.Container", sorter)
+        self.assertIn("|| !enabled", sorter)
+        self.assertIn("SortExecutor.Sort(handle.Container.GetInventory(), false, null, null", sorter)
+        self.assertIn("SortedDestinationContainerIds.Add(containerId)", sorter)
+        self.assertIn("DestinationSortFailures[containerId]", sorter)
+        self.assertIn("Quick Stack destination auto-sort skipped safely", sorter)
+        self.assertNotIn("OwnershipCoordinator.Begin", sorter)
+        self.assertNotIn("SetOwner", sorter)
+        self.assertLess(action.index("TransferExecutor.Execute"),
+                        action.index("OwnershipLeaseManager.ReleaseBatch", action.index("TransferExecutor.Execute")))
+
     def test_enabled_chest_sorts_on_open_and_close_without_sorting_player_on_close(self):
         integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
         hide_patch = integration[integration.index("internal static class InventoryGuiHidePatch"):]
@@ -1342,6 +1371,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("it was left unchanged", ui)
         self.assertIn("RectMask2D", ui)
         self.assertIn("HorizontalLayoutGroup", ui)
+        self.assertIn("rootRect.anchorMin = new Vector2(1f, 1f)", ui)
+        self.assertIn("rootRect.pivot = new Vector2(0f, 1f)", ui)
+        self.assertIn("rootRect.anchoredPosition = new Vector2(8f, 0f)", ui)
+        self.assertIn("Screen.safeArea", ui)
+        self.assertIn("playerRect.GetWorldCorners(corners)", ui)
+        self.assertIn("playerRect.lossyScale.x", ui)
+        self.assertIn("UpdateGeometry(gui)", ui)
+        self.assertNotIn("rootRect.anchoredPosition = new Vector2(0f, 8f)", ui)
         self.assertIn("ZNetScene.instance.GetPrefab", ui)
         self.assertIn("Disable(\"Reservation icons could not be refreshed safely\"", ui)
         self.assertIn("CompatibilityGate.EvaluateExpeditionReservationUi()", ui)
@@ -1352,14 +1389,27 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn('"m_icon"', critical_gate)
         self.assertIn('typeof(Piece), "m_icon", typeof(Sprite), false', optional_gate)
         self.assertIn("ExpeditionBorderColor", inventory)
-        self.assertIn('quantityLabel.text = "R" + reservedQuantity', inventory)
+        self.assertIn("quantityLabel.text = reservedQuantity.ToString()", inventory)
+        self.assertNotIn('quantityLabel.text = "R" + reservedQuantity', inventory)
+        expedition_start = inventory.index("private sealed class ExpeditionOverlay")
+        failed_start = inventory.index("private sealed class FailedDepositOverlay", expedition_start)
+        expedition_overlay = inventory[expedition_start:failed_start]
+        self.assertIn("TextAlignmentOptions.TopLeft", expedition_overlay)
+        self.assertIn("quantityRect.anchorMin = new Vector2(0f, 1f)", expedition_overlay)
+        self.assertIn("quantityRect.anchoredPosition = new Vector2(3f, -2f)", expedition_overlay)
+        self.assertIn("quantityRect.sizeDelta = new Vector2(26f, 18f)", expedition_overlay)
+        self.assertIn("rootRect.offsetMin = new Vector2(2f, 2f)", expedition_overlay)
+        failed_overlay = inventory[failed_start:inventory.index("private sealed class ProtectionOverlay", failed_start)]
+        self.assertIn("TextAlignmentOptions.TopRight", failed_overlay)
+        self.assertIn("rootRect.offsetMin = Vector2.zero", failed_overlay)
+        self.assertIn("quantityRect.anchoredPosition = new Vector2(-3f, -2f)", failed_overlay)
         self.assertIn("ExpeditionMaterialVisuals.TryAllocate", inventory)
         self.assertIn("RefreshExpeditionOverlay(element, item, expeditionAllocations)", inventory)
         self.assertIn("DisableExpeditionOverlays(exception)", inventory)
         self.assertIn("Optional orange decoration cleanup must not affect protection indicators", inventory)
         self.assertIn("!item.IsFixed", visuals)
         self.assertIn("item.ResourceItemName", visuals)
-        self.assertIn("OrderByDescending(item => item.Slot)", visuals)
+        self.assertIn("OrderBy(item => item.Slot)", visuals)
 
     def test_expedition_reservations_drive_quick_stack_sorting_and_failed_warning_exclusions(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
@@ -1386,7 +1436,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("reservationRequirements", planner)
         self.assertIn("PlanReservationRetention", planner)
         self.assertIn("Math.Max(0, source.Quantity - reservationQuantity)", planner)
-        self.assertIn("ordinaryPlacements.Concat(reservationPlacements)", sort_planner)
+        self.assertIn("reservationPlacements.Concat(ordinaryPlacements)", sort_planner)
 
     def test_failed_deposit_warning_is_ephemeral_pointer_driven_and_quantity_exact(self):
         warnings = (PLUGIN_DIR / "FailedDepositWarnings.cs").read_text(encoding="utf-8")

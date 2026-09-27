@@ -867,19 +867,19 @@ namespace Stackmaster
                 var quantityLabel = Object.Instantiate(element.m_amount, root.transform, false);
                 quantityLabel.gameObject.name = "ReservedQuantity";
                 quantityLabel.gameObject.SetActive(true);
-                quantityLabel.alignment = TextAlignmentOptions.BottomLeft;
+                quantityLabel.alignment = TextAlignmentOptions.TopLeft;
                 quantityLabel.textWrappingMode = TextWrappingModes.NoWrap;
-                quantityLabel.fontSize = Mathf.Max(11f, quantityLabel.fontSize * 0.72f);
+                quantityLabel.fontSize = Mathf.Max(12f, quantityLabel.fontSize * 0.8f);
                 quantityLabel.color = ExpeditionBorderColor;
                 quantityLabel.outlineColor = new Color32(48, 15, 0, 255);
                 quantityLabel.outlineWidth = 0.22f;
                 quantityLabel.raycastTarget = false;
                 var quantityRect = quantityLabel.rectTransform;
-                quantityRect.anchorMin = Vector2.zero;
-                quantityRect.anchorMax = Vector2.zero;
-                quantityRect.pivot = Vector2.zero;
-                quantityRect.anchoredPosition = new Vector2(3f, 2f);
-                quantityRect.sizeDelta = new Vector2(34f, 18f);
+                quantityRect.anchorMin = new Vector2(0f, 1f);
+                quantityRect.anchorMax = new Vector2(0f, 1f);
+                quantityRect.pivot = new Vector2(0f, 1f);
+                quantityRect.anchoredPosition = new Vector2(3f, -2f);
+                quantityRect.sizeDelta = new Vector2(26f, 18f);
 
                 root.SetActive(false);
                 return new ExpeditionOverlay(root, quantityLabel);
@@ -889,7 +889,7 @@ namespace Stackmaster
             {
                 if (_root == null) return;
                 _root.SetActive(visible);
-                if (visible) _quantityLabel.text = "R" + reservedQuantity;
+                if (visible) _quantityLabel.text = reservedQuantity.ToString();
             }
 
             internal void Destroy()

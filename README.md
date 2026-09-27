@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Test-candidate status:** 1.3.1 adds a narrow Quick Stack rule on top of the 1.3.0 reservation candidate: items whose canonical Valheim maximum stack size is 1 or less stay carried and are never attempted for deposit. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.2 keeps the verified non-stackable Quick Stack exclusion and polishes reservations: the strip sits beside the inventory, exact orange quantities lead the sortable backpack, and successfully changed opted-in destination chests sort once after Quick Stack. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
 
 ## About this project
 
@@ -55,7 +55,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
 - **Inventory sorting**
   - Sorts movable backpack slots alphabetically whenever the inventory opens.
   - Adds an **Auto-sort chest** checkbox beneath each supported opened vanilla chest.
-  - Sorts an enabled chest when its UI opens and again when it closes, so removing items does not require a reopen to restore order.
+  - Sorts an enabled chest when its UI opens and again when it closes, and once after a Quick Stack that actually deposits into it.
   - Remembers disabled chests locally per player, world, and chest without writing preferences to shared world state or affecting other players.
   - Keeps the whole quick bar, equipped items, and protected stacks fixed.
 - **One consistent storage scope**
@@ -75,6 +75,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - A remembered destination is only a local hint: it must still be loaded, inside the active scope, accessible, idle, compatible, and exactly the same network chest at execution time. Missing, destroyed, unloaded, blocked, busy, full, or otherwise ineligible destinations leave the item safely in the player inventory.
   - Current matching destinations always win. If one accepts even part of a stack, Quick Stack does not open a second route to the remembered chest for the remainder.
   - Marks only the eligible quantity that survived a failed or partial deposit with a red border and `!quantity`; quick-bar, equipped, protection-only, and target-retained quantities are excluded. The warning follows the surviving item through sorting and clears when that exact item is hovered once or the inventory closes.
+  - Sorts each distinct destination chest that actually accepted a deposit at most once at the safe end of the action, and only when that chest’s existing **Auto-sort chest** preference is enabled. Failed, untouched, unavailable, and disabled destinations are skipped.
   - Shows every result as a short three-line bullet list for deposited, replenished, and left-behind quantities, including zeros.
   - Leaves unmatched items and overflow safely in the player inventory.
   - Uses the configured Quick Stack modifier for two distinct inventory controls: left-click instantly protects or fully unprotects an item, while right-click opens target entry for stackable items.
@@ -97,9 +98,9 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
   - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity.
   - After a successful committed grab, records one durable reservation for that piece. Repeated grabs of the same piece increase its count; failed or rolled-back grabs record nothing.
-  - Shows reserved-piece icons and counts in a horizontal row above the player inventory. Clicking one icon releases exactly one reservation and never moves items or starts Quick Stack.
+  - Shows reserved-piece icons and counts in a horizontal strip immediately to the right of the player inventory, top-aligned and clipped to the available safe screen width. Clicking one icon releases exactly one reservation and never moves items or starts Quick Stack.
   - Building a reserved piece does not consume its reservation; it remains until explicitly released.
-  - Marks the exact reservation-served quantities in orange with `Rquantity`. Player sorting places those quantities in the final available sortable positions, after ordinary movable stacks.
+  - Marks only the exact reservation-served share in orange with a plain upper-left quantity matching the personal-target label layout. Player sorting places every positive reservation-backed stack at the front of the movable sortable region before ordinary stacks; fixed quick-bar, equipped, and protected slots remain untouched.
 - **Safety**
   - Reads nearby build and craft totals without claiming chest ownership.
   - Requests ownership only for required chests, then rechecks active-scope membership, access, ownership, chest use, serialized revision, stack identity, and quantity before removal.

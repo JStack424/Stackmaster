@@ -83,9 +83,9 @@ namespace Stackmaster
                     .Where(item => !item.IsFixed &&
                                    string.Equals(item.ResourceItemName, requirement.ItemName, StringComparison.Ordinal) &&
                                    (requirement.Quality < 0 || item.ResourceQuality == requirement.Quality))
-                    // Attribute from the end so the same stacks the sorter moves to the tail are
-                    // the ones that receive the orange quantity label before and after sorting.
-                    .OrderByDescending(item => item.Slot))
+                    // Attribute from the front so the same minimum number of stacks the sorter
+                    // places first receive the exact orange quantity before and after sorting.
+                    .OrderBy(item => item.Slot))
                 {
                     if (remaining == 0) break;
                     var available = remainingBySlot[item.Slot];

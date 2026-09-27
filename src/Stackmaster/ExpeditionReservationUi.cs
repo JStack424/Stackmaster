@@ -46,11 +46,11 @@ namespace Stackmaster
                 _root.transform.SetParent(gui.m_player, false);
                 _root.transform.SetAsLastSibling();
                 var rootRect = (RectTransform)_root.transform;
-                rootRect.anchorMin = new Vector2(0f, 1f);
+                rootRect.anchorMin = new Vector2(1f, 1f);
                 rootRect.anchorMax = new Vector2(1f, 1f);
-                rootRect.pivot = new Vector2(0.5f, 0f);
-                rootRect.anchoredPosition = new Vector2(0f, 8f);
-                rootRect.sizeDelta = new Vector2(0f, 54f);
+                rootRect.pivot = new Vector2(0f, 1f);
+                rootRect.anchoredPosition = new Vector2(8f, 0f);
+                rootRect.sizeDelta = new Vector2(120f, 54f);
                 var panel = _root.GetComponent<Image>();
                 panel.color = PanelColor;
                 panel.raycastTarget = false;
@@ -114,6 +114,7 @@ namespace Stackmaster
                 scroll.inertia = false;
                 scroll.scrollSensitivity = 24f;
 
+                UpdateGeometry(gui);
                 _root.SetActive(false);
             }
             catch (Exception exception)
@@ -144,6 +145,7 @@ namespace Stackmaster
                     return;
                 }
 
+                UpdateGeometry(gui);
                 ClearButtons();
                 foreach (var record in records.OrderBy(value => value.DisplayName, StringComparer.OrdinalIgnoreCase)
                              .ThenBy(value => value.PieceKey, StringComparer.Ordinal))
@@ -178,6 +180,27 @@ namespace Stackmaster
             _content = null;
             _label = null;
             _gui = null;
+        }
+
+        private static void UpdateGeometry(InventoryGui gui)
+        {
+            if (_root == null || gui == null || gui.m_player == null) return;
+
+            var playerRect = gui.m_player as RectTransform;
+            if (playerRect == null) return;
+
+            var corners = new Vector3[4];
+            playerRect.GetWorldCorners(corners);
+            var scaleX = Mathf.Abs(playerRect.lossyScale.x);
+            if (scaleX <= 0.0001f) return;
+
+            // Valheim's inventory canvas is screen-space. Convert the safe-area room to the
+            // player's local UI units using its actual transform scale, so the strip stays beside
+            // the inventory at different resolutions and UI scale settings without needing an
+            // additional Unity UI module dependency.
+            var availableScreenPixels = Screen.safeArea.xMax - corners[2].x;
+            var width = Mathf.Max(0f, availableScreenPixels / scaleX - 16f);
+            ((RectTransform)_root.transform).sizeDelta = new Vector2(width, 54f);
         }
 
         private static void CreateButton(ExpeditionReservationRecord record)

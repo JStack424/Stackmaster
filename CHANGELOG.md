@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.2 (local test candidate)
+
+Reservation presentation, ordering, and Quick Stack destination sorting polish on top of 1.3.1. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
+
+- Moves the horizontally scrollable reservation strip from above the inventory to the inventory's immediate right, top-aligned and sized to the available safe screen width so it no longer clips off the top.
+- Orange reservation attribution now starts at the front of carried movable stacks and uses the minimum exact number of stacks needed; a partial boundary stack shows only its reserved share.
+- Player sorting places every stack with a positive reservation-backed share at the front of the sortable region in deterministic order, followed by ordinary movable stacks. Fixed quick-bar, equipped, and protected slots remain untouched.
+- Orange quantity labels now use the same upper-left geometry as personal-target quantities, display only the number with no `R` prefix, and retain distinct orange styling.
+- Releasing a reservation removes its attribution and returns formerly reserved stacks to ordinary sorting on the next player sort. Personal targets and reservations remain additive.
+- After Quick Stack finishes depositing, every distinct destination chest that actually accepted at least one item is considered exactly once for sorting. It sorts only when that chest's existing local **Auto-sort chest** preference is enabled.
+- Destination sorting runs after all deposits while exact action ownership is still held, with fresh identity, revision, scope, access, use, and ownership validation. Untouched, failed, unavailable, or disabled chests are skipped. A sort failure rolls back only the sort attempt and never undoes a successful deposit.
+- The once-per-touched-chest design adds one constant-time set insertion per successful deposit step plus one bounded existing chest-sort pass per distinct changed opted-in chest; it adds no per-frame scan or ownership request.
+
 ## 1.3.1 (local test candidate)
 
 Narrow Quick Stack patch on top of the complete 1.3.0 reservation candidate. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
@@ -20,13 +33,13 @@ Integrated durable **Quick Grab Materials reservations** with Quick Stack, playe
 - Repeated grabs of the same stable piece-prefab identity increment a count. Records are local, versioned, bounded, and isolated by exact player and world.
 - Reservation recipes use stable resource-prefab identity and exact material quality, then normalize and aggregate with checked multiplication across reserved piece counts.
 - Successfully building a reserved piece deliberately leaves its reservation unchanged. Reservations persist until explicitly released.
-- A horizontal row above the player inventory shows reserved-piece icons and counts. One ordinary icon click releases exactly one count; it moves no items and never starts Quick Stack.
+- A horizontal row above the player inventory shows reserved-piece icons and counts. One ordinary icon click releases exactly one count; it moves no items and never starts Quick Stack. (The row moved beside the inventory in 1.3.2.)
 - Quick Stack retains and replenishes reservation requirements in addition to explicit personal targets. A personal target of 50 wood plus reservations requiring 20 wood therefore keeps 70 total.
 - If the backpack starts full, Quick Stack can first deposit an ordinary eligible stack and then reuse that newly emptied slot for the additive reservation replenishment in the same validated plan.
 - Fixed quick-bar, equipped, and explicitly protected quantities remain personal. Reservation stock is assigned only to movable stacks or legal empty backpack slots.
 - Reservation-served quantities are excluded from deposits and failed-deposit warnings. Capacity or stock shortages leave the genuinely missing reservation quantity reported without inventing an allocation.
-- Player sorting keeps fixed slots untouched and places reservation-served quantities in the final available sortable positions after every ordinary-only movable stack.
-- Reservation-served material quantities use a distinct orange border and `Rquantity` label. Optional reservation-row or orange-highlight failures cannot mutate items or disable the existing blue protection overlays.
+- Player sorting keeps fixed slots untouched and places reservation-served quantities in the final available sortable positions after every ordinary-only movable stack. (Superseded by front ordering in 1.3.2.)
+- Reservation-served material quantities use a distinct orange border and `Rquantity` label. Optional reservation-row or orange-highlight failures cannot mutate items or disable the existing blue protection overlays. (The `R` prefix was removed in 1.3.2.)
 - Missing piece prefabs render a harmless fallback icon, and malformed or unavailable reservation state fails closed before reservation-aware item movement or player sorting.
 - The startup compatibility gate now validates the piece-name field required for persistent identity. The piece-icon field is checked separately so a changed optional icon contract disables only the reservation strip, never gameplay.
 - Reservation persistence remains a post-commit observer: a write failure cannot roll back or invalidate an already successful Quick Grab. Its in-session reservation stays active, while further reservation writes fail closed for that session.

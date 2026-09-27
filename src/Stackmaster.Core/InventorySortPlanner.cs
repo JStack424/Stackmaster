@@ -11,9 +11,10 @@ namespace Stackmaster.Core
 
         /// <summary>
         /// Sorts an inventory while carrying expedition-reservation attribution through the move.
-        /// Within each compatibility group ordinary movable units fill first and reservation-served
-        /// units occupy the tail of the group's final sortable placements. This preserves the
-        /// minimum legal stack count while giving the runtime exact orange-highlight metadata.
+        /// Within each compatibility group reservation-served units fill from the front of the
+        /// group's final sortable placements. Every placement with a positive exact reserved share
+        /// is placed before ordinary movable entries, without using any fixed or reserved slot.
+        /// This preserves the minimum legal stack count and exact orange-highlight metadata.
         /// </summary>
         public SortPlan Plan(
             InventorySnapshot inventory,
@@ -67,12 +68,12 @@ namespace Stackmaster.Core
                     remaining -= quantity;
                 }
 
-                // Attribute reservation units from the last stack backwards. A boundary stack may
-                // contain ordinary and reserved units together so sorting never increases the
-                // minimum legal stack count. Every stack with any reserved units is then placed
-                // after every ordinary-only stack across the whole sortable inventory.
+                // Attribute reservation units from the first packed stack forward. A boundary
+                // stack may contain ordinary and reserved units together so sorting never increases
+                // the minimum legal stack count. Every stack with a positive reserved share is then
+                // placed before every ordinary-only stack across the sortable inventory.
                 var reservationRemaining = group.ReservationQuantity;
-                for (var index = groupPlacements.Count - 1; index >= 0 && reservationRemaining > 0; index--)
+                for (var index = 0; index < groupPlacements.Count && reservationRemaining > 0; index++)
                 {
                     var draft = groupPlacements[index];
                     draft.ReservationQuantity = Math.Min(draft.Quantity, reservationRemaining);
@@ -86,7 +87,7 @@ namespace Stackmaster.Core
             }
 
             var freeSlotIndex = 0;
-            foreach (var draft in ordinaryPlacements.Concat(reservationPlacements))
+            foreach (var draft in reservationPlacements.Concat(ordinaryPlacements))
             {
                 if (freeSlotIndex >= freeSlots.Count)
                     throw new InvalidOperationException("The sorted inventory would require more slots than the source inventory.");
