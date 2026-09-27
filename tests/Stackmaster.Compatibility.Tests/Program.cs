@@ -631,6 +631,10 @@ namespace Stackmaster.Compatibility.Tests
             {
                 var updatePlacement = FindMethodHandle("Player", "UpdatePlacement", new[] { "System.Boolean", "System.Single" });
                 var tryPlace = FindMethodHandle("Player", "TryPlacePiece", new[] { "Piece" });
+                var freeBuildKey = FindMethodHandle(
+                    "Piece", "FreeBuildKey", "GlobalKeys", Array.Empty<string>());
+                var getGlobalKey = FindMethodHandle(
+                    "ZoneSystem", "GetGlobalKey", "System.Boolean", new[] { "GlobalKeys" });
                 var consumeResources = FindMethodHandle(
                     "Player", "ConsumeResources", new[] { "Requirement[]", "System.Int32", "System.Int32", "System.Int32" });
                 var il = MethodIl(updatePlacement);
@@ -639,11 +643,45 @@ namespace Stackmaster.Compatibility.Tests
                 if (tryPlaceCalls.Count != 1 || consumeCalls.Count != 1 || consumeCalls[0] <= tryPlaceCalls[0])
                 {
                     throw new InvalidOperationException(
-                        "Player.UpdatePlacement must consume build resources after exactly one TryPlacePiece call");
+                        "Player.UpdatePlacement must contain exactly one ordered TryPlacePiece/ConsumeResources pair");
+                }
+
+                var tryPlaceCall = tryPlaceCalls[0];
+                var consumeCall = consumeCalls[0];
+                int failedPlacementTarget;
+                if (!TryReadConditionalBranchTarget(
+                        il, NextNonNop(il, tryPlaceCall + 5), branchWhenTrue: false, out failedPlacementTarget) ||
+                    failedPlacementTarget < consumeCall + 5)
+                {
+                    throw new InvalidOperationException(
+                        "Player.UpdatePlacement must skip material consumption when TryPlacePiece returns false");
+                }
+
+                var freeBuildCalls = FindCallOffsets(il, MetadataTokens.GetToken(freeBuildKey))
+                    .Where(offset => offset > tryPlaceCall && offset < consumeCall)
+                    .ToArray();
+                var globalKeyCalls = FindCallOffsets(il, MetadataTokens.GetToken(getGlobalKey))
+                    .Where(offset => offset > tryPlaceCall && offset < consumeCall)
+                    .ToArray();
+                if (freeBuildCalls.Length != 1 || globalKeyCalls.Length != 1 ||
+                    globalKeyCalls[0] <= freeBuildCalls[0])
+                {
+                    throw new InvalidOperationException(
+                        "Player.UpdatePlacement free-build material-consumption guard shape mismatch");
+                }
+
+                int freeBuildTarget;
+                if (!TryReadConditionalBranchTarget(
+                        il, NextNonNop(il, globalKeyCalls[0] + 5), branchWhenTrue: true, out freeBuildTarget) ||
+                    freeBuildTarget < consumeCall + 5)
+                {
+                    throw new InvalidOperationException(
+                        "Player.UpdatePlacement must skip material consumption when the piece free-build key is active");
                 }
 
                 _passed++;
-                Console.WriteLine("PASS IL successful placement consumes resources after TryPlacePiece");
+                Console.WriteLine(
+                    "PASS IL normal-cost successful placement consumes after TryPlacePiece and free-build skips consumption");
             }
 
             internal void RequirementCallSite(
@@ -894,6 +932,35 @@ namespace Stackmaster.Compatibility.Tests
                         offsets.Add(index);
                 }
                 return offsets;
+            }
+
+            private static int NextNonNop(byte[] il, int offset)
+            {
+                while (offset < il.Length && il[offset] == 0x00) offset++;
+                return offset;
+            }
+
+            private static bool TryReadConditionalBranchTarget(
+                byte[] il,
+                int offset,
+                bool branchWhenTrue,
+                out int target)
+            {
+                target = -1;
+                if (offset < 0 || offset >= il.Length) return false;
+                var shortOpcode = branchWhenTrue ? (byte)0x2d : (byte)0x2c;
+                var longOpcode = branchWhenTrue ? (byte)0x3a : (byte)0x39;
+                if (il[offset] == shortOpcode && offset + 1 < il.Length)
+                {
+                    target = offset + 2 + unchecked((sbyte)il[offset + 1]);
+                    return target >= 0 && target <= il.Length;
+                }
+                if (il[offset] == longOpcode && offset + 4 < il.Length)
+                {
+                    target = offset + 5 + BitConverter.ToInt32(il, offset + 1);
+                    return target >= 0 && target <= il.Length;
+                }
+                return false;
             }
 
             private static int ReadToken(byte[] il, int offset) => BitConverter.ToInt32(il, offset);

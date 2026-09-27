@@ -2853,12 +2853,19 @@ namespace Stackmaster
             Player __instance,
             [HarmonyArgument(0)] Piece piece,
             bool ___m_noPlacementCost,
-            ref bool __result)
+            ref bool __result,
+            ref bool __state)
         {
-            if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
-                !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
-                ResourceActionContext.Current != ResourceActionKind.Building || ___m_noPlacementCost ||
-                (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey())))
+            // A placed piece consumes a reservation only when this placement is expected to run
+            // vanilla material consumption. Creative/no-cost placement still creates a world
+            // piece, but it must not spend saved build intent. A disabled compatibility contract
+            // must likewise leave reservation state untouched.
+            var compatible = RuntimeContext.Compatibility.IsCompatible && RuntimeContext.Plugin != null;
+            __state = compatible && !___m_noPlacementCost &&
+                      !(ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey()));
+
+            if (!compatible || !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
+                ResourceActionContext.Current != ResourceActionKind.Building || !__state)
             {
                 return true;
             }
@@ -2878,17 +2885,20 @@ namespace Stackmaster
         internal static void Postfix(
             Player __instance,
             [HarmonyArgument(0)] Piece piece,
-            bool __result)
+            bool __result,
+            bool __state)
         {
             if (!__result)
             {
                 ResourceTransactionContext.Rollback();
                 return;
             }
+            if (!__state) return;
 
             // TryPlacePiece is the authoritative creation success. Record its exact selected
-            // prefab now, but defer the durable decrement until UpdatePlacement has subsequently
-            // completed vanilla material consumption. Repair/removal/crafting never enter here.
+            // prefab now, but only for a material-cost placement, and defer the durable decrement
+            // until UpdatePlacement has subsequently completed vanilla material consumption.
+            // Repair/removal/crafting never enter here.
             SuccessfulBuildReservationContext.RecordSuccessfulPlacement(__instance, piece);
         }
     }

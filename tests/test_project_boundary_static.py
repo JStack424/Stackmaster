@@ -1392,6 +1392,13 @@ class ProjectBoundaryTests(unittest.TestCase):
         completion = nearby[nearby.index("internal sealed class SuccessfulBuildCompletionState"):nearby.index("internal static class NearbyResourceRemovalPatch")]
         self.assertIn("if (!__result)", placement)
         self.assertIn("ResourceTransactionContext.Rollback();", placement)
+        self.assertIn("__state = compatible && !___m_noPlacementCost", placement)
+        self.assertIn("ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey())", placement)
+        self.assertIn("if (!__state) return;", placement)
+        self.assertLess(
+            placement.index("if (!__state) return;"),
+            placement.index("SuccessfulBuildReservationContext.RecordSuccessfulPlacement(__instance, piece)"),
+        )
         self.assertIn("SuccessfulBuildReservationContext.RecordSuccessfulPlacement(__instance, piece)", placement)
         self.assertIn("ReferenceEquals(player, global::Player.m_localPlayer)", completion)
         self.assertIn("_reservationGate.TryHandle(placementSucceeded: true, isLocalPlayer: isLocalPlayer)", completion)
