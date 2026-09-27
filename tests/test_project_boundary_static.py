@@ -1298,6 +1298,7 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_expedition_reservations_persist_before_optional_full_grab_and_stay_policy_isolated(self):
         state = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationState.cs").read_text(encoding="utf-8")
         persistence = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationPersistence.cs").read_text(encoding="utf-8")
+        atomic_store = (PLUGIN_DIR / "AtomicReservationFileStore.cs").read_text(encoding="utf-8")
         runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
         action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
         context = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
@@ -1307,8 +1308,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("player.GetPlayerID()", runtime)
         self.assertIn("ZNet.instance.GetWorldUID()", runtime)
         self.assertIn("ExpeditionReservationState.TryParse", persistence)
-        self.assertIn("PlayerPrefs.SetString", runtime)
-        self.assertIn("PlayerPrefs.Save()", runtime)
+        self.assertIn("AtomicReservationFileStore.TryWrite", runtime)
+        self.assertIn("FileOptions.WriteThrough", atomic_store)
+        self.assertIn("stream.Flush(true)", atomic_store)
+        self.assertIn("File.Replace(temporary, destination, null)", atomic_store)
+        self.assertIn("File.Move(temporary, destination)", atomic_store)
+        self.assertIn("DestinationEquals(destination, candidatePayload)", atomic_store)
+        self.assertIn("PlayerPrefs.GetString", runtime)
+        self.assertNotIn("PlayerPrefs.SetString", runtime)
+        self.assertNotIn("PlayerPrefs.Save", runtime)
         self.assertIn('pieceKey = "prefab:" + prefabName', runtime)
         self.assertIn("TryGetStableRequirements", runtime)
         self.assertIn("CanRecordQuickGrab", runtime)
@@ -1342,9 +1350,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("reservation added without materials", action)
         self.assertNotIn("FailedDepositWarnings", action)
         self.assertLess(
-            runtime.index("PlayerPrefs.Save();", runtime.index("internal static bool TryAddQuickGrabReservation")),
+            runtime.index("AtomicReservationFileStore.TryWrite", runtime.index("internal static bool TryAddQuickGrabReservation")),
             runtime.index("_state = committed;"),
         )
+        stable_capture = runtime[
+            runtime.index("internal static bool TryGetStableRequirements"):
+            runtime.index("private static bool EnsureLoaded")
+        ]
+        self.assertIn("requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0", stable_capture)
+        self.assertNotIn("continue;", stable_capture)
 
         self.assertIn("MaximumRecords = 128", state)
         self.assertIn("AggregateRequirements()", state)
@@ -1370,9 +1384,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("TryGetRecords", runtime)
         self.assertIn("TryReleaseOne", runtime)
         self.assertIn("candidate.TryReleaseReservation(pieceKey, 1)", runtime)
-        self.assertIn("PlayerPrefs.SetString(_loadedKey, candidate.Serialize())", runtime)
+        self.assertIn("AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, candidate.Serialize())", runtime)
         self.assertLess(
-            runtime.index("PlayerPrefs.Save();", runtime.index("internal static bool TryReleaseOne")),
+            runtime.index("AtomicReservationFileStore.TryWrite", runtime.index("internal static bool TryReleaseOne")),
             runtime.index("_state = candidate;"),
         )
         self.assertIn("previousPayload", runtime)

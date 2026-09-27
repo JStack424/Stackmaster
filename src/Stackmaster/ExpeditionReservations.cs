@@ -126,27 +126,12 @@ namespace Stackmaster
                     {
                         try
                         {
-                            PlayerPrefs.SetString(_loadedKey, payload);
-                            PlayerPrefs.Save();
-                            return true;
+                            return AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, payload);
                         }
                         catch (Exception exception)
                         {
                             persistenceFailure = exception;
                             _writesHealthy = false;
-                            try
-                            {
-                                // Restore the prior PlayerPrefs cache as well as the active runtime
-                                // state. The candidate is never exposed unless the durable write
-                                // succeeds, so a failed save cannot create an in-memory-only count.
-                                PlayerPrefs.SetString(_loadedKey, previousPayload);
-                                PlayerPrefs.Save();
-                            }
-                            catch (Exception rollbackException)
-                            {
-                                RuntimeContext.Plugin?.Log.LogError(
-                                    "Quick Grab reservation add rollback could not be flushed: " + rollbackException);
-                            }
                             return false;
                         }
                     },
@@ -270,25 +255,16 @@ namespace Stackmaster
 
                 try
                 {
-                    PlayerPrefs.SetString(_loadedKey, candidate.Serialize());
-                    PlayerPrefs.Save();
+                    if (!AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, candidate.Serialize()))
+                    {
+                        _writesHealthy = false;
+                        LogFailureOnce("Quick Grab reservation release could not be saved and was left unchanged.");
+                        return false;
+                    }
                 }
                 catch (Exception exception)
                 {
                     _writesHealthy = false;
-                    try
-                    {
-                        // Restore the PlayerPrefs memory cache as well as the runtime state. A
-                        // best-effort second flush prevents a partially completed first save from
-                        // becoming the durable value later in the session.
-                        PlayerPrefs.SetString(_loadedKey, previousPayload);
-                        PlayerPrefs.Save();
-                    }
-                    catch (Exception rollbackException)
-                    {
-                        RuntimeContext.Plugin?.Log.LogError(
-                            "Quick Grab reservation release rollback could not be flushed: " + rollbackException);
-                    }
                     LogFailureOnce("Quick Grab reservation release could not be saved and was left unchanged: " + exception.GetType().Name);
                     return false;
                 }
@@ -372,7 +348,9 @@ namespace Stackmaster
                 {
                     if (requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0)
                     {
-                        continue;
+                        // A mixed valid/malformed live recipe must not be truncated into a
+                        // different reservation or partial material request.
+                        return false;
                     }
                     var prefab = requirement.m_resItem.gameObject;
                     var prefabName = prefab == null ? string.Empty : (prefab.name ?? string.Empty).Trim();
@@ -416,7 +394,18 @@ namespace Stackmaster
 
             try
             {
-                var raw = PlayerPrefs.GetString(key, string.Empty);
+                string raw;
+                bool fileExists;
+                if (!AtomicReservationFileStore.TryRead(key, out raw, out fileExists))
+                {
+                    return false;
+                }
+                if (!fileExists)
+                {
+                    // One-way compatibility read for reservations created by 1.3.0-1.3.2. The
+                    // first later mutation publishes the complete state through the atomic file.
+                    raw = PlayerPrefs.GetString(key, string.Empty);
+                }
                 ExpeditionReservationState parsed;
                 if (!ExpeditionReservationState.TryParse(raw, out parsed))
                 {
