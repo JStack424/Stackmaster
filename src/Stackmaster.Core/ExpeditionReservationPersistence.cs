@@ -7,6 +7,8 @@ namespace Stackmaster.Core
     {
         Added,
         Incremented,
+        Released,
+        NotFound,
         RecipeChanged,
         CapacityExceeded,
         PersistenceFailed
@@ -75,6 +77,48 @@ namespace Stackmaster.Core
             }
 
             committed = candidate;
+            return true;
+        }
+
+        public static bool TryReleaseDurably(
+            ExpeditionReservationState current,
+            string pieceKey,
+            Func<string, bool> persist,
+            out ExpeditionReservationState committed,
+            out ExpeditionReservationPersistenceResult result)
+        {
+            if (current == null) throw new ArgumentNullException(nameof(current));
+            if (persist == null) throw new ArgumentNullException(nameof(persist));
+
+            committed = current;
+            ExpeditionReservationState candidate;
+            if (!ExpeditionReservationState.TryParse(current.Serialize(), out candidate))
+            {
+                result = ExpeditionReservationPersistenceResult.PersistenceFailed;
+                return false;
+            }
+            if (!candidate.TryReleaseReservation(pieceKey, 1))
+            {
+                result = ExpeditionReservationPersistenceResult.NotFound;
+                return false;
+            }
+
+            try
+            {
+                if (!persist(candidate.Serialize()))
+                {
+                    result = ExpeditionReservationPersistenceResult.PersistenceFailed;
+                    return false;
+                }
+            }
+            catch
+            {
+                result = ExpeditionReservationPersistenceResult.PersistenceFailed;
+                return false;
+            }
+
+            committed = candidate;
+            result = ExpeditionReservationPersistenceResult.Released;
             return true;
         }
     }

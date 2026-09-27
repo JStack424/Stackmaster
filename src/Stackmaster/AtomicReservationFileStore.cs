@@ -56,8 +56,11 @@ namespace Stackmaster
                     {
                         File.Move(temporary, destination);
                     }
+                    // A successful same-directory replace/move is the publication commit point.
+                    // Do not turn that known success into an ambiguous failure if a subsequent
+                    // verification read is denied or transiently unavailable.
                     temporary = null;
-                    return DestinationEquals(destination, candidatePayload);
+                    return true;
                 }
                 catch
                 {

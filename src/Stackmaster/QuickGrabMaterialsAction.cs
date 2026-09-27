@@ -134,21 +134,15 @@ namespace Stackmaster
         internal PendingQuickGrabRequest(
             Player player,
             Piece piece,
-            string pieceKey,
-            string displayName,
             IReadOnlyList<ResourceRequirement> reservationRequirements)
         {
             Player = player;
             Piece = piece;
-            PieceKey = pieceKey;
-            DisplayName = displayName;
             ReservationRequirements = reservationRequirements;
         }
 
         internal Player Player { get; }
         internal Piece Piece { get; }
-        internal string PieceKey { get; }
-        internal string DisplayName { get; }
         internal IReadOnlyList<ResourceRequirement> ReservationRequirements { get; }
     }
 
@@ -186,7 +180,7 @@ namespace Stackmaster
                 return;
             }
             string reservationFailure;
-            if (!ExpeditionReservations.CanRecordQuickGrab(
+            if (!ExpeditionReservations.TryAddQuickGrabReservation(
                     player,
                     pieceKey,
                     displayName,
@@ -196,11 +190,12 @@ namespace Stackmaster
                 ShowFailure(reservationFailure);
                 return;
             }
+
+            // Persist each click synchronously before it can wait behind another transfer. A
+            // disconnect or shutdown may cancel the optional queued grab, but never its intent.
             PendingRequests.Enqueue(new PendingQuickGrabRequest(
                 player,
                 piece,
-                pieceKey,
-                displayName,
                 reservationRequirements));
             StartNext();
         }
@@ -228,39 +223,16 @@ namespace Stackmaster
             var piece = request.Piece;
             var generation = _generation;
             _running = true;
-            var reservationAdded = false;
             try
             {
-                string reservationFailure = null;
-                if (!ReservationRequirementsMatch(piece, request.ReservationRequirements) ||
-                    !ExpeditionReservations.CanRecordQuickGrab(
-                        player,
-                        request.PieceKey,
-                        request.DisplayName,
-                        request.ReservationRequirements,
-                        out reservationFailure))
+                // Intent was durably recorded synchronously at click time. Recipe drift after
+                // that point preserves the captured reservation but cancels material movement.
+                if (!ReservationRequirementsMatch(piece, request.ReservationRequirements))
                 {
-                    ShowFailure(reservationFailure ?? "the build-piece recipe changed");
+                    ShowReservationOnly("the build-piece recipe changed");
                     Complete(generation);
                     return;
                 }
-
-                // Persist intent before touching shared inventories. If persistence fails, the
-                // active state stays unchanged and no material movement is attempted. Once this
-                // succeeds, any later planning/ownership/capacity failure is a valid reservation-
-                // only outcome rather than a failed click.
-                if (!ExpeditionReservations.TryAddQuickGrabReservation(
-                        player,
-                        request.PieceKey,
-                        request.DisplayName,
-                        request.ReservationRequirements,
-                        out reservationFailure))
-                {
-                    ShowFailure(reservationFailure ?? "the reservation could not be saved");
-                    Complete(generation);
-                    return;
-                }
-                reservationAdded = true;
 
                 IReadOnlyList<ResourceRequirement> requirements;
                 NearbyResourceCapture capture;
@@ -316,14 +288,7 @@ namespace Stackmaster
             catch (Exception exception)
             {
                 RuntimeContext.Plugin?.Log.LogError("Quick-grab action stopped safely: " + exception);
-                if (reservationAdded)
-                {
-                    ShowReservationOnly("the material transfer stopped safely");
-                }
-                else
-                {
-                    RuntimeContext.ShowCenter("Stackmaster stopped safely; no reservation was added and no materials were moved.");
-                }
+                ShowReservationOnly("the material transfer stopped safely");
                 Complete(generation);
             }
         }

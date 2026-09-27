@@ -2743,25 +2743,105 @@ namespace Stackmaster
         }
     }
 
+    internal sealed class SuccessfulBuildCompletionState
+    {
+        private readonly SuccessfulPlacementReservationGate _reservationGate =
+            new SuccessfulPlacementReservationGate();
+
+        internal SuccessfulBuildCompletionState(Player player, ResourceActionKind previousAction)
+        {
+            Player = player;
+            PreviousAction = previousAction;
+        }
+
+        internal Player Player { get; }
+        internal Piece Piece { get; private set; }
+        internal ResourceActionKind PreviousAction { get; }
+
+        internal void RecordPlacement(Player player, Piece piece)
+        {
+            if (!ReferenceEquals(player, Player)) return;
+            var isLocalPlayer = ReferenceEquals(player, global::Player.m_localPlayer);
+            if (_reservationGate.TryHandle(placementSucceeded: true, isLocalPlayer: isLocalPlayer))
+            {
+                Piece = piece;
+            }
+        }
+
+        internal void ConsumeAfterCompletedAction()
+        {
+            if (Piece != null)
+            {
+                ExpeditionReservations.TryConsumeSuccessfulBuild(Player, Piece);
+            }
+        }
+    }
+
+    internal static class SuccessfulBuildReservationContext
+    {
+        [ThreadStatic]
+        private static SuccessfulBuildCompletionState _current;
+
+        internal static SuccessfulBuildCompletionState Begin(Player player, ResourceActionKind previousAction)
+        {
+            var state = new SuccessfulBuildCompletionState(player, previousAction);
+            _current = state;
+            return state;
+        }
+
+        internal static void RecordSuccessfulPlacement(Player player, Piece piece)
+        {
+            _current?.RecordPlacement(player, piece);
+        }
+
+        internal static void Complete(SuccessfulBuildCompletionState state)
+        {
+            if (state == null || !ReferenceEquals(_current, state)) return;
+            _current = null;
+            // UpdatePlacement reaches this postfix only after vanilla ConsumeResources and the
+            // Stackmaster resource transaction have completed. The world build is therefore the
+            // authoritative successful action whose exact reservation may now be decremented.
+            state.ConsumeAfterCompletedAction();
+        }
+
+        internal static void Cancel(SuccessfulBuildCompletionState state)
+        {
+            if (state != null && ReferenceEquals(_current, state))
+            {
+                _current = null;
+            }
+        }
+    }
+
     internal static class NearbyBuildingActionPatch
     {
-        internal static void Prefix(ref ResourceActionKind __state)
+        internal static void Prefix(Player __instance, ref SuccessfulBuildCompletionState __state)
         {
-            __state = ResourceActionContext.Enter(ResourceActionKind.Building);
+            var previousAction = ResourceActionContext.Enter(ResourceActionKind.Building);
+            __state = SuccessfulBuildReservationContext.Begin(__instance, previousAction);
         }
 
-        internal static void Postfix(ResourceActionKind __state)
+        internal static void Postfix(SuccessfulBuildCompletionState __state)
         {
-            ResourceTransactionContext.Complete(ResourceActionKind.Building);
-            ResourceActionContext.Restore(__state);
+            var materialsConsumed = ResourceTransactionContext.Complete(ResourceActionKind.Building);
+            if (materialsConsumed)
+            {
+                SuccessfulBuildReservationContext.Complete(__state);
+            }
+            else
+            {
+                SuccessfulBuildReservationContext.Cancel(__state);
+            }
+            ResourceActionContext.Restore(__state?.PreviousAction ?? ResourceActionKind.None);
         }
 
-        internal static Exception Finalizer(Exception __exception, ResourceActionKind __state)
+        internal static Exception Finalizer(Exception __exception, SuccessfulBuildCompletionState __state)
         {
             if (__exception != null)
             {
                 ResourceTransactionContext.Rollback();
-                ResourceActionContext.Restore(__state);
+                SuccessfulBuildReservationContext.Cancel(__state);
+                ResourceActionContext.Restore(__state?.PreviousAction ?? ResourceActionKind.None);
             }
             return __exception;
         }
@@ -2795,9 +2875,21 @@ namespace Stackmaster
             return false;
         }
 
-        internal static void Postfix(bool __result)
+        internal static void Postfix(
+            Player __instance,
+            [HarmonyArgument(0)] Piece piece,
+            bool __result)
         {
-            if (!__result) ResourceTransactionContext.Rollback();
+            if (!__result)
+            {
+                ResourceTransactionContext.Rollback();
+                return;
+            }
+
+            // TryPlacePiece is the authoritative creation success. Record its exact selected
+            // prefab now, but defer the durable decrement until UpdatePlacement has subsequently
+            // completed vanilla material consumption. Repair/removal/crafting never enter here.
+            SuccessfulBuildReservationContext.RecordSuccessfulPlacement(__instance, piece);
         }
     }
 

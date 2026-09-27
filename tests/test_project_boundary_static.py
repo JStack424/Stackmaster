@@ -236,7 +236,11 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("return !intercepting;", action)
         self.assertIn("PendingRequests.Enqueue(new PendingQuickGrabRequest(", action)
         self.assertIn("reservationRequirements));", action)
-        self.assertIn("ExpeditionReservations.CanRecordQuickGrab(", action)
+        self.assertIn("ExpeditionReservations.TryAddQuickGrabReservation(", action)
+        self.assertLess(
+            action.index("ExpeditionReservations.TryAddQuickGrabReservation("),
+            action.index("PendingRequests.Enqueue(new PendingQuickGrabRequest("),
+        )
         self.assertIn("ReferenceEquals(candidate.Player, Player.m_localPlayer)", action)
         self.assertIn("!ReferenceEquals(player, Player.m_localPlayer)", action)
         self.assertIn("return states.Length > 0 && states.All(state => state)", core)
@@ -1005,7 +1009,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         # metadata names such as Valheim's Recipe `piece` cannot break startup.
         bindings = [int(index) for index in re.findall(r"\[HarmonyArgument\((\d+)\)\]", nearby)]
         self.assertEqual(
-            [0, 1, 2, 3, 0, 1, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 0, 0, 1, 2, 3],
+            [0, 1, 2, 3, 0, 1, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 1, 2, 3],
             bindings,
         )
         self.assertNotIn("RecipePostfix(Player __instance, Recipe recipe", nearby)
@@ -1363,7 +1367,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("MaximumRecords = 128", state)
         self.assertIn("AggregateRequirements()", state)
         self.assertIn("checked(requirement.Quantity * record.Count)", state)
-        self.assertIn("return currentCount;", state)
+        self.assertIn("return currentCount - 1;", state)
+        self.assertIn("SuccessfulPlacementReservationGate", state)
         self.assertIn("MovesCarriedMaterialsAfterRelease = false", state)
         self.assertIn("StartsQuickStackAfterRelease = false", state)
         self.assertIn("TryReleaseReservation", state)
@@ -1374,6 +1379,41 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ProtectionState", state)
         self.assertNotIn("Inventory", state)
 
+    def test_successful_local_piece_placement_consumes_one_exact_reservation_once(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
+        state = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationState.cs").read_text(encoding="utf-8")
+        persistence = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationPersistence.cs").read_text(encoding="utf-8")
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+
+        self.assertIn('Transactional(typeof(Player), "UpdatePlacement"', manifest)
+        self.assertIn('Both(typeof(Player), "TryPlacePiece"', manifest)
+        placement = nearby[nearby.index("internal static class NearbyTryPlacePiecePatch"):]
+        completion = nearby[nearby.index("internal sealed class SuccessfulBuildCompletionState"):nearby.index("internal static class NearbyResourceRemovalPatch")]
+        self.assertIn("if (!__result)", placement)
+        self.assertIn("ResourceTransactionContext.Rollback();", placement)
+        self.assertIn("SuccessfulBuildReservationContext.RecordSuccessfulPlacement(__instance, piece)", placement)
+        self.assertIn("ReferenceEquals(player, global::Player.m_localPlayer)", completion)
+        self.assertIn("_reservationGate.TryHandle(placementSucceeded: true, isLocalPlayer: isLocalPlayer)", completion)
+        self.assertIn("var materialsConsumed = ResourceTransactionContext.Complete(ResourceActionKind.Building);", completion)
+        self.assertIn("if (materialsConsumed)", completion)
+        self.assertIn("SuccessfulBuildReservationContext.Complete(__state);", completion)
+        self.assertIn("SuccessfulBuildReservationContext.Cancel(__state);", completion)
+        self.assertLess(
+            completion.index("var materialsConsumed = ResourceTransactionContext.Complete(ResourceActionKind.Building);"),
+            completion.index("SuccessfulBuildReservationContext.Complete(__state);"),
+        )
+        self.assertIn("ExpeditionReservations.TryConsumeSuccessfulBuild(Player, Piece)", completion)
+        self.assertIn("TryGetStablePieceIdentity(piece, out pieceKey", runtime)
+        self.assertIn("TryReleaseOneDurably(pieceKey", runtime)
+        self.assertIn("WarnBuildReservationUnchanged", runtime)
+        self.assertIn("RequestRefreshAfterDurableChange", runtime)
+        self.assertIn("SuccessfulPlacementReservationGate", state)
+        self.assertIn("return currentCount - 1", state)
+        self.assertIn("TryReleaseDurably", persistence)
+        self.assertIn("ExpeditionReservationPersistenceResult.Released", persistence)
+        self.assertNotIn("ExpeditionReservationBuildPolicy", nearby + runtime + state + persistence)
+
     def test_expedition_reservation_ui_is_optional_inventory_neutral_and_visually_distinct(self):
         runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
         ui = (PLUGIN_DIR / "ExpeditionReservationUi.cs").read_text(encoding="utf-8")
@@ -1383,11 +1423,12 @@ class ProjectBoundaryTests(unittest.TestCase):
 
         self.assertIn("TryGetRecords", runtime)
         self.assertIn("TryReleaseOne", runtime)
-        self.assertIn("candidate.TryReleaseReservation(pieceKey, 1)", runtime)
-        self.assertIn("AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, candidate.Serialize())", runtime)
+        self.assertIn("TryReleaseOneDurably", runtime)
+        self.assertIn("ExpeditionReservationPersistence.TryReleaseDurably", runtime)
+        release = runtime.index("internal static bool TryReleaseOne(")
         self.assertLess(
-            runtime.index("AtomicReservationFileStore.TryWrite", runtime.index("internal static bool TryReleaseOne")),
-            runtime.index("_state = candidate;"),
+            runtime.index("TryReleaseOneDurably", release),
+            runtime.index("_state = committed;", release),
         )
         self.assertIn("previousPayload", runtime)
         self.assertIn("RequestExpeditionRefresh", runtime)

@@ -63,7 +63,11 @@ internal static class Program
             ExpeditionReservationsRejectRecipeDriftAndMalformedState,
             ExpeditionReservationsRejectBoundsAndOverflow,
             ExpeditionReservationsReleaseOnlyReservationState,
-            ExpeditionReservationsPersistAfterSuccessfulBuild,
+            SuccessfulBuildConsumesOnlyExactReservedPiece,
+            SuccessfulBuildFinalCountRemovesEntryAndPersists,
+            SuccessfulPlacementGateRejectsFailuresOtherPlayersAndDuplicates,
+            SuccessfulBuildPersistenceFailureLeavesReservationIntact,
+            SuccessfulBuildRecalculatesAdditiveTargets,
             RememberedDestinationFallbackRoutesOnlyToExactChest,
             RememberedDestinationsStayExactPerPlayerStack,
             TransferValidationRejectsChangedPersistentSourceIdentity,
@@ -1285,25 +1289,130 @@ internal static class Program
             "release policy rejects more than the existing reservation count");
     }
 
-    private static void ExpeditionReservationsPersistAfterSuccessfulBuild()
+    private static void SuccessfulBuildConsumesOnlyExactReservedPiece()
     {
-        Equal(0, ExpeditionReservationBuildPolicy.CountAfterSuccessfulBuild(0),
-            "a successful build cannot create a reservation");
-        Equal(3, ExpeditionReservationBuildPolicy.CountAfterSuccessfulBuild(3),
-            "successfully building a reserved piece does not decrement its reservation");
-
         var state = new ExpeditionReservationState(new[]
         {
-            new ExpeditionReservationRecord(
-                "prefab:portal_wood",
-                "$piece_portal_wood",
-                3,
-                new[] { new ResourceRequirement("FineWood", 20) })
+            new ExpeditionReservationRecord("prefab:boat", "Boat", 1,
+                new[] { new ResourceRequirement("FineWood", 30) }),
+            new ExpeditionReservationRecord("prefab:cart", "Cart", 1,
+                new[] { new ResourceRequirement("Wood", 20) }),
+            new ExpeditionReservationRecord("prefab:woodwall", "Wall", 5,
+                new[] { new ResourceRequirement("Wood", 2) }),
+            new ExpeditionReservationRecord("prefab:woodwall_half", "Half wall", 2,
+                new[] { new ResourceRequirement("Wood", 1) })
+        });
+
+        Equal(4, SuccessfulPlacementReservationGate.CountAfterSuccessfulBuild(5),
+            "one successful placement decrements exactly one count");
+        True(state.TryReleaseReservation("prefab:woodwall", 1),
+            "the exact wall reservation is consumable");
+        Equal(4, state.Records.Single(record => record.PieceKey == "prefab:woodwall").Count,
+            "wall x5 becomes wall x4");
+        Equal(1, state.Records.Single(record => record.PieceKey == "prefab:boat").Count,
+            "boat reservation remains untouched");
+        Equal(1, state.Records.Single(record => record.PieceKey == "prefab:cart").Count,
+            "cart reservation remains untouched");
+        Equal(2, state.Records.Single(record => record.PieceKey == "prefab:woodwall_half").Count,
+            "a distinct prefab variant remains untouched");
+        True(!state.TryReleaseReservation("prefab:unreserved", 1),
+            "an unreserved prefab is inert");
+    }
+
+    private static void SuccessfulBuildFinalCountRemovesEntryAndPersists()
+    {
+        var state = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord("prefab:boat", "Boat", 1,
+                new[] { new ResourceRequirement("FineWood", 30) })
+        });
+        string? durablePayload = null;
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryReleaseDurably(
+            state,
+            "prefab:boat",
+            payload => { durablePayload = payload; return true; },
+            out committed,
+            out result), "successful placement release persists");
+        Equal(ExpeditionReservationPersistenceResult.Released, result,
+            "successful release result is explicit");
+        Equal(0, committed.Records.Count, "count one removes the reservation row");
+        Equal(1, state.Records.Count, "candidate release does not mutate the prior active state");
+
+        ExpeditionReservationState restarted;
+        True(ExpeditionReservationState.TryParse(durablePayload!, out restarted),
+            "durable post-build payload survives restart parsing");
+        Equal(0, restarted.Records.Count, "removed final count stays removed after restart");
+    }
+
+    private static void SuccessfulPlacementGateRejectsFailuresOtherPlayersAndDuplicates()
+    {
+        var gate = new SuccessfulPlacementReservationGate();
+        True(!gate.TryHandle(placementSucceeded: false, isLocalPlayer: true),
+            "failed or cancelled placement does not consume");
+        True(!gate.TryHandle(placementSucceeded: true, isLocalPlayer: false),
+            "another player's placement does not consume");
+        True(gate.TryHandle(placementSucceeded: true, isLocalPlayer: true),
+            "one genuine local success is accepted");
+        True(!gate.TryHandle(placementSucceeded: true, isLocalPlayer: true),
+            "duplicate completion callback is inert");
+
+        var repairOrDismantle = new SuccessfulPlacementReservationGate();
+        True(!repairOrDismantle.TryHandle(placementSucceeded: false, isLocalPlayer: true),
+            "non-placement interactions never pass the successful placement gate");
+    }
+
+    private static void SuccessfulBuildPersistenceFailureLeavesReservationIntact()
+    {
+        var state = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord("prefab:cart", "Cart", 2,
+                new[] { new ResourceRequirement("Wood", 20) })
         });
         var before = state.Serialize();
-        var retained = ExpeditionReservationBuildPolicy.CountAfterSuccessfulBuild(state.Records.Single().Count);
-        Equal(3, retained, "build completion policy retains the exact count until explicit removal");
-        Equal(before, state.Serialize(), "build completion has no reservation-state side effect");
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(!ExpeditionReservationPersistence.TryReleaseDurably(
+            state, "prefab:cart", _ => false, out committed, out result),
+            "false durable writer fails closed");
+        Equal(ExpeditionReservationPersistenceResult.PersistenceFailed, result,
+            "failed release reports persistence failure");
+        Equal(before, state.Serialize(), "failed save leaves the active reservation intact");
+        True(ReferenceEquals(state, committed), "failed save never publishes its detached candidate");
+
+        True(!ExpeditionReservationPersistence.TryReleaseDurably(
+            state, "prefab:cart", _ => throw new InvalidOperationException("disk"), out committed, out result),
+            "throwing durable writer also fails closed");
+        Equal(before, state.Serialize(), "throwing save leaves the active reservation intact");
+    }
+
+    private static void SuccessfulBuildRecalculatesAdditiveTargets()
+    {
+        var state = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord("prefab:woodwall", "Wall", 2,
+                new[] { new ResourceRequirement("Wood", 10) })
+        });
+        True(state.TryReleaseReservation("prefab:woodwall", 1),
+            "successful build consumes one wall before replanning");
+        Equal(10, state.AggregateRequirements().Single().Quantity,
+            "aggregate reservation requirements immediately shrink by one exact recipe");
+
+        var player = Player(5,
+            Item("personal-wood", "wood", "Wood", 50, 100, 0,
+                protectedSlot: true, target: 50, resourceItemName: "Wood"));
+        var chest = Chest("target", 0, true, 2,
+            Item("stored-wood", "wood", "Wood", 20, 100, 0, resourceItemName: "Wood"));
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: state.AggregateRequirements());
+        Equal(10, plan.ReplenishedUnits,
+            "later Quick Stack uses the recalculated additive personal-plus-reservation target");
+        Equal(10, plan.ReservationAllocations.Single().Quantity,
+            "orange reservation allocation immediately matches the reduced count");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
     }
 
     private static void RememberedDestinationFallbackRoutesOnlyToExactChest()

@@ -91,6 +91,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("ZDO", "GetPrefab", Array.Empty<string>())
             };
             foreach (var method in methods) contract.Method(method.Type, method.Name, method.Parameters);
+            contract.SuccessfulPlacementConsumesMaterialsAfterTryPlace();
 
             contract.Method("ZDOMan", "GetSessionID", "System.Int64", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
             contract.Method("GameCamera", "InFreeFly", "System.Boolean", Array.Empty<string>(), MethodAttributes.Public | MethodAttributes.Static);
@@ -624,6 +625,25 @@ namespace Stackmaster.Compatibility.Tests
 
                 _passed++;
                 Console.WriteLine("PASS IL null station bypasses the complete station-failure branch");
+            }
+
+            internal void SuccessfulPlacementConsumesMaterialsAfterTryPlace()
+            {
+                var updatePlacement = FindMethodHandle("Player", "UpdatePlacement", new[] { "System.Boolean", "System.Single" });
+                var tryPlace = FindMethodHandle("Player", "TryPlacePiece", new[] { "Piece" });
+                var consumeResources = FindMethodHandle(
+                    "Player", "ConsumeResources", new[] { "Requirement[]", "System.Int32", "System.Int32", "System.Int32" });
+                var il = MethodIl(updatePlacement);
+                var tryPlaceCalls = FindCallOffsets(il, MetadataTokens.GetToken(tryPlace));
+                var consumeCalls = FindCallOffsets(il, MetadataTokens.GetToken(consumeResources));
+                if (tryPlaceCalls.Count != 1 || consumeCalls.Count != 1 || consumeCalls[0] <= tryPlaceCalls[0])
+                {
+                    throw new InvalidOperationException(
+                        "Player.UpdatePlacement must consume build resources after exactly one TryPlacePiece call");
+                }
+
+                _passed++;
+                Console.WriteLine("PASS IL successful placement consumes resources after TryPlacePiece");
             }
 
             internal void RequirementCallSite(

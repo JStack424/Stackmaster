@@ -10,8 +10,16 @@ namespace Stackmaster
     /// <summary>
     /// Persistent local Quick Grab Materials reservations, scoped to one character and one world.
     /// The saved counts feed additive Quick Stack retention, player sorting, and optional UI.
-    /// Building never mutates this state; only an explicit reservation-icon click releases it.
+    /// Each successful exact-piece placement and each explicit icon click releases one count.
     /// </summary>
+    internal enum SuccessfulBuildReservationResult
+    {
+        NotApplicable,
+        NotReserved,
+        Consumed,
+        PersistenceFailed
+    }
+
     internal static class ExpeditionReservations
     {
         private const string CloneSuffix = "(Clone)";
@@ -20,6 +28,7 @@ namespace Stackmaster
         private static bool _storageHealthy = true;
         private static bool _writesHealthy = true;
         private static bool _failureLogged;
+        private static bool _buildConsumeWarningShown;
 
         internal static void Initialize()
         {
@@ -28,6 +37,7 @@ namespace Stackmaster
             _storageHealthy = true;
             _writesHealthy = true;
             _failureLogged = false;
+            _buildConsumeWarningShown = false;
         }
 
         internal static void Shutdown()
@@ -231,6 +241,60 @@ namespace Stackmaster
             }
         }
 
+        internal static SuccessfulBuildReservationResult TryConsumeSuccessfulBuild(Player player, Piece piece)
+        {
+            string pieceKey;
+            string ignoredDisplayName;
+            if (player == null || !ReferenceEquals(player, Player.m_localPlayer) ||
+                !TryGetStablePieceIdentity(piece, out pieceKey, out ignoredDisplayName))
+            {
+                return SuccessfulBuildReservationResult.NotApplicable;
+            }
+
+            try
+            {
+                if (!_storageHealthy || !EnsureLoaded(player))
+                {
+                    WarnBuildReservationUnchanged();
+                    return SuccessfulBuildReservationResult.PersistenceFailed;
+                }
+                if (!_state.Records.Any(record => string.Equals(record.PieceKey, pieceKey, StringComparison.Ordinal)))
+                {
+                    return SuccessfulBuildReservationResult.NotReserved;
+                }
+                if (!_writesHealthy)
+                {
+                    WarnBuildReservationUnchanged();
+                    return SuccessfulBuildReservationResult.PersistenceFailed;
+                }
+
+                ExpeditionReservationState committed;
+                ExpeditionReservationPersistenceResult result;
+                if (!TryReleaseOneDurably(pieceKey, out committed, out result))
+                {
+                    if (result == ExpeditionReservationPersistenceResult.NotFound)
+                    {
+                        return SuccessfulBuildReservationResult.NotReserved;
+                    }
+                    _writesHealthy = false;
+                    LogFailureOnce("A successful build reservation decrement could not be saved and was left unchanged.");
+                    WarnBuildReservationUnchanged();
+                    return SuccessfulBuildReservationResult.PersistenceFailed;
+                }
+
+                _state = committed;
+                RequestRefreshAfterDurableChange();
+                return SuccessfulBuildReservationResult.Consumed;
+            }
+            catch (Exception exception)
+            {
+                _writesHealthy = false;
+                LogFailureOnce("A successful build reservation decrement could not be saved and was left unchanged: " + exception.GetType().Name);
+                WarnBuildReservationUnchanged();
+                return SuccessfulBuildReservationResult.PersistenceFailed;
+            }
+        }
+
         internal static bool TryReleaseOne(Player player, string pieceKey)
         {
             try
@@ -239,38 +303,23 @@ namespace Stackmaster
                 {
                     return false;
                 }
-                // The settled interaction changes saved intent only. It deliberately neither
+                // The explicit icon interaction changes saved intent only. It deliberately neither
                 // transfers inventory nor invokes Quick Stack. Release is durable-first: a failed
-                // persistence write must not change the active in-session reservation count.
-                var previousPayload = _state.Serialize();
-                ExpeditionReservationState candidate;
-                if (!ExpeditionReservationState.TryParse(previousPayload, out candidate))
+                // persistence write cannot change the active in-session reservation count.
+                ExpeditionReservationState committed;
+                ExpeditionReservationPersistenceResult result;
+                if (!TryReleaseOneDurably(pieceKey, out committed, out result))
                 {
-                    throw new InvalidOperationException("The active reservation state could not be cloned safely.");
-                }
-                if (!candidate.TryReleaseReservation(pieceKey, 1))
-                {
-                    return false;
-                }
-
-                try
-                {
-                    if (!AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, candidate.Serialize()))
+                    if (result != ExpeditionReservationPersistenceResult.NotFound)
                     {
                         _writesHealthy = false;
                         LogFailureOnce("Quick Grab reservation release could not be saved and was left unchanged.");
-                        return false;
                     }
-                }
-                catch (Exception exception)
-                {
-                    _writesHealthy = false;
-                    LogFailureOnce("Quick Grab reservation release could not be saved and was left unchanged: " + exception.GetType().Name);
                     return false;
                 }
 
-                _state = candidate;
-                InventoryIntegration.RequestExpeditionRefresh();
+                _state = committed;
+                RequestRefreshAfterDurableChange();
                 return true;
             }
             catch (Exception exception)
@@ -278,6 +327,20 @@ namespace Stackmaster
                 DisableStorage("An expedition reservation could not be released safely: " + exception.GetType().Name);
                 return false;
             }
+        }
+
+        private static bool TryReleaseOneDurably(
+            string pieceKey,
+            out ExpeditionReservationState committed,
+            out ExpeditionReservationPersistenceResult result)
+        {
+            var previousPayload = _state.Serialize();
+            return ExpeditionReservationPersistence.TryReleaseDurably(
+                _state,
+                pieceKey,
+                payload => AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, payload),
+                out committed,
+                out result);
         }
 
         internal static bool TryGetStablePieceIdentity(Piece piece, out string pieceKey, out string displayName)
@@ -421,6 +484,28 @@ namespace Stackmaster
                 DisableStorage("Expedition reservations could not be read and were disabled for this session: " + exception.GetType().Name);
                 return false;
             }
+        }
+
+        private static void RequestRefreshAfterDurableChange()
+        {
+            try
+            {
+                // Aggregate targets are read directly from _state; request both the inventory
+                // overlays and reservation strip in the same frame after publishing the count.
+                InventoryIntegration.RequestExpeditionRefresh();
+            }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogWarning(
+                    "Expedition reservation UI refresh failed after save: " + exception.GetType().Name);
+            }
+        }
+
+        private static void WarnBuildReservationUnchanged()
+        {
+            if (_buildConsumeWarningShown) return;
+            _buildConsumeWarningShown = true;
+            RuntimeContext.ShowCenter("Stackmaster: the piece was placed, but its reservation could not be updated and was left unchanged.");
         }
 
         private static void DisableStorage(string message)

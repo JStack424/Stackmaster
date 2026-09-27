@@ -437,16 +437,28 @@ namespace Stackmaster.Core
     }
 
     /// <summary>
-    /// Settled policy: building never consumes a reservation. Only a future explicit-removal
-    /// interaction may change the count. Keeping this decision in one pure boundary prevents a
-    /// placement callback from silently gaining reservation side effects.
+    /// A genuinely successful local placement consumes at most one exact-piece reservation.
+    /// The per-invocation gate makes duplicate completion callbacks inert while failed/cancelled
+    /// placements and builds by another player remain side-effect free.
     /// </summary>
-    public static class ExpeditionReservationBuildPolicy
+    public sealed class SuccessfulPlacementReservationGate
     {
+        private bool _handled;
+
+        public bool TryHandle(bool placementSucceeded, bool isLocalPlayer)
+        {
+            if (_handled || !placementSucceeded || !isLocalPlayer)
+            {
+                return false;
+            }
+            _handled = true;
+            return true;
+        }
+
         public static int CountAfterSuccessfulBuild(int currentCount)
         {
-            if (currentCount < 0) throw new ArgumentOutOfRangeException(nameof(currentCount));
-            return currentCount;
+            if (currentCount <= 0) throw new ArgumentOutOfRangeException(nameof(currentCount));
+            return currentCount - 1;
         }
     }
 }
