@@ -17,9 +17,9 @@ namespace Stackmaster.Core
 
     /// <summary>
     /// One persistent reserved build-piece identity. Requirements are the exact normalized recipe
-    /// that accompanied the successful Quick Grab which created the reservation. Keeping the
-    /// recipe snapshot makes the reservation describe the materials actually grabbed, even when a
-    /// later game or mod update changes the live recipe.
+    /// captured by the valid modified build-piece click which created the reservation. Keeping the
+    /// recipe snapshot makes reservation intent stable even when no materials were immediately
+    /// available or a later game or mod update changes the live recipe.
     /// </summary>
     public sealed class ExpeditionReservationRecord
     {
@@ -135,7 +135,7 @@ namespace Stackmaster.Core
         public IReadOnlyCollection<ExpeditionReservationRecord> Records
             => _records.Values.OrderBy(record => record.PieceKey, StringComparer.Ordinal).ToArray();
 
-        public ExpeditionReservationAddResult RecordSuccessfulQuickGrab(
+        public ExpeditionReservationAddResult AddQuickGrabReservation(
             string pieceKey,
             string displayName,
             IEnumerable<ResourceRequirement> requirements)

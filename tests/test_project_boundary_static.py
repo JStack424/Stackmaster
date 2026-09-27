@@ -282,7 +282,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn(".ThenBy(group => group.InventoryId, StringComparer.Ordinal)", core)
         self.assertIn("A piece-specific material grab is indivisible", core)
         self.assertIn("Array.Empty<ResourceWithdrawalStep>()", core)
-        self.assertIn("Every modified click is one independent complete-material request", action)
+        self.assertIn("Every modified click is one independent reservation request", action)
+        self.assertIn("optional all-or-nothing complete-material transfer", action)
 
     def test_quick_grab_materials_preflights_capacity_and_weight_before_ownership(self):
         action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
@@ -1294,8 +1295,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(signature, gate)
 
-    def test_expedition_reservations_record_only_committed_quick_grabs_and_stay_policy_isolated(self):
+    def test_expedition_reservations_persist_before_optional_full_grab_and_stay_policy_isolated(self):
         state = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationState.cs").read_text(encoding="utf-8")
+        persistence = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationPersistence.cs").read_text(encoding="utf-8")
         runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
         action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
         context = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
@@ -1304,16 +1306,19 @@ class ProjectBoundaryTests(unittest.TestCase):
 
         self.assertIn("player.GetPlayerID()", runtime)
         self.assertIn("ZNet.instance.GetWorldUID()", runtime)
-        self.assertIn("ExpeditionReservationState.TryParse", runtime)
+        self.assertIn("ExpeditionReservationState.TryParse", persistence)
         self.assertIn("PlayerPrefs.SetString", runtime)
+        self.assertIn("PlayerPrefs.Save()", runtime)
         self.assertIn('pieceKey = "prefab:" + prefabName', runtime)
         self.assertIn("TryGetStableRequirements", runtime)
         self.assertIn("CanRecordQuickGrab", runtime)
+        self.assertIn("TryAddQuickGrabReservation", runtime)
+        self.assertIn("TryAddDurably", persistence)
         self.assertIn("PlanMatchesReservationRequirements", action)
         self.assertIn("TryGetStableItemIdentity", action)
-        self.assertIn("reservationSaved", action)
-        self.assertIn("preview.Serialize()", runtime)
-        self.assertIn("ExpeditionReservationAddResult.Incremented", runtime)
+        self.assertIn("committed = current", persistence)
+        self.assertIn("committed = candidate", persistence)
+        self.assertIn("ExpeditionReservationAddResult.Incremented", persistence)
         self.assertIn("requirement.m_resItem.gameObject", runtime)
         self.assertIn("requirement.m_resItem.m_itemData.m_quality", runtime)
         self.assertIn('RequireField(failures, typeof(ItemDrop.ItemData), "m_dropPrefab")', gate)
@@ -1322,15 +1327,24 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertEqual(2, context.count("ExpeditionReservations.Initialize()"))
         self.assertEqual(2, context.count("ExpeditionReservations.Shutdown"))
 
-        commit = action.index("if (!ExecuteAtomic(player, capture, plan, capacity, reservations, out failure))")
         capture = action.index("ExpeditionReservations.TryGetStablePieceIdentity(piece, out pieceKey, out displayName)")
         enqueue = action.index("PendingRequests.Enqueue(new PendingQuickGrabRequest")
-        record = action.index("ExpeditionReservations.RecordSuccessfulQuickGrab(")
-        notify = action.index('RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials ("')
+        persist = action.index("ExpeditionReservations.TryAddQuickGrabReservation(")
+        prepare = action.index("if (!TryPrepare(player, piece, request.ReservationRequirements")
+        commit = action.index("if (!ExecuteAtomic(player, capture, plan, capacity, reservations, out failure))")
+        notify = action.index('RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials and added reservation ("')
         self.assertLess(capture, enqueue)
-        self.assertLess(commit, record)
-        self.assertLess(record, notify)
-        self.assertEqual(1, action.count("ExpeditionReservations.RecordSuccessfulQuickGrab"))
+        self.assertLess(persist, prepare)
+        self.assertLess(persist, commit)
+        self.assertLess(commit, notify)
+        self.assertEqual(1, action.count("ExpeditionReservations.TryAddQuickGrabReservation"))
+        self.assertNotIn("ExpeditionReservations.AddQuickGrabReservation", action)
+        self.assertIn("reservation added without materials", action)
+        self.assertNotIn("FailedDepositWarnings", action)
+        self.assertLess(
+            runtime.index("PlayerPrefs.Save();", runtime.index("internal static bool TryAddQuickGrabReservation")),
+            runtime.index("_state = committed;"),
+        )
 
         self.assertIn("MaximumRecords = 128", state)
         self.assertIn("AggregateRequirements()", state)

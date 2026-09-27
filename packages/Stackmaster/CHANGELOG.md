@@ -2,12 +2,17 @@
 
 ## 1.3.3 (local test candidate)
 
-Narrow reservation-strip layout correction on top of 1.3.2. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
+Reservation-only Quick Grab support and a narrow reservation-strip layout correction on top of 1.3.2. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
 
+- Every valid modified build-piece click now durably adds exactly one persistent reservation before optional material movement, even with zero stock, partial stock, no eligible reachable storage, ownership trouble, or insufficient player capacity.
+- Material movement remains indivisible: a click either transfers the freshly validated complete recipe or moves nothing. Partial availability never exposes or executes partial withdrawal steps.
+- Reservation persistence is durable-first and candidate-isolated. A malformed/changed recipe, reservation limit, or failed save creates no active in-memory-only reservation and performs no material movement; repeated valid shortage clicks increment exactly once each.
+- Feedback explicitly distinguishes `grabbed materials and added reservation` from `reservation added without materials`. Reservation-only outcomes do not create Quick Stack failed-deposit warnings.
+- Existing additive personal-plus-reservation targets continue to drive later Quick Stack replenishment, which pulls the exact missing reserved materials and deposits only true excess. Building still never consumes reservations, and explicit icon clicks still release one count.
 - Measures the styled `Reserved` label’s preferred rendered width on every geometry refresh instead of reserving a fixed English-string width.
 - Begins the icon viewport only after the full label width, two UI pixels of glyph safety padding, and an eight UI-pixel visible internal gap, preventing the first reservation icon from overlapping wider fonts or localized text.
 - Moves the complete reservation strip exactly 12 UI pixels right and 10 UI pixels up relative to 1.3.2, while preserving the safe-area right margin and horizontal overflow behavior.
-- Keeps every other 1.3.2 reservation, sorting, Quick Stack, chest-sorting, warning, persistence, and failure-isolation behavior unchanged.
+- Keeps 1.3.2 sorting, exact reservation attribution, carried non-stackable exclusion, touched-destination chest sorting, safe-area handling, and optional-UI failure isolation unchanged.
 
 ## 1.3.2 (local test candidate)
 

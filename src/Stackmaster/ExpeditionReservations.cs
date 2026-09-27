@@ -68,40 +68,25 @@ namespace Stackmaster
                     return false;
                 }
 
-                ExpeditionReservationState preview;
-                if (!ExpeditionReservationState.TryParse(_state.Serialize(), out preview))
-                {
-                    failure = "reservation state could not be validated";
-                    return false;
-                }
-                var result = preview.RecordSuccessfulQuickGrab(pieceKey, displayName, requirements);
-                if (result == ExpeditionReservationAddResult.RecipeChanged)
-                {
-                    failure = "the reserved build-piece recipe changed";
-                    return false;
-                }
-                if (result == ExpeditionReservationAddResult.CapacityExceeded)
-                {
-                    failure = "the safe reservation limit was reached";
-                    return false;
-                }
-                if (result != ExpeditionReservationAddResult.Added &&
-                    result != ExpeditionReservationAddResult.Incremented)
-                {
-                    return false;
-                }
-                try
-                {
-                    // Validate the post-add payload, not merely the current one. This keeps an
-                    // oversized reservation from being discovered only after item transfer.
-                    preview.Serialize();
-                }
-                catch (InvalidOperationException)
-                {
-                    failure = "the safe reservation storage limit was reached";
-                    return false;
-                }
-                return true;
+                ExpeditionReservationState ignored;
+                ExpeditionReservationPersistenceResult result;
+                var valid = ExpeditionReservationPersistence.TryAddDurably(
+                    _state,
+                    pieceKey,
+                    displayName,
+                    requirements,
+                    payload => true,
+                    out ignored,
+                    out result);
+                if (valid) return true;
+
+                failure = FailureFor(result);
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                failure = "the safe reservation storage limit was reached";
+                return false;
             }
             catch (Exception exception)
             {
@@ -111,44 +96,109 @@ namespace Stackmaster
             }
         }
 
-        internal static bool RecordSuccessfulQuickGrab(
+        internal static bool TryAddQuickGrabReservation(
             Player player,
             string pieceKey,
             string displayName,
-            IReadOnlyList<ResourceRequirement> requirements)
+            IReadOnlyList<ResourceRequirement> requirements,
+            out string failure)
         {
+            failure = null;
             try
             {
                 if (!_storageHealthy || !_writesHealthy || player == null || string.IsNullOrEmpty(pieceKey) ||
                     string.IsNullOrEmpty(displayName) || requirements == null || !EnsureLoaded(player))
                 {
-                    if (player != null && (string.IsNullOrEmpty(pieceKey) || string.IsNullOrEmpty(displayName)))
+                    failure = "reservations are unavailable";
+                    return false;
+                }
+
+                var previousPayload = _state.Serialize();
+                Exception persistenceFailure = null;
+                ExpeditionReservationState committed;
+                ExpeditionReservationPersistenceResult result;
+                var saved = ExpeditionReservationPersistence.TryAddDurably(
+                    _state,
+                    pieceKey,
+                    displayName,
+                    requirements,
+                    payload =>
                     {
-                        LogFailureOnce("A successful Quick Grab could not be reserved because its captured build-piece identity was unavailable.");
+                        try
+                        {
+                            PlayerPrefs.SetString(_loadedKey, payload);
+                            PlayerPrefs.Save();
+                            return true;
+                        }
+                        catch (Exception exception)
+                        {
+                            persistenceFailure = exception;
+                            _writesHealthy = false;
+                            try
+                            {
+                                // Restore the prior PlayerPrefs cache as well as the active runtime
+                                // state. The candidate is never exposed unless the durable write
+                                // succeeds, so a failed save cannot create an in-memory-only count.
+                                PlayerPrefs.SetString(_loadedKey, previousPayload);
+                                PlayerPrefs.Save();
+                            }
+                            catch (Exception rollbackException)
+                            {
+                                RuntimeContext.Plugin?.Log.LogError(
+                                    "Quick Grab reservation add rollback could not be flushed: " + rollbackException);
+                            }
+                            return false;
+                        }
+                    },
+                    out committed,
+                    out result);
+                if (!saved)
+                {
+                    failure = FailureFor(result);
+                    if (persistenceFailure != null)
+                    {
+                        LogFailureOnce("Quick Grab reservation could not be saved and was left unchanged: " + persistenceFailure.GetType().Name);
                     }
                     return false;
                 }
 
-                var result = _state.RecordSuccessfulQuickGrab(pieceKey, displayName, requirements);
-                if (result == ExpeditionReservationAddResult.RecipeChanged)
+                _state = committed;
+                try
                 {
-                    LogFailureOnce("A successful Quick Grab used a changed recipe for an already reserved piece; the existing reservation was preserved unchanged.");
-                    return false;
+                    InventoryIntegration.RequestExpeditionRefresh();
                 }
-                if (result == ExpeditionReservationAddResult.CapacityExceeded)
+                catch (Exception exception)
                 {
-                    LogFailureOnce("A successful Quick Grab exceeded the safe reservation limit; existing reservations were preserved unchanged.");
-                    return false;
+                    // UI refresh is optional and must never make a completed durable write look
+                    // like a failed click. The next ordinary inventory refresh will retry it.
+                    RuntimeContext.Plugin?.Log.LogWarning(
+                        "Quick Grab reservation UI refresh failed after save: " + exception.GetType().Name);
                 }
-
-                Save();
-                InventoryIntegration.RequestExpeditionRefresh();
-                return _storageHealthy && _writesHealthy;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                failure = "the safe reservation storage limit was reached";
+                return false;
             }
             catch (Exception exception)
             {
                 DisableStorage("Expedition reservations could not be updated and were disabled for this session: " + exception.GetType().Name);
+                failure = "reservations are unavailable";
                 return false;
+            }
+        }
+
+        private static string FailureFor(ExpeditionReservationPersistenceResult result)
+        {
+            switch (result)
+            {
+                case ExpeditionReservationPersistenceResult.RecipeChanged:
+                    return "the reserved build-piece recipe changed";
+                case ExpeditionReservationPersistenceResult.CapacityExceeded:
+                    return "the safe reservation limit was reached";
+                default:
+                    return "the reservation could not be saved";
             }
         }
 
@@ -381,31 +431,6 @@ namespace Stackmaster
             {
                 DisableStorage("Expedition reservations could not be read and were disabled for this session: " + exception.GetType().Name);
                 return false;
-            }
-        }
-
-        private static void Save()
-        {
-            if (!_storageHealthy || string.IsNullOrEmpty(_loadedKey))
-            {
-                throw new InvalidOperationException("Expedition reservation storage is unavailable.");
-            }
-            if (!_writesHealthy)
-            {
-                return;
-            }
-
-            try
-            {
-                PlayerPrefs.SetString(_loadedKey, _state.Serialize());
-                PlayerPrefs.Save();
-            }
-            catch (Exception exception)
-            {
-                // The Quick Grab already committed. Keep its reservation in session memory and
-                // stop further durable writes rather than erasing or rolling back unrelated state.
-                _writesHealthy = false;
-                LogFailureOnce("Expedition reservations could not be saved; the in-session reservation was retained but durable writes were disabled: " + exception.GetType().Name);
             }
         }
 

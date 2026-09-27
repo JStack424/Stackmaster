@@ -37,7 +37,8 @@ namespace Stackmaster
                 }
 
                 // Suppress BuildUi.OnSelectPiece: no selection change, button sound, or
-                // Hud.CloseBuildUi. Every modified click is one independent complete-material request.
+                // Hud.CloseBuildUi. Every modified click is one independent reservation request
+                // with an optional all-or-nothing complete-material transfer.
                 intercepting = true;
                 QuickGrabMaterialsAction.Begin(player, piece);
                 return false;
@@ -172,16 +173,16 @@ namespace Stackmaster
                 return;
             }
 
-            // Every recognized click represents another complete set of materials. Capture immutable
-            // prefab identities before queuing while retaining the live Piece only
-            // for the existing fresh recipe and transaction checks.
+            // Every recognized click represents one durable piece reservation and, when safely
+            // available, one complete material set. Capture immutable prefab identities before
+            // queuing while retaining the live Piece for fresh recipe and transaction checks.
             string pieceKey;
             string displayName;
             IReadOnlyList<ResourceRequirement> reservationRequirements;
             if (!ExpeditionReservations.TryGetStablePieceIdentity(piece, out pieceKey, out displayName) ||
                 !ExpeditionReservations.TryGetStableRequirements(piece, out reservationRequirements))
             {
-                RuntimeContext.ShowCenter("Stackmaster could not identify that piece safely; no materials were grabbed.");
+                RuntimeContext.ShowCenter("Stackmaster could not identify that piece safely; no reservation was added and no materials were moved.");
                 return;
             }
             string reservationFailure;
@@ -227,6 +228,7 @@ namespace Stackmaster
             var piece = request.Piece;
             var generation = _generation;
             _running = true;
+            var reservationAdded = false;
             try
             {
                 string reservationFailure = null;
@@ -243,6 +245,23 @@ namespace Stackmaster
                     return;
                 }
 
+                // Persist intent before touching shared inventories. If persistence fails, the
+                // active state stays unchanged and no material movement is attempted. Once this
+                // succeeds, any later planning/ownership/capacity failure is a valid reservation-
+                // only outcome rather than a failed click.
+                if (!ExpeditionReservations.TryAddQuickGrabReservation(
+                        player,
+                        request.PieceKey,
+                        request.DisplayName,
+                        request.ReservationRequirements,
+                        out reservationFailure))
+                {
+                    ShowFailure(reservationFailure ?? "the reservation could not be saved");
+                    Complete(generation);
+                    return;
+                }
+                reservationAdded = true;
+
                 IReadOnlyList<ResourceRequirement> requirements;
                 NearbyResourceCapture capture;
                 ResourceWithdrawalPlan plan;
@@ -250,7 +269,7 @@ namespace Stackmaster
                 string failure;
                 if (!TryPrepare(player, piece, request.ReservationRequirements, out requirements, out capture, out plan, out handles, out failure))
                 {
-                    ShowFailure(failure);
+                    ShowReservationOnly(failure);
                     Complete(generation);
                     return;
                 }
@@ -258,14 +277,14 @@ namespace Stackmaster
                 QuickGrabCapacityPlan ignoredCapacity;
                 if (!TryPlanCapacity(player, capture, plan, out ignoredCapacity, out failure))
                 {
-                    ShowFailure(failure);
+                    ShowReservationOnly(failure);
                     Complete(generation);
                     return;
                 }
 
                 if (handles.Any(handle => OwnershipLeaseManager.HasPotentialAcquisition(handle.Id)))
                 {
-                    ShowFailure("a previous ownership transition is still pending");
+                    ShowReservationOnly("a previous ownership transition is still pending");
                     Complete(generation);
                     return;
                 }
@@ -278,8 +297,6 @@ namespace Stackmaster
                     Finish(
                         player,
                         piece,
-                        request.PieceKey,
-                        request.DisplayName,
                         request.ReservationRequirements,
                         plan,
                         null);
@@ -287,12 +304,10 @@ namespace Stackmaster
                     return;
                 }
 
-                RuntimeContext.ShowTopLeft("Stackmaster: checking storage for materials…");
+                RuntimeContext.ShowTopLeft("Stackmaster: reservation added; checking storage for materials…");
                 RuntimeContext.Plugin.StartCoroutine(FinishAfterOwnership(
                     player,
                     piece,
-                    request.PieceKey,
-                    request.DisplayName,
                     request.ReservationRequirements,
                     plan,
                     unowned,
@@ -301,7 +316,14 @@ namespace Stackmaster
             catch (Exception exception)
             {
                 RuntimeContext.Plugin?.Log.LogError("Quick-grab action stopped safely: " + exception);
-                RuntimeContext.ShowCenter("Stackmaster stopped safely; no materials were grabbed.");
+                if (reservationAdded)
+                {
+                    ShowReservationOnly("the material transfer stopped safely");
+                }
+                else
+                {
+                    RuntimeContext.ShowCenter("Stackmaster stopped safely; no reservation was added and no materials were moved.");
+                }
                 Complete(generation);
             }
         }
@@ -335,8 +357,6 @@ namespace Stackmaster
         private static IEnumerator FinishAfterOwnership(
             Player player,
             Piece piece,
-            string pieceKey,
-            string displayName,
             IReadOnlyList<ResourceRequirement> reservationRequirements,
             ResourceWithdrawalPlan expectedPlan,
             ContainerHandle[] unownedHandles,
@@ -355,7 +375,7 @@ namespace Stackmaster
             catch (Exception exception)
             {
                 RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership setup failed safely: " + exception);
-                RuntimeContext.ShowCenter("Stackmaster could not safely grab the required materials; nothing was moved.");
+                ShowReservationOnly("the required materials could not be transferred safely");
                 Complete(generation);
                 yield break;
             }
@@ -377,7 +397,7 @@ namespace Stackmaster
                     {
                         refreshFailed = true;
                         RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership refresh failed safely: " + exception);
-                        RuntimeContext.ShowCenter("Stackmaster could not safely grab the required materials; nothing was moved.");
+                        ShowReservationOnly("the required materials could not be transferred safely");
                     }
                     if (refreshFailed) yield break;
                     yield return null;
@@ -403,7 +423,7 @@ namespace Stackmaster
                                 .All(handle => handle.NetworkView != null && handle.NetworkView.IsValid() &&
                                                handle.NetworkView.HasOwner() &&
                                                ContainerDiscovery.CheckAccess(player, handle.Container));
-                        ShowFailure(ownerRejectedAsBusy
+                        ShowReservationOnly(ownerRejectedAsBusy
                             ? NearbyResourceOwnership.InUseMessage
                             : "required storage ownership could not be acquired");
                     }
@@ -412,8 +432,6 @@ namespace Stackmaster
                         Finish(
                             player,
                             piece,
-                            pieceKey,
-                            displayName,
                             reservationRequirements,
                             expectedPlan,
                             ownership);
@@ -422,7 +440,7 @@ namespace Stackmaster
                 catch (Exception exception)
                 {
                     RuntimeContext.Plugin?.Log.LogError("Quick-grab ownership failed safely: " + exception);
-                    RuntimeContext.ShowCenter("Stackmaster could not safely grab the required materials; nothing was moved.");
+                    ShowReservationOnly("the required materials could not be transferred safely");
                 }
             }
             finally
@@ -473,22 +491,18 @@ namespace Stackmaster
         private static void Finish(
             Player player,
             Piece piece,
-            string pieceKey,
-            string displayName,
             IReadOnlyList<ResourceRequirement> reservationRequirements,
             ResourceWithdrawalPlan expectedPlan,
             OwnershipBatch ownership)
         {
-            string reservationFailure = null;
-            if (!ReservationRequirementsMatch(piece, reservationRequirements) ||
-                !ExpeditionReservations.CanRecordQuickGrab(
-                    player,
-                    pieceKey,
-                    displayName,
-                    reservationRequirements,
-                    out reservationFailure))
+            if (!ReservationRequirementsMatch(piece, reservationRequirements))
             {
-                ShowFailure(reservationFailure ?? "the build-piece recipe changed");
+                ShowReservationOnly("the build-piece recipe changed before material transfer");
+                return;
+            }
+            if (!ExpeditionReservations.CanCommitQuickGrab(player))
+            {
+                ShowReservationOnly("reservation storage became unavailable before material transfer");
                 return;
             }
 
@@ -500,12 +514,12 @@ namespace Stackmaster
             if (!TryPrepare(player, piece, reservationRequirements, out requirements, out capture, out plan, out handles, out failure) ||
                 !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan))
             {
-                ShowFailure(failure ?? "nearby materials changed before transfer");
+                ShowReservationOnly(failure ?? "nearby materials changed before transfer");
                 return;
             }
             if (handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
             {
-                ShowFailure("required storage ownership changed before transfer");
+                ShowReservationOnly("required storage ownership changed before transfer");
                 return;
             }
 
@@ -513,14 +527,14 @@ namespace Stackmaster
             // one final capture/plan from those synchronized live inventories.
             if (!NearbyResourceService.RevalidateContainers(player, plan, capture, out failure))
             {
-                ShowFailure(failure);
+                ShowReservationOnly(failure);
                 return;
             }
             if (!TryPrepare(player, piece, reservationRequirements, out requirements, out capture, out plan, out handles, out failure) ||
                 !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan) ||
                 handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
             {
-                ShowFailure(failure ?? "nearby materials changed during transfer preparation");
+                ShowReservationOnly(failure ?? "nearby materials changed during transfer preparation");
                 return;
             }
 
@@ -533,7 +547,7 @@ namespace Stackmaster
                     out reservations,
                     out failure))
             {
-                ShowFailure(failure);
+                ShowReservationOnly(failure);
                 return;
             }
 
@@ -544,24 +558,15 @@ namespace Stackmaster
                     !NearbyResourceService.RevalidateStacks(plan, capture, true, out failure) ||
                     !TryPlanCapacity(player, capture, plan, out capacity, out failure))
                 {
-                    ShowFailure(failure);
+                    ShowReservationOnly(failure);
                     return;
                 }
 
                 if (!ExecuteAtomic(player, capture, plan, capacity, reservations, out failure))
                 {
-                    ShowFailure(failure);
+                    ShowReservationOnly(failure);
                     return;
                 }
-
-                // Reservation persistence is a post-commit observer. It can never authorize or
-                // roll back the proven 1.2.0 transfer path, and a storage failure leaves the
-                // successful material grab intact.
-                var reservationSaved = ExpeditionReservations.RecordSuccessfulQuickGrab(
-                    player,
-                    pieceKey,
-                    displayName,
-                    reservationRequirements);
 
                 try
                 {
@@ -574,13 +579,8 @@ namespace Stackmaster
                 }
                 try
                 {
-                    RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials (" +
+                    RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials and added reservation (" +
                         plan.RequiredUnits.ToString(CultureInfo.InvariantCulture) + " items).");
-                    if (!reservationSaved)
-                    {
-                        RuntimeContext.ShowCenter(
-                            "Materials were grabbed, but their reservation could not be saved. Check the Stackmaster log before Quick Stack.");
-                    }
                 }
                 catch (Exception exception)
                 {
@@ -1208,9 +1208,16 @@ namespace Stackmaster
 
         private static void ShowFailure(string failure)
         {
-            var detail = string.IsNullOrWhiteSpace(failure) ? "the required materials could not be transferred" : failure;
+            var detail = string.IsNullOrWhiteSpace(failure) ? "the request could not be completed safely" : failure;
             RuntimeContext.Plugin?.Log.LogWarning("Quick-grab action rejected safely: " + detail + ".");
-            RuntimeContext.ShowCenter("Stackmaster: " + detail + ". Nothing was moved.");
+            RuntimeContext.ShowCenter("Stackmaster: " + detail + ". No reservation was added and nothing was moved.");
+        }
+
+        private static void ShowReservationOnly(string failure)
+        {
+            var detail = string.IsNullOrWhiteSpace(failure) ? "the complete material set was not available" : failure;
+            RuntimeContext.Plugin?.Log.LogInfo("Quick Grab reservation saved without materials: " + detail + ".");
+            RuntimeContext.ShowCenter("Stackmaster: reservation added without materials — " + detail + ".");
         }
     }
 }

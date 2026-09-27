@@ -51,6 +51,13 @@ internal static class Program
             RememberedDestinationStateRejectsMalformedPayloads,
             RememberedDestinationStatePrunesAndCaps,
             ExpeditionReservationKeysSeparatePlayersAndWorlds,
+            ReservationOnlyQuickGrabWithZeroAvailablePersistsWithoutMovement,
+            ReservationOnlyQuickGrabWithPartialAvailablePersistsWithoutPartialMovement,
+            ReservationOnlyQuickGrabAwayFromStoragePersists,
+            RepeatedReservationOnlyClicksIncrementDeterministically,
+            ReservationPersistenceFailureLeavesActiveStateUnchanged,
+            AvailableQuickGrabPersistsThenPlansOneCompleteSet,
+            ReservationOnlyRestartRemovalAndLaterReplenishmentStayExact,
             ExpeditionReservationsCountIdenticalPiecesAndRoundTrip,
             ExpeditionReservationsAggregateRecipeRequirements,
             ExpeditionReservationsRejectRecipeDriftAndMalformedState,
@@ -890,6 +897,209 @@ internal static class Program
             "one player in different worlds never shares reservation state");
     }
 
+    private static void ReservationOnlyQuickGrabWithZeroAvailablePersistsWithoutMovement()
+    {
+        var state = new ExpeditionReservationState();
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryAddDurably(
+                state,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20), new ResourceRequirement("BronzeNails", 10) },
+                payload => true,
+                out committed,
+                out result),
+            "a valid click persists one reservation before material availability is considered");
+
+        var plan = QuickGrabPlan(committed.AggregateRequirements());
+        Equal(ExpeditionReservationPersistenceResult.Added, result, "first reservation is added");
+        Equal(1, committed.Records.Single().Count, "zero-stock click creates exactly one durable reservation");
+        True(!plan.IsSatisfiable, "zero available storage cannot satisfy the material grab");
+        Equal(0, plan.Steps.Count, "zero-stock reservation exposes no material mutation steps");
+    }
+
+    private static void ReservationOnlyQuickGrabWithPartialAvailablePersistsWithoutPartialMovement()
+    {
+        var state = new ExpeditionReservationState();
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryAddDurably(
+                state,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20), new ResourceRequirement("BronzeNails", 10) },
+                payload => true,
+                out committed,
+                out result),
+            "partial-stock click still persists its reservation");
+
+        var plan = QuickGrabPlan(
+            committed.AggregateRequirements(),
+            Resource("chest", "wood", "Wood", 1, 20, 1, 0),
+            Resource("chest", "nails", "BronzeNails", 1, 9, 1, 1));
+        True(!plan.IsSatisfiable, "one missing nail rejects the complete material grab");
+        Equal(0, plan.Steps.Count, "available wood and nails are not partially moved");
+        Equal(1, committed.Records.Single().Count, "reservation survives the all-or-nothing material shortage");
+    }
+
+    private static void ReservationOnlyQuickGrabAwayFromStoragePersists()
+    {
+        var state = new ExpeditionReservationState();
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryAddDurably(
+                state,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20) },
+                payload => true,
+                out committed,
+                out result),
+            "no eligible nearby storage does not block reservation persistence");
+
+        var plan = QuickGrabPlan(
+            committed.AggregateRequirements(),
+            Resource("player", "carried", "Wood", 1, 99, 0, 0));
+        True(!plan.IsSatisfiable, "carried materials are not treated as reachable quick-grab storage");
+        Equal(0, plan.Steps.Count, "away-from-storage click moves nothing");
+        Equal(20, committed.AggregateRequirements().Single().Quantity, "away reservation retains the exact cart requirement");
+    }
+
+    private static void RepeatedReservationOnlyClicksIncrementDeterministically()
+    {
+        var state = new ExpeditionReservationState();
+        for (var count = 1; count <= 3; count++)
+        {
+            ExpeditionReservationState committed;
+            ExpeditionReservationPersistenceResult result;
+            True(ExpeditionReservationPersistence.TryAddDurably(
+                    state,
+                    "prefab:cart",
+                    "$piece_cart",
+                    new[] { new ResourceRequirement("Wood", 20) },
+                    payload => true,
+                    out committed,
+                    out result),
+                "every shortage click persists exactly once");
+            state = committed;
+            Equal(count, state.Records.Single().Count, "shortage clicks increment by one in click order");
+            Equal(20 * count, state.AggregateRequirements().Single().Quantity, "aggregate reservation total follows exact click count");
+        }
+    }
+
+    private static void ReservationPersistenceFailureLeavesActiveStateUnchanged()
+    {
+        var state = new ExpeditionReservationState();
+        var before = state.Serialize();
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(!ExpeditionReservationPersistence.TryAddDurably(
+                state,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20) },
+                payload => false,
+                out committed,
+                out result),
+            "failed durable write rejects the reservation");
+        Equal(ExpeditionReservationPersistenceResult.PersistenceFailed, result, "persistence failure is explicit");
+        True(ReferenceEquals(state, committed), "failed write never publishes its detached candidate");
+        Equal(before, state.Serialize(), "failed write leaves active state byte-for-byte unchanged");
+        Equal(0, state.Records.Count, "failed write creates no in-memory-only reservation");
+
+        True(!ExpeditionReservationPersistence.TryAddDurably(
+                state,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20) },
+                payload => throw new IOException("fixture persistence failure"),
+                out committed,
+                out result),
+            "throwing durable writer also fails closed");
+        Equal(0, state.Records.Count, "throwing writer creates no phantom reservation");
+    }
+
+    private static void AvailableQuickGrabPersistsThenPlansOneCompleteSet()
+    {
+        var state = new ExpeditionReservationState();
+        var persistedBeforePlanning = false;
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryAddDurably(
+                state,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20), new ResourceRequirement("BronzeNails", 10) },
+                payload =>
+                {
+                    persistedBeforePlanning = true;
+                    return true;
+                },
+                out committed,
+                out result),
+            "available click persists its reservation");
+        True(persistedBeforePlanning, "reservation durability precedes material planning");
+
+        var plan = QuickGrabPlan(
+            committed.Records.Single().Requirements,
+            Resource("chest", "wood", "Wood", 1, 20, 1, 0),
+            Resource("chest", "nails", "BronzeNails", 1, 10, 1, 1));
+        True(plan.IsSatisfiable, "complete nearby set remains a normal full Quick Grab");
+        Equal(30, plan.PlannedUnits, "exactly one complete cart set is planned");
+        Equal(1, committed.Records.Single().Count, "successful full grab has exactly one reservation");
+    }
+
+    private static void ReservationOnlyRestartRemovalAndLaterReplenishmentStayExact()
+    {
+        var active = new ExpeditionReservationState();
+        var savedPayload = string.Empty;
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryAddDurably(
+                active,
+                "prefab:cart",
+                "$piece_cart",
+                new[] { new ResourceRequirement("Wood", 20) },
+                payload =>
+                {
+                    savedPayload = payload;
+                    return true;
+                },
+                out committed,
+                out result),
+            "shortage reservation is persisted");
+
+        ExpeditionReservationState restarted;
+        True(ExpeditionReservationState.TryParse(savedPayload, out restarted),
+            "reservation survives a restart round trip from the exact durable payload");
+        Equal(committed.Serialize(), restarted.Serialize(), "restart restores the exact committed candidate");
+        Equal(1, restarted.Records.Single().Count, "restart preserves one reservation");
+
+        var player = Player(4,
+            Item("personal-wood", "wood", "Wood", 50, 100, 0,
+                protectedSlot: true, target: 50, resourceItemName: "Wood"),
+            Item("excess-stone", "stone", "Stone", 3, 50, 3, resourceItemName: "Stone"));
+        var chest = Chest("target", 0, true, 3,
+            Item("stored-wood", "wood", "Wood", 25, 100, 0, resourceItemName: "Wood"),
+            Item("stored-stone", "stone", "Stone", 10, 50, 1, resourceItemName: "Stone"));
+        var plan = new StorageTransferPlanner().Plan(
+            player,
+            new[] { chest },
+            reservationRequirements: restarted.AggregateRequirements());
+
+        Equal(20, plan.ReplenishedUnits, "later Quick Stack replenishes the exact missing reservation quantity");
+        Equal(3, plan.DepositedUnits, "ordinary stackable excess still deposits");
+        Equal(20, plan.ReservationAllocations.Single().Quantity, "reservation allocation remains additive to the fixed personal fifty");
+        Equal(0, plan.ReservationShortages.Count, "exact later stock completely serves the reservation");
+        True(plan.Steps.Any(step => step.Kind == TransferKind.Deposit && step.VisibleName == "Stone"),
+            "ordinary deposit behavior remains active while reservation replenishes");
+        Valid(PlanValidator.ValidateTransferConservation(player, new[] { chest }, plan));
+
+        True(restarted.TryReleaseReservation("prefab:cart", 1), "explicit icon removal still releases one reservation");
+        Equal(0, restarted.Records.Count, "released reservation disappears completely");
+    }
+
     private static void ExpeditionReservationsCountIdenticalPiecesAndRoundTrip()
     {
         ExpeditionReservationState empty;
@@ -899,13 +1109,13 @@ internal static class Program
 
         var state = new ExpeditionReservationState();
         Equal(ExpeditionReservationAddResult.Added,
-            state.RecordSuccessfulQuickGrab(
+            state.AddQuickGrabReservation(
                 "prefab:portal_wood",
                 "$piece_portal_wood",
                 new[] { new ResourceRequirement("FineWood", 10), new ResourceRequirement("FineWood", 10), new ResourceRequirement("SurtlingCore", 2) }),
-            "first successful Quick Grab creates one reservation");
+            "first valid Quick Grab click creates one reservation");
         Equal(ExpeditionReservationAddResult.Incremented,
-            state.RecordSuccessfulQuickGrab(
+            state.AddQuickGrabReservation(
                 "prefab:portal_wood",
                 "$piece_portal_wood",
                 new[] { new ResourceRequirement("SurtlingCore", 2), new ResourceRequirement("FineWood", 20) }),
@@ -973,10 +1183,10 @@ internal static class Program
     {
         var state = new ExpeditionReservationState();
         Equal(ExpeditionReservationAddResult.Added,
-            state.RecordSuccessfulQuickGrab("prefab:workbench", "$piece_workbench", new[] { new ResourceRequirement("Wood", 10) }),
+            state.AddQuickGrabReservation("prefab:workbench", "$piece_workbench", new[] { new ResourceRequirement("Wood", 10) }),
             "initial recipe is accepted");
         Equal(ExpeditionReservationAddResult.RecipeChanged,
-            state.RecordSuccessfulQuickGrab("prefab:workbench", "$piece_workbench", new[] { new ResourceRequirement("Wood", 11) }),
+            state.AddQuickGrabReservation("prefab:workbench", "$piece_workbench", new[] { new ResourceRequirement("Wood", 11) }),
             "a changed recipe is not silently merged into an existing counted reservation");
         Equal(1, state.Records.Single().Count, "recipe drift leaves the existing reservation unchanged");
         Equal(10, state.AggregateRequirements().Single().Quantity, "recipe drift leaves aggregate quantities unchanged");
@@ -995,13 +1205,13 @@ internal static class Program
     {
         var overflow = new ExpeditionReservationState();
         Equal(ExpeditionReservationAddResult.Added,
-            overflow.RecordSuccessfulQuickGrab(
+            overflow.AddQuickGrabReservation(
                 "prefab:overflow_fixture",
                 "$piece_overflow_fixture",
                 new[] { new ResourceRequirement("Wood", int.MaxValue) }),
             "an individually representable aggregate is accepted");
         Equal(ExpeditionReservationAddResult.CapacityExceeded,
-            overflow.RecordSuccessfulQuickGrab(
+            overflow.AddQuickGrabReservation(
                 "prefab:overflow_fixture",
                 "$piece_overflow_fixture",
                 new[] { new ResourceRequirement("Wood", int.MaxValue) }),
@@ -1019,7 +1229,7 @@ internal static class Program
             "the reservation-state constructor rejects too many records");
 
         var oversizedKey = "prefab:" + new string('x', 2000);
-        Throws<ArgumentException>(() => overflow.RecordSuccessfulQuickGrab(
+        Throws<ArgumentException>(() => overflow.AddQuickGrabReservation(
                 oversizedKey,
                 "$piece_fixture",
                 new[] { new ResourceRequirement("Wood", 1) }),
@@ -1030,7 +1240,7 @@ internal static class Program
             .Select(index => new ResourceRequirement(index + "_" + new string('x', 16380), 1))
             .ToArray();
         Equal(ExpeditionReservationAddResult.Added,
-            oversizedPayload.RecordSuccessfulQuickGrab(
+            oversizedPayload.AddQuickGrabReservation(
                 "prefab:oversized_payload_fixture",
                 "$piece_oversized_payload_fixture",
                 largeRequirements),

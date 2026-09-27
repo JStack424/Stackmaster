@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Test-candidate status:** 1.3.3 keeps every 1.3.2 behavior and adjusts only the reservation strip: its label is measured from the rendered font before icons begin, and the whole strip moves 12 UI pixels right and 10 UI pixels up for a clearer margin. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.3 refines Quick Grab reservations and their strip. A valid modified build-piece click now saves one reservation even when the complete material set is unavailable, while material movement remains strictly all-or-nothing. The strip measures its rendered label before icons begin and moves 12 UI pixels right and 10 UI pixels up for a clearer margin. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
 
 ## About this project
 
@@ -18,7 +18,7 @@ Stackmaster removes repetitive container management without adding free resource
 
 - Automatically sort your backpack and opted-in vanilla chests.
 - Use **Quick Stack** to deposit matching items and replenish protected targets with one deliberate shortcut.
-- Keep durable per-player, per-world material reservations from successful **Quick Grab Materials** actions.
+- Keep durable per-player, per-world material reservations from valid **Quick Grab Materials** clicks, even away from supplies.
 - Build and craft using materials from accessible chests.
 
 ## Controls
@@ -46,7 +46,7 @@ Stackmaster removes repetitive container management without adding free resource
 
 | Control | Behavior |
 | --- | --- |
-| `Left Alt` + click a build piece | Grab all materials for one complete copy of that build piece from eligible storage without closing the build menu. |
+| `Left Alt` + click a build piece | Add one persistent reservation, then grab one complete material set when it is safely available, without closing the build menu. |
 
 The modifier follows the configured **Quick Stack** shortcut, which uses `Left Alt + E` by default. While the build menu is open, its keyboard/mouse action list shows **Quick Grab Materials** with **Left Alt + Click** by default and updates that shortcut text when the configured modifiers change. Version 1.2.0 does not add a controller-specific action.
 
@@ -92,12 +92,13 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
   - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
 - **Quick Grab Materials**
-  - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to grab all materials for one complete copy from eligible storage.
+  - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to add one persistent reservation and attempt to grab one complete material set from eligible storage.
   - Keeps the build menu open and leaves ordinary clicks unchanged.
-  - Treats every modified click as one full additional material grab; materials you already carry never reduce the requested quantities.
+  - Treats every valid modified click as one additional reservation. Repeated clicks increment it deterministically, including while away from supplies; building never consumes it.
+  - Saves the reservation before any shared inventory can change. Malformed or changed recipe identity and failed durable saves remain fail-closed, create no in-memory-only reservation, and move no materials.
   - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
-  - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity.
-  - After a successful committed grab, records one durable reservation for that piece. Repeated grabs of the same piece increase its count; failed or rolled-back grabs record nothing.
+  - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity. Zero stock, partial stock, unreachable storage, ownership failure, or capacity failure keeps the saved reservation but performs no partial transfer.
+  - Clearly reports either `grabbed materials and added reservation` or `reservation added without materials`; reservation-only clicks do not create failed-deposit warnings.
   - Shows reserved-piece icons and counts in a horizontal strip immediately to the right of the player inventory, top-aligned and clipped to the available safe screen width. Clicking one icon releases exactly one reservation and never moves items or starts Quick Stack.
   - Building a reserved piece does not consume its reservation; it remains until explicitly released.
   - Marks only the exact reservation-served share in orange with a plain upper-left quantity matching the personal-target label layout. Player sorting places every positive reservation-backed stack at the front of the movable sortable region before ordinary stacks; fixed quick-bar, equipped, and protected slots remain untouched.
