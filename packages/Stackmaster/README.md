@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Test-candidate status:** 1.3.2 keeps the verified non-stackable Quick Stack exclusion and polishes reservations: the strip sits beside the inventory, exact orange quantities lead the sortable backpack, and successfully changed opted-in destination chests sort once after Quick Stack. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.3 keeps every 1.3.2 behavior and adjusts only the reservation strip: its label is measured from the rendered font before icons begin, and the whole strip moves 12 UI pixels right and 10 UI pixels up for a clearer margin. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
 
 ## About this project
 

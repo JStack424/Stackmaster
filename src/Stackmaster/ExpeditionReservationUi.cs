@@ -24,6 +24,7 @@ namespace Stackmaster
         private static readonly Color Orange = new Color(1f, 0.48f, 0.08f, 1f);
         private static GameObject _root;
         private static RectTransform _content;
+        private static RectTransform _viewport;
         private static TMP_Text _label;
         private static InventoryGui _gui;
         private static bool _disabled;
@@ -49,8 +50,10 @@ namespace Stackmaster
                 rootRect.anchorMin = new Vector2(1f, 1f);
                 rootRect.anchorMax = new Vector2(1f, 1f);
                 rootRect.pivot = new Vector2(0f, 1f);
-                rootRect.anchoredPosition = new Vector2(8f, 0f);
-                rootRect.sizeDelta = new Vector2(120f, 54f);
+                rootRect.anchoredPosition = new Vector2(
+                    ReservationStripLayoutPlanner.RootOffsetX,
+                    ReservationStripLayoutPlanner.RootOffsetY);
+                rootRect.sizeDelta = new Vector2(120f, ReservationStripLayoutPlanner.RootHeight);
                 var panel = _root.GetComponent<Image>();
                 panel.color = PanelColor;
                 panel.raycastTarget = false;
@@ -72,16 +75,17 @@ namespace Stackmaster
                 labelRect.anchorMin = new Vector2(0f, 0f);
                 labelRect.anchorMax = new Vector2(0f, 1f);
                 labelRect.pivot = new Vector2(0f, 0.5f);
-                labelRect.anchoredPosition = new Vector2(8f, 0f);
-                labelRect.sizeDelta = new Vector2(70f, 0f);
+                labelRect.anchoredPosition = new Vector2(ReservationStripLayoutPlanner.LabelLeftInset, 0f);
+                labelRect.sizeDelta = new Vector2(0f, 0f);
 
                 var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
                 viewport.transform.SetParent(_root.transform, false);
                 var viewportRect = (RectTransform)viewport.transform;
+                _viewport = viewportRect;
                 viewportRect.anchorMin = Vector2.zero;
                 viewportRect.anchorMax = Vector2.one;
-                viewportRect.offsetMin = new Vector2(74f, 3f);
-                viewportRect.offsetMax = new Vector2(-4f, -3f);
+                viewportRect.offsetMin = new Vector2(0f, 3f);
+                viewportRect.offsetMax = new Vector2(0f, -3f);
 
                 var contentObject = new GameObject(
                     "Content",
@@ -178,13 +182,14 @@ namespace Stackmaster
             if (_root != null) Object.Destroy(_root);
             _root = null;
             _content = null;
+            _viewport = null;
             _label = null;
             _gui = null;
         }
 
         private static void UpdateGeometry(InventoryGui gui)
         {
-            if (_root == null || gui == null || gui.m_player == null) return;
+            if (_root == null || _label == null || _viewport == null || gui == null || gui.m_player == null) return;
 
             var playerRect = gui.m_player as RectTransform;
             if (playerRect == null) return;
@@ -194,13 +199,37 @@ namespace Stackmaster
             var scaleX = Mathf.Abs(playerRect.lossyScale.x);
             if (scaleX <= 0.0001f) return;
 
-            // Valheim's inventory canvas is screen-space. Convert the safe-area room to the
-            // player's local UI units using its actual transform scale, so the strip stays beside
-            // the inventory at different resolutions and UI scale settings without needing an
-            // additional Unity UI module dependency.
-            var availableScreenPixels = Screen.safeArea.xMax - corners[2].x;
-            var width = Mathf.Max(0f, availableScreenPixels / scaleX - 16f);
-            ((RectTransform)_root.transform).sizeDelta = new Vector2(width, 54f);
+            // Measure the actual styled glyphs rather than reserving a fixed width for one English
+            // string. The preferred width is recalculated on refresh so font, localization, and UI
+            // scale changes cannot let the first icon intrude into the label.
+            var preferredLabel = _label.GetPreferredValues(
+                _label.text ?? string.Empty,
+                float.PositiveInfinity,
+                ReservationStripLayoutPlanner.RootHeight);
+            var preferredLabelWidth = preferredLabel.x;
+            if (float.IsNaN(preferredLabelWidth) || float.IsInfinity(preferredLabelWidth) || preferredLabelWidth < 0f)
+                throw new InvalidOperationException("The reservation label did not produce a finite preferred width.");
+
+            // Valheim's inventory canvas is screen-space. Convert safe-area room to the player's
+            // local UI units using the actual transform scale. The planner also reserves the exact
+            // rendered label width plus a visible gap, and collapses an impossibly narrow icon
+            // viewport to zero width instead of overlapping or clipping the label.
+            var availableScreenPixels = Mathf.Max(0f, Screen.safeArea.xMax - corners[2].x);
+            var geometry = ReservationStripLayoutPlanner.Plan(
+                availableScreenPixels,
+                scaleX,
+                preferredLabelWidth);
+
+            var rootRect = (RectTransform)_root.transform;
+            rootRect.anchoredPosition = new Vector2(geometry.RootOffsetX, geometry.RootOffsetY);
+            rootRect.sizeDelta = new Vector2(geometry.RootWidth, ReservationStripLayoutPlanner.RootHeight);
+
+            var labelRect = _label.rectTransform;
+            labelRect.anchoredPosition = new Vector2(ReservationStripLayoutPlanner.LabelLeftInset, 0f);
+            labelRect.sizeDelta = new Vector2(geometry.LabelWidth, 0f);
+
+            _viewport.offsetMin = new Vector2(geometry.ViewportLeft, 3f);
+            _viewport.offsetMax = new Vector2(geometry.ViewportRight - geometry.RootWidth, -3f);
         }
 
         private static void CreateButton(ExpeditionReservationRecord record)

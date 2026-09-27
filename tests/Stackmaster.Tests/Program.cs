@@ -15,6 +15,9 @@ internal static class Program
             ChestSortDefaultsToEnabled,
             ChestSortKeyScopesPlayerWorldAndChest,
             ChestSortRejectsUnsafeIdentityAndStoredValues,
+            ReservationStripMovesByExactRequestedOffset,
+            ReservationStripUsesPreferredLabelWidthAndGap,
+            ReservationStripScalesAndClampsOverflow,
             SuccessfulDepositsDeduplicateTouchedDestinations,
             UntouchedFailedAndReplenishmentDestinationsAreNotScheduled,
             EmptyInventorySortsWithoutPlacements,
@@ -248,6 +251,53 @@ internal static class Program
         True(!ChestSortPreferencePolicy.TryCreateKey(11, 22, "  ", out key), "missing chest identity is rejected");
         True(!ChestSortPreferencePolicy.TryInterpretStoredValue(true, 2, out enabled), "unknown stored value fails closed");
         True(!enabled, "unknown stored value never enables sorting");
+    }
+
+    private static void ReservationStripMovesByExactRequestedOffset()
+    {
+        var layout = ReservationStripLayoutPlanner.Plan(600f, 1f, 70f);
+        Equal(12f, layout.RootOffsetX - ReservationStripLayoutPlanner.PreviousRootOffsetX,
+            "the entire strip moves exactly twelve UI pixels right from 1.3.2");
+        Equal(-10f, layout.RootOffsetY - ReservationStripLayoutPlanner.PreviousRootOffsetY,
+            "the entire strip moves exactly ten UI pixels up in the inventory transform");
+        Equal(20f, layout.RootOffsetX, "new horizontal root offset");
+        Equal(-10f, layout.RootOffsetY, "new vertical root offset");
+    }
+
+    private static void ReservationStripUsesPreferredLabelWidthAndGap()
+    {
+        var ordinary = ReservationStripLayoutPlanner.Plan(600f, 1f, 70.25f);
+        var localized = ReservationStripLayoutPlanner.Plan(600f, 1f, 142.6f);
+
+        Equal(73f, ordinary.LabelWidth, "preferred glyph width is rounded up with render padding");
+        Equal(
+            ReservationStripLayoutPlanner.LabelToIconGap,
+            ordinary.ViewportLeft - (ReservationStripLayoutPlanner.LabelLeftInset + ordinary.LabelWidth),
+            "the first icon viewport starts after a visible internal gap");
+        Equal(
+            localized.LabelWidth - ordinary.LabelWidth,
+            localized.ViewportLeft - ordinary.ViewportLeft,
+            "longer fonts or localized labels grow the reserved label region instead of overlapping the first icon");
+        True(localized.ViewportLeft > ordinary.ViewportLeft,
+            "a longer rendered label moves the icon viewport rather than cropping the label");
+    }
+
+    private static void ReservationStripScalesAndClampsOverflow()
+    {
+        var normal = ReservationStripLayoutPlanner.Plan(500f, 1f, 70f);
+        var scaled = ReservationStripLayoutPlanner.Plan(500f, 2f, 70f);
+        var narrow = ReservationStripLayoutPlanner.Plan(80f, 1f, 70f);
+
+        Equal(472f, normal.RootWidth, "normal safe-area width preserves an eight-unit right margin");
+        Equal(222f, scaled.RootWidth, "screen pixels are converted through the actual player UI scale");
+        Equal(80f - ReservationStripLayoutPlanner.SafeRightMargin,
+            narrow.RootOffsetX + narrow.RootWidth,
+            "a narrow strip still clamps its right edge inside the safe area");
+        Equal(narrow.ViewportLeft, narrow.ViewportRight,
+            "an impossibly narrow icon area collapses to zero instead of overlapping the full label");
+        True(narrow.ViewportLeft >= ReservationStripLayoutPlanner.LabelLeftInset + narrow.LabelWidth +
+             ReservationStripLayoutPlanner.LabelToIconGap,
+            "overflow never violates the required label/icon gap");
     }
 
     private static void SuccessfulDepositsDeduplicateTouchedDestinations()

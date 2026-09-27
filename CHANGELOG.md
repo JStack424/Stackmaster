@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.3 (local test candidate)
+
+Narrow reservation-strip layout correction on top of 1.3.2. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
+
+- Measures the styled `Reserved` label’s preferred rendered width on every geometry refresh instead of reserving a fixed English-string width.
+- Begins the icon viewport only after the full label width, two UI pixels of glyph safety padding, and an eight UI-pixel visible internal gap, preventing the first reservation icon from overlapping wider fonts or localized text.
+- Moves the complete reservation strip exactly 12 UI pixels right and 10 UI pixels up relative to 1.3.2, while preserving the safe-area right margin and horizontal overflow behavior.
+- Keeps every other 1.3.2 reservation, sorting, Quick Stack, chest-sorting, warning, persistence, and failure-isolation behavior unchanged.
+
 ## 1.3.2 (local test candidate)
 
 Reservation presentation, ordering, and Quick Stack destination sorting polish on top of 1.3.1. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
