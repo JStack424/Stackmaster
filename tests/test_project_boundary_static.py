@@ -287,8 +287,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn(".ThenBy(group => group.InventoryId, StringComparer.Ordinal)", core)
         self.assertIn("A piece-specific material grab is indivisible", core)
         self.assertIn("Array.Empty<ResourceWithdrawalStep>()", core)
-        self.assertIn("Every modified click is one independent reservation request", action)
-        self.assertIn("optional all-or-nothing complete-material transfer", action)
+        self.assertIn("Every modified click is one independent all-or-nothing material", action)
+        self.assertIn("reservation admission is decided centrally", action)
 
     def test_quick_grab_materials_preflights_capacity_and_weight_before_ownership(self):
         action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
