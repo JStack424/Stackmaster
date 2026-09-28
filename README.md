@@ -92,7 +92,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
   - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
 - **Quick Grab Materials**
-  - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to add one persistent reservation and attempt to grab one complete material set from eligible storage.
+  - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to request one complete material set from eligible storage. Ordinary pieces also add one persistent reservation.
   - Keeps the build menu open and leaves ordinary clicks unchanged.
   - Treats every valid modified click as one additional reservation. Repeated clicks increment it deterministically, including while away from supplies, except for decorative material pieces whose player-visible localized name contains `Stack` or `Pile` anywhere (ordinal, case-insensitive, including compound names such as `Woodpile`). Those vanilla or modded pieces remain material-only Quick Grab targets and never create a reservation.
   - Uses the raw localization token and exact stable prefab name as deterministic fallbacks only when localization is unavailable. Already-saved Stack/Pile records are removed without moving materials once their exact piece identity resolves; unresolved historical identities are never guessed.
