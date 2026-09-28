@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Test-candidate status:** 1.3.4 keeps the live-passing 1.3.3 reservation behavior while correcting its inverted inventory-row vertical offset, adding a mirrored reservation row above the active Hammer build menu, separating card selection from a dedicated one-count `-` / final-count `X` removal control, moving successful no-material reservation feedback to the compact white corner summary, and keeping `Stack`/`Pile`-named material structures as material-only Quick Grab targets. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.5 fixes the rejected Quick Grab success path so every delivered unit is debited from the authoritative live source chest and persisted before commit, with exact source/player conservation and rollback checks across ordinary and `Stack`/`Pile` recipes. It also anchors the mirrored reservation row to the current Categories / Materials / Recent / Favorites tab strip rather than the full-screen BuildUi controller. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
 
 ## About this project
 

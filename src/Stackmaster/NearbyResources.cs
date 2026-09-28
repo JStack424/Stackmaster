@@ -1129,6 +1129,131 @@ namespace Stackmaster
             return Capture(player, matchWorldLevel, fresh);
         }
 
+        internal static bool TryCaptureOwnedQuickGrabInventories(
+            Player player,
+            NearbyResourceCapture readOnlyCapture,
+            IReadOnlyList<ContainerHandle> requiredHandles,
+            bool matchWorldLevel,
+            out NearbyResourceCapture mutableCapture,
+            out ContainerHandle[] mutableHandles,
+            out string failure)
+        {
+            mutableCapture = null;
+            mutableHandles = Array.Empty<ContainerHandle>();
+            failure = null;
+            if (player == null || readOnlyCapture == null || requiredHandles == null || requiredHandles.Count == 0 ||
+                requiredHandles.Any(handle => handle == null))
+            {
+                failure = "required quick-grab source inventory was unavailable";
+                return false;
+            }
+
+            var requiredIds = new HashSet<string>(requiredHandles.Select(handle => handle.Id), StringComparer.Ordinal);
+            if (requiredIds.Count != requiredHandles.Count)
+            {
+                failure = "required quick-grab source identities were ambiguous";
+                return false;
+            }
+
+            var freshScope = StorageScopeProvider.Resolve(player);
+            if (freshScope == null || readOnlyCapture.Scope == null ||
+                !string.Equals(freshScope.Signature, readOnlyCapture.Scope.Signature, StringComparison.Ordinal))
+            {
+                failure = "storage scope changed before quick-grab transfer";
+                return false;
+            }
+
+            // Ownership acquisition is allowed to advance OwnerRevision. Freeze the now-owned
+            // generation for every source, then require that exact generation to survive the live
+            // inventory refresh. Comparing against the pre-acquisition read-only revision would
+            // reject a legitimate remote-owner handoff.
+            var ownerBaselines = requiredHandles
+                .Where(handle => handle.NetworkView != null && handle.NetworkView.IsValid() &&
+                    handle.NetworkView.GetZDO() != null)
+                .ToDictionary(handle => handle.Id, handle => handle.NetworkView.GetZDO().OwnerRevision, StringComparer.Ordinal);
+            if (ownerBaselines.Count != requiredIds.Count)
+            {
+                failure = "required quick-grab ownership baseline was unavailable";
+                return false;
+            }
+
+            var resourceStacks = new List<ResourceStack>();
+            var runtimeStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
+            var liveHandles = new List<ContainerHandle>(requiredHandles.Count);
+            var inventoryOrder = 1;
+            foreach (var handle in requiredHandles)
+            {
+                var captured = readOnlyCapture.Containers.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Id, handle.Id, StringComparison.Ordinal));
+                if (!ReferenceEquals(captured, handle) || !ValidateReadOnlyHandle(player, freshScope, handle, out failure) ||
+                    !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
+                {
+                    if (failure == null) failure = "required quick-grab source ownership changed";
+                    return false;
+                }
+                if (handle.Container.IsInUse() || (handle.Container.m_wagon != null && handle.Container.m_wagon.InUse()))
+                {
+                    failure = NearbyResourceOwnership.InUseMessage;
+                    return false;
+                }
+
+                var before = handle.NetworkView.GetZDO();
+                if (before == null || before.DataRevision != handle.ResourceDataRevision ||
+                    before.OwnerRevision != ownerBaselines[handle.Id] ||
+                    !ContainerDiscovery.RefreshFromNetwork(handle.Container))
+                {
+                    failure = "required quick-grab source changed before its live inventory was loaded";
+                    return false;
+                }
+
+                var after = handle.NetworkView != null && handle.NetworkView.IsValid()
+                    ? handle.NetworkView.GetZDO()
+                    : null;
+                var liveInventory = handle.Container.GetInventory();
+                if (after == null || liveInventory == null ||
+                    !handle.NetworkView.IsOwner() || !handle.Container.IsOwner() ||
+                    !string.Equals(after.m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
+                    after.DataRevision != handle.ResourceDataRevision ||
+                    after.OwnerRevision != ownerBaselines[handle.Id] ||
+                    !ContainerDiscovery.CheckAccess(player, handle.Container))
+                {
+                    failure = "required quick-grab source changed while its live inventory was loaded";
+                    return false;
+                }
+
+                var liveHandle = new ContainerHandle(
+                    handle.Id,
+                    handle.Container,
+                    handle.NetworkView,
+                    handle.Snapshot,
+                    liveInventory,
+                    after.DataRevision,
+                    after.DataRevision,
+                    after.m_uid,
+                    after.OwnerRevision,
+                    after.GetOwner(),
+                    true);
+                liveHandles.Add(liveHandle);
+                AddInventory(
+                    resourceStacks,
+                    runtimeStacks,
+                    liveHandle.Id,
+                    liveInventory,
+                    liveHandle,
+                    inventoryOrder++,
+                    matchWorldLevel);
+            }
+
+            if (liveHandles.Count != requiredIds.Count)
+            {
+                failure = "not every required quick-grab source was loaded as a live inventory";
+                return false;
+            }
+            mutableHandles = liveHandles.ToArray();
+            mutableCapture = new NearbyResourceCapture(freshScope, liveHandles, resourceStacks, runtimeStacks);
+            return true;
+        }
+
         private static NearbyResourceCapture Capture(Player player, bool matchWorldLevel, bool fresh)
         {
             var scope = StorageScopeProvider.Resolve(player);

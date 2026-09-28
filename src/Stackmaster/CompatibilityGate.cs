@@ -210,6 +210,7 @@ namespace Stackmaster
             var failures = new List<string>();
             RuntimeContractValidator.RequireField(failures, typeof(Piece), "m_icon", typeof(Sprite), false);
             RuntimeContractValidator.RequireField(failures, typeof(Hud), "m_buildUi", typeof(BuildUi), false);
+            RuntimeContractValidator.RequireField(failures, typeof(BuildUi), "m_tabContainer", typeof(RectTransform), false);
             RuntimeContractValidator.RequireMethod(failures, typeof(Hud), "IsPieceSelectionVisible", true, false);
             return failures.Count == 0
                 ? new CompatibilityResult(true, "verified optional build-menu reservation UI contract")

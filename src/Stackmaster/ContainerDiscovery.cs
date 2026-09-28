@@ -361,7 +361,7 @@ namespace Stackmaster
                 resourceReadable);
         }
 
-        private static bool TryReadSerializedInventory(
+        internal static bool TryReadSerializedInventory(
             Container container,
             ZDO zdo,
             out Inventory inventory,
@@ -427,6 +427,59 @@ namespace Stackmaster
                 failure = exception.Message;
                 return false;
             }
+        }
+
+        internal static bool PersistedInventoryMatchesLive(Container container, out string failure)
+        {
+            failure = null;
+            if (container == null)
+            {
+                failure = "container disappeared before persistence verification";
+                return false;
+            }
+
+            try
+            {
+                var view = NetworkViewField.GetValue(container) as ZNetView;
+                var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
+                var live = container.GetInventory();
+                Inventory persisted;
+                uint ignoredRevision;
+                if (zdo == null || live == null ||
+                    !TryReadSerializedInventory(container, zdo, out persisted, out ignoredRevision, out failure))
+                {
+                    if (string.IsNullOrEmpty(failure)) failure = "container persistence state was unavailable";
+                    return false;
+                }
+
+                var liveRows = InventoryRows(live);
+                var persistedRows = InventoryRows(persisted);
+                if (!liveRows.SequenceEqual(persistedRows, StringComparer.Ordinal))
+                {
+                    failure = "container inventory mutation was not persisted to its network state";
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failure = "container persistence verification failed: " + exception.GetType().Name;
+                return false;
+            }
+        }
+
+        private static IEnumerable<string> InventoryRows(Inventory inventory)
+        {
+            return inventory.GetAllItems()
+                .OrderBy(item => item.m_gridPos.y)
+                .ThenBy(item => item.m_gridPos.x)
+                .Select(item => string.Join("\u001f", new[]
+                {
+                    item.m_gridPos.x.ToString(CultureInfo.InvariantCulture),
+                    item.m_gridPos.y.ToString(CultureInfo.InvariantCulture),
+                    InventorySnapshots.PersistentItemKey(item),
+                    item.m_stack.ToString(CultureInfo.InvariantCulture)
+                }));
         }
 
         internal static bool RefreshFromNetwork(Container container)

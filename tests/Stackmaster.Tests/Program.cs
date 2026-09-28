@@ -58,6 +58,9 @@ internal static class Program
             MaterialOnlyQuickGrabNamesUseLocalizedAuthorityAndFallbacks,
             MaterialOnlyQuickGrabFullGatherHasNoReservationEffects,
             MaterialOnlyQuickGrabShortageMovesNothingAndReservesNothing,
+            AuthoritativeQuickGrabConservesSingleAndMultipleSources,
+            AuthoritativeQuickGrabRejectsPlayerOnlyCreditAndPartialDebits,
+            AuthoritativeQuickGrabRollbackRequiresExactRestoration,
             ResolvedMaterialOnlyReservationMigrationIsDurableAndExact,
             ReservationOnlyQuickGrabWithZeroAvailablePersistsWithoutMovement,
             ReservationOnlyQuickGrabWithPartialAvailablePersistsWithoutPartialMovement,
@@ -1019,6 +1022,76 @@ internal static class Program
         Equal(0, state.Records.Count, "shortage creates no reservation and therefore no reservation-only success notice");
         Equal(0, state.AggregateRequirements().Count,
             "shortage creates no target, orange allocation, or sorting effect");
+    }
+
+    private static void AuthoritativeQuickGrabConservesSingleAndMultipleSources()
+    {
+        True(AuthoritativeTransferConservation.IsExactTransfer(
+                new[] { new SourceDebitObservation(100, 50, 50) },
+                playerBefore: 12,
+                playerAfter: 62,
+                expectedUnits: 50),
+            "an ordinary one-chest Quick Grab commits only when the real source loses exactly what the player gains");
+
+        True(AuthoritativeTransferConservation.IsExactTransfer(
+                new[]
+                {
+                    new SourceDebitObservation(20, 0, 20),
+                    new SourceDebitObservation(100, 70, 30),
+                    new SourceDebitObservation(40, 30, 10)
+                },
+                playerBefore: 5,
+                playerAfter: 65,
+                expectedUnits: 60),
+            "multi-chest and multi-ingredient Quick Grab conserves the combined authoritative quantity");
+    }
+
+    private static void AuthoritativeQuickGrabRejectsPlayerOnlyCreditAndPartialDebits()
+    {
+        True(!AuthoritativeTransferConservation.IsExactTransfer(
+                new[] { new SourceDebitObservation(100, 100, 50) },
+                playerBefore: 12,
+                playerAfter: 62,
+                expectedUnits: 50),
+            "the exact live exploit is rejected when only the player increment occurs and the chest is unchanged");
+        True(!AuthoritativeTransferConservation.IsExactTransfer(
+                new[]
+                {
+                    new SourceDebitObservation(20, 0, 20),
+                    new SourceDebitObservation(100, 80, 30)
+                },
+                playerBefore: 5,
+                playerAfter: 55,
+                expectedUnits: 50),
+            "a partial debit in any one source rejects the whole multi-chest transaction");
+        True(!AuthoritativeTransferConservation.IsExactTransfer(
+                new[] { new SourceDebitObservation(100, 50, 50) },
+                playerBefore: 12,
+                playerAfter: 61,
+                expectedUnits: 50),
+            "a player capacity or weight short-credit cannot commit despite an exact source debit");
+    }
+
+    private static void AuthoritativeQuickGrabRollbackRequiresExactRestoration()
+    {
+        True(AuthoritativeTransferConservation.IsExactRollback(
+                new[]
+                {
+                    new SourceDebitObservation(20, 20, 0),
+                    new SourceDebitObservation(100, 100, 0)
+                },
+                playerBefore: 17,
+                playerAfter: 17),
+            "rollback succeeds only when every authoritative source and the player return to their exact starting counts");
+        True(!AuthoritativeTransferConservation.IsExactRollback(
+                new[]
+                {
+                    new SourceDebitObservation(20, 19, 0),
+                    new SourceDebitObservation(100, 100, 0)
+                },
+                playerBefore: 17,
+                playerAfter: 18),
+            "a compensating but unrestored source/player total is not accepted as exact rollback");
     }
 
     private static void ResolvedMaterialOnlyReservationMigrationIsDurableAndExact()

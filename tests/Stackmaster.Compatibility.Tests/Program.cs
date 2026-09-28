@@ -117,7 +117,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("InventoryGui", "m_touchMultiCrafting"), ("InventoryGui", "m_multiCrafting"),
                 ("InventoryGui", "m_multiCraftAmount"), ("InventoryGui", "m_dragItem"),
                 ("InventoryGui", "m_dragInventory"), ("Hud", "m_requirementItems"),
-                ("Hud", "m_buildUi"), ("PieceTable", "m_pieces"),
+                ("Hud", "m_buildUi"), ("BuildUi", "m_tabContainer"), ("PieceTable", "m_pieces"),
                 ("Container", "m_nview"), ("Container", "m_wagon"),
                 ("Inventory", "m_onChanged"), ("Inventory", "m_inventory"),
                 ("Player", "m_customData"), ("Player", "m_noPlacementCost"),

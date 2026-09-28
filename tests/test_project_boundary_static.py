@@ -304,7 +304,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
-        self.assertIn("RevalidateContainers(player, plan, capture", action)
+        self.assertIn("TryCaptureOwnedQuickGrabInventories(", action)
         self.assertIn("TryReserveContainers(", action)
         self.assertIn("RevalidateReservedContainers", action)
         self.assertIn("RevalidateStacks", action)
@@ -342,6 +342,43 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipLeaseManager.ReleaseBatch(ownership", action)
         self.assertIn("if (releaseMatchingOwnership)", nearby)
         self.assertNotIn("ClaimOwnership()", action)
+
+    def test_every_quick_grab_success_uses_live_persisted_sources_and_global_conservation(self):
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
+        conservation = (ROOT / "src" / "Stackmaster.Core" / "AuthoritativeTransferConservation.cs").read_text(encoding="utf-8")
+
+        finish = action[action.index("private static void Finish"):action.index("private static bool TryPrepare")]
+        self.assertIn("TryCaptureOwnedQuickGrabInventories", finish)
+        self.assertIn("TryPlanFromCapture", finish)
+        self.assertLess(finish.index("TryCaptureOwnedQuickGrabInventories"), finish.index("TryReserveContainers"))
+        self.assertIn("QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan)", finish)
+
+        owned_capture = nearby[
+            nearby.index("internal static bool TryCaptureOwnedQuickGrabInventories"):
+            nearby.index("private static NearbyResourceCapture Capture(")
+        ]
+        self.assertIn("ContainerDiscovery.RefreshFromNetwork(handle.Container)", owned_capture)
+        self.assertIn("var liveInventory = handle.Container.GetInventory()", owned_capture)
+        self.assertIn("ownerBaselines[handle.Id]", owned_capture)
+        self.assertNotIn("before.OwnerRevision != handle.ResourceOwnerRevision", owned_capture)
+        self.assertNotIn("after.OwnerRevision != handle.ResourceOwnerRevision", owned_capture)
+        self.assertIn("liveInventory,", owned_capture)
+        self.assertIn("new NearbyResourceCapture(freshScope, liveHandles", owned_capture)
+
+        transaction = action[action.index("private static bool ExecuteAtomic"):action.index("private static bool RollbackOrDisable")]
+        self.assertGreaterEqual(transaction.count("ReferenceEquals(runtime.Inventory"), 2)
+        self.assertIn("planned quick-grab source was not the authoritative live container inventory", transaction)
+        self.assertIn("sourceTotalsBefore", transaction)
+        self.assertIn("AuthoritativeTransferConservation.IsExactTransfer", transaction)
+        self.assertIn("PersistedInventoryMatchesLive", transaction)
+        self.assertIn("reservation.DataRevision == sourceRevisionBefore", transaction)
+        self.assertIn("combinedBefore == combinedAfter", conservation)
+
+        self.assertIn("TryReadSerializedInventory(container, zdo, out persisted", discovery)
+        self.assertIn("SequenceEqual(persistedRows, StringComparer.Ordinal)", discovery)
+        self.assertIn("container inventory mutation was not persisted to its network state", discovery)
 
     def test_pending_reservation_cleanup_precedes_exact_ownership_release(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
@@ -1547,10 +1584,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("LabelToIconGap = 8f", layout)
         self.assertIn("Screen.safeArea", ui + build_ui)
         self.assertIn("playerRect.GetWorldCorners(corners)", ui)
-        self.assertIn("menuRect.GetWorldCorners(corners)", build_ui)
+        self.assertIn("menuRect.GetWorldCorners(menuCorners)", build_ui)
+        self.assertIn("menuAnchor.GetWorldCorners(anchorCorners)", build_ui)
+        self.assertIn("menuRect.InverseTransformPoint(anchorCorners[0])", build_ui)
+        self.assertIn("menuRect.InverseTransformPoint(anchorCorners[2])", build_ui)
         self.assertIn("BuildMenuReservationLayoutPlanner.Plan", build_ui)
         self.assertIn("Gap = 8f", build_layout)
-        self.assertIn("if (!ReferenceEquals(_owner, buildUi) || !ReferenceEquals(_player, player) || _view == null)", build_ui)
+        self.assertIn("ResolveMenuAnchor(buildUi)", build_ui)
+        self.assertIn("!ReferenceEquals(_menuAnchor, currentAnchor)", build_ui)
         self.assertIn("var stale = menuRect.Find(RootName)", build_ui)
         self.assertIn("_view.SetVisible(false)", build_ui)
         self.assertNotIn("ExpeditionReservationBuildUi", manifest)
@@ -1562,6 +1603,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('typeof(Piece), "m_name", typeof(string), false', critical_gate)
         self.assertNotIn('"m_icon"', critical_gate)
         self.assertIn('typeof(Piece), "m_icon", typeof(Sprite), false', optional_gate)
+        self.assertIn('typeof(BuildUi), "m_tabContainer", typeof(RectTransform), false', optional_gate)
         self.assertIn("ExpeditionBorderColor", inventory)
         self.assertIn("quantityLabel.text = reservedQuantity.ToString()", inventory)
         self.assertNotIn('quantityLabel.text = "R" + reservedQuantity', inventory)

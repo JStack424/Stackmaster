@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using Stackmaster.Core;
 using TMPro;
@@ -14,8 +15,12 @@ namespace Stackmaster
     internal static class ExpeditionReservationBuildUi
     {
         private const string RootName = "StackmasterBuildMenuReservations";
+        private static readonly FieldInfo TabContainerField = typeof(BuildUi).GetField(
+            "m_tabContainer",
+            BindingFlags.Instance | BindingFlags.NonPublic);
         private static ReservationStripView _view;
         private static BuildUi _owner;
+        private static RectTransform _menuAnchor;
         private static Player _player;
         private static string _digest;
         private static bool _refreshRequested = true;
@@ -36,12 +41,14 @@ namespace Stackmaster
                     Hide();
                     return;
                 }
-                if (!ReferenceEquals(_owner, buildUi) || !ReferenceEquals(_player, player) || _view == null)
+                var currentAnchor = ResolveMenuAnchor(buildUi);
+                if (!ReferenceEquals(_owner, buildUi) || !ReferenceEquals(_player, player) ||
+                    !ReferenceEquals(_menuAnchor, currentAnchor) || _view == null)
                 {
-                    Attach(buildUi, player);
+                    Attach(buildUi, player, currentAnchor);
                 }
                 RefreshVisible(player);
-                UpdateGeometry((RectTransform)buildUi.transform);
+                UpdateGeometry((RectTransform)buildUi.transform, _menuAnchor);
             }
             catch (Exception exception)
             {
@@ -100,10 +107,11 @@ namespace Stackmaster
             _view = null;
             _owner = null;
             _player = null;
+            _menuAnchor = null;
             _digest = null;
         }
 
-        private static void Attach(BuildUi buildUi, Player player)
+        private static void Attach(BuildUi buildUi, Player player, RectTransform menuAnchor)
         {
             Destroy();
             var compatibility = CompatibilityGate.EvaluateBuildMenuReservationUi();
@@ -114,6 +122,11 @@ namespace Stackmaster
             }
             var menuRect = buildUi.transform as RectTransform;
             if (menuRect == null) throw new InvalidOperationException("BuildUi did not have a RectTransform.");
+            if (menuAnchor == null || !menuAnchor.gameObject.activeInHierarchy ||
+                !menuAnchor.IsChildOf(menuRect))
+            {
+                throw new InvalidOperationException("BuildUi did not expose its active tab-container RectTransform.");
+            }
             var stale = menuRect.Find(RootName);
             if (stale != null)
             {
@@ -125,6 +138,7 @@ namespace Stackmaster
             _view = new ReservationStripView(menuRect, RootName, template);
             _owner = buildUi;
             _player = player;
+            _menuAnchor = menuAnchor;
             _view.RootRect.anchorMin = _view.RootRect.anchorMax = menuRect.pivot;
             _view.RootRect.pivot = Vector2.zero;
             _view.RootRect.sizeDelta = new Vector2(menuRect.rect.width, BuildMenuReservationLayoutPlanner.Height);
@@ -132,21 +146,34 @@ namespace Stackmaster
             _refreshRequested = true;
         }
 
-        private static void UpdateGeometry(RectTransform menuRect)
+        private static void UpdateGeometry(RectTransform menuRect, RectTransform menuAnchor)
         {
-            if (_view == null || menuRect == null) return;
-            var corners = new Vector3[4];
-            menuRect.GetWorldCorners(corners);
+            if (_view == null || menuRect == null || menuAnchor == null) return;
+            var menuCorners = new Vector3[4];
+            var anchorCorners = new Vector3[4];
+            menuRect.GetWorldCorners(menuCorners);
+            menuAnchor.GetWorldCorners(anchorCorners);
             var scaleX = Mathf.Abs(menuRect.lossyScale.x);
             var scaleY = Mathf.Abs(menuRect.lossyScale.y);
             if (scaleX <= 0.0001f || scaleY <= 0.0001f)
                 throw new InvalidOperationException("The build-menu transform had an invalid UI scale.");
+
+            // BuildUi is a full-screen controller in the current tabbed interface. Its rect top is
+            // not the visible menu top. Convert the real Categories / Materials / Recent /
+            // Favorites tab strip into BuildUi-local coordinates and anchor immediately above it.
+            var anchorBottomLeft = menuRect.InverseTransformPoint(anchorCorners[0]);
+            var anchorTopRight = menuRect.InverseTransformPoint(anchorCorners[2]);
             var rect = menuRect.rect;
-            var safeLeft = rect.xMin + (Screen.safeArea.xMin - corners[0].x) / scaleX;
-            var safeRight = rect.xMin + (Screen.safeArea.xMax - corners[0].x) / scaleX;
-            var safeTop = rect.yMin + (Screen.safeArea.yMax - corners[0].y) / scaleY;
+            var safeLeft = rect.xMin + (Screen.safeArea.xMin - menuCorners[0].x) / scaleX;
+            var safeRight = rect.xMin + (Screen.safeArea.xMax - menuCorners[0].x) / scaleX;
+            var safeTop = rect.yMin + (Screen.safeArea.yMax - menuCorners[0].y) / scaleY;
             var geometry = BuildMenuReservationLayoutPlanner.Plan(
-                rect.xMin, rect.xMax, rect.yMax, safeLeft, safeRight, safeTop);
+                anchorBottomLeft.x,
+                anchorTopRight.x,
+                anchorTopRight.y,
+                safeLeft,
+                safeRight,
+                safeTop);
             if (!geometry.Visible)
             {
                 _view.SetVisible(false);
@@ -157,6 +184,12 @@ namespace Stackmaster
             var inner = ReservationStripLayoutPlanner.Plan(
                 geometry.Width, 1f, _view.PreferredLabelWidth);
             _view.ApplyInnerGeometry(geometry.Width, inner.LabelWidth, inner.ViewportLeft, inner.ViewportRight);
+        }
+
+        private static RectTransform ResolveMenuAnchor(BuildUi buildUi)
+        {
+            if (buildUi == null || TabContainerField == null) return null;
+            return TabContainerField.GetValue(buildUi) as RectTransform;
         }
 
         private static void ReleaseOne(string pieceKey, string visibleName)

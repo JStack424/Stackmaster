@@ -1,6 +1,19 @@
 # Changelog
 
-## 1.3.4 (local test candidate)
+## 1.3.5 (local test candidate)
+
+Critical Quick Grab conservation correction and current Hammer-menu attachment fix. This candidate still requires live Valheim validation, and 1.2.0 remains the production release.
+
+- Fixes the shared sufficient-material Quick Grab path for every ordinary and `Stack`/`Pile` recipe. Detached ZDO snapshots remain read-only planning inputs; after ownership and refresh, the transaction rebuilds and identity-checks the exact plan against each authoritative live `Container.GetInventory()` before reserving or mutating anything.
+- Fails closed before and during every move unless the runtime source is reference-identical to that live container inventory. The player cannot be credited from a detached planning snapshot.
+- Requires every live source chest to lose its exact planned quantity, the player to gain the same exact quantity, and the combined authoritative total to remain unchanged across one or many chests, ingredients, source stacks, and destination slots.
+- Requires each source mutation to advance its owned ZDO data revision and verifies that a freshly decoded serialized inventory exactly matches the live chest before the transaction can commit.
+- Preserves full live-inventory snapshots for player and sources, restores all of them on partial movement, declined capacity, ownership or reservation drift, timeout, exception, or any conservation/persistence mismatch, and disables safely if exact restoration cannot be proven.
+- Leaves the insufficient-material path indivisible and mutation-free: an incomplete set exposes no withdrawal steps and cannot partially debit, credit, or reserve a material-only `Stack`/`Pile` piece.
+- Anchors the optional Hammer reservation row to BuildUi's actual `m_tabContainer` (Categories / Materials / Recent / Favorites) instead of the full-screen controller rect, while keeping card selection on Valheim's exact ordinary `OnSelectPiece` path so the exact piece is selected and the menu closes normally.
+- Preserves 1.3.4's material-only Stack/Pile policy and all approved 1.3.3/1.3.4 reservation, sorting, allocation, placement-decrement, and UI interaction behavior.
+
+## 1.3.4 (rejected local test candidate)
 
 Interaction and live-layout corrections on top of Joe's otherwise live-passing 1.3.3 test paths. This candidate still requires live Valheim validation, and 1.2.0 remains the production release.
 

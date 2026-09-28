@@ -593,20 +593,35 @@ namespace Stackmaster
                 return;
             }
 
-            // Refresh can replace ItemData objects. Revalidate the complete source set, then make
-            // one final capture/plan from those synchronized live inventories.
-            if (!NearbyResourceService.RevalidateContainers(player, plan, capture, out failure))
-            {
-                ShowMaterialFault(failure);
-                return;
-            }
-            if (!TryPrepare(player, piece, reservationRequirements, out requirements, out capture, out plan, out handles, out failure, out ignoredExpectedUnavailable) ||
+            // Discovery deliberately plans from detached ZDO snapshots. After ownership is held,
+            // replace every detached source with the authoritative live Container inventory and
+            // re-plan before any player item can be credited. Mutating a detached snapshot here
+            // would pass local count checks while leaving the real chest unchanged.
+            NearbyResourceCapture liveCapture;
+            ContainerHandle[] liveHandles;
+            if (!NearbyResourceService.TryCaptureOwnedQuickGrabInventories(
+                    player,
+                    capture,
+                    handles,
+                    true,
+                    out liveCapture,
+                    out liveHandles,
+                    out failure) ||
+                !TryPlanFromCapture(
+                    liveCapture,
+                    requirements,
+                    reservationRequirements,
+                    out plan,
+                    out failure,
+                    out ignoredExpectedUnavailable) ||
                 !QuickGrabMaterialsWithdrawalPlanner.PlansAreIdentical(expectedPlan, plan) ||
-                handles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
+                liveHandles.Any(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()))
             {
-                ShowMaterialFault(failure ?? "nearby materials changed during transfer preparation");
+                ShowMaterialFault(failure ?? "nearby materials changed during live transfer preparation");
                 return;
             }
+            capture = liveCapture;
+            handles = liveHandles;
 
             IReadOnlyList<ContainerReservation> reservations;
             if (!NearbyResourceService.TryReserveContainers(
@@ -715,18 +730,51 @@ namespace Stackmaster
                 return false;
             }
             capture = NearbyResourceService.CaptureForQuickGrab(player, true, true);
+            if (!TryPlanFromCapture(
+                    capture,
+                    requirements,
+                    reservationRequirements,
+                    out plan,
+                    out failure,
+                    out expectedUnavailable))
+            {
+                return false;
+            }
+            if (!NearbyResourceService.TryResolveRequiredContainers(player, plan, capture, out handles, out failure))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryPlanFromCapture(
+            NearbyResourceCapture capture,
+            IReadOnlyList<ResourceRequirement> requirements,
+            IReadOnlyList<ResourceRequirement> reservationRequirements,
+            out ResourceWithdrawalPlan plan,
+            out string failure,
+            out bool expectedUnavailable)
+        {
+            plan = null;
+            failure = null;
+            expectedUnavailable = false;
+            if (capture == null)
+            {
+                failure = "nearby storage capture was unavailable";
+                return false;
+            }
+
             var allowedIdentities = new HashSet<string>(
                 (reservationRequirements ?? Array.Empty<ResourceRequirement>())
                     .Select(requirement => StableIdentityKey(requirement.ItemName, requirement.Quality)),
                 StringComparer.Ordinal);
-            var preparedCapture = capture;
-            var eligibleStacks = preparedCapture.Stacks.Where(stack =>
+            var eligibleStacks = capture.Stacks.Where(stack =>
             {
                 RuntimeResourceStack runtime;
                 string prefabName;
                 int quality;
                 return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
-                       preparedCapture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
+                       capture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
                        ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
                        allowedIdentities.Contains(StableIdentityKey(prefabName, quality));
             });
@@ -740,10 +788,6 @@ namespace Stackmaster
             if (!PlanMatchesReservationRequirements(plan, capture, reservationRequirements))
             {
                 failure = "nearby materials did not match the build-piece recipe identity exactly";
-                return false;
-            }
-            if (!NearbyResourceService.TryResolveRequiredContainers(player, plan, capture, out handles, out failure))
-            {
                 return false;
             }
             return true;
@@ -861,7 +905,33 @@ namespace Stackmaster
                 reservation.Container.GetInventory(),
                 preserveItemIdentity: false)));
             var completed = new List<CompletedQuickGrabMove>();
-            var sourceMoved = new Dictionary<string, int>(StringComparer.Ordinal);
+            var expectedDebits = new Dictionary<Inventory, int>();
+            foreach (var step in capacity.Steps)
+            {
+                RuntimeResourceStack runtime;
+                if (!capture.RuntimeStacks.TryGetValue(step.SourceStackId, out runtime) ||
+                    runtime.Container == null || runtime.Container.Container == null)
+                {
+                    failure = "planned quick-grab source disappeared before live-inventory preflight";
+                    return false;
+                }
+                var liveInventory = runtime.Container.Container.GetInventory();
+                if (liveInventory == null || !ReferenceEquals(runtime.Inventory, liveInventory))
+                {
+                    failure = "planned quick-grab source was not the authoritative live container inventory";
+                    return false;
+                }
+                if (!reservationByContainer.ContainsKey(runtime.Container.Container))
+                {
+                    failure = "planned quick-grab source had no live container reservation";
+                    return false;
+                }
+                expectedDebits[liveInventory] = expectedDebits.TryGetValue(liveInventory, out var debit)
+                    ? checked(debit + step.Quantity)
+                    : step.Quantity;
+            }
+            var sourceTotalsBefore = expectedDebits.ToDictionary(entry => entry.Key, entry => TotalUnits(entry.Key));
+            var playerTotalBefore = TotalUnits(playerInventory);
 
             try
             {
@@ -873,6 +943,14 @@ namespace Stackmaster
                     failure = "planned quick-grab source disappeared";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
+                var authoritativeInventory = runtime.Container.Container != null
+                    ? runtime.Container.Container.GetInventory()
+                    : null;
+                if (authoritativeInventory == null || !ReferenceEquals(runtime.Inventory, authoritativeInventory))
+                {
+                    failure = "planned quick-grab source stopped being the authoritative live container inventory";
+                    return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
+                }
                 ContainerReservation reservation;
                 if (!reservationByContainer.TryGetValue(runtime.Container.Container, out reservation) ||
                     !NearbyResourceService.ReservationMatches(player, capture.Scope, reservation))
@@ -881,7 +959,6 @@ namespace Stackmaster
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
 
-                var movedFromSource = sourceMoved.TryGetValue(step.SourceStackId, out var previous) ? previous : 0;
                 var sourceItem = runtime.Inventory.GetItemAt(runtime.Item.m_gridPos.x, runtime.Item.m_gridPos.y);
                 if (!ReferenceEquals(sourceItem, runtime.Item) ||
                     sourceItem.m_stack != runtime.Item.m_stack ||
@@ -908,6 +985,7 @@ namespace Stackmaster
                 var sourcePosition = sourceItem.m_gridPos;
                 var sourceBefore = TotalUnits(runtime.Inventory);
                 var playerBefore = TotalUnits(playerInventory);
+                var sourceRevisionBefore = reservation.DataRevision;
                 bool moved;
                 try
                 {
@@ -945,11 +1023,13 @@ namespace Stackmaster
                         step.CompatibilityKey,
                         step.Quantity,
                         reservation));
-                    sourceMoved[step.SourceStackId] = movedFromSource + step.Quantity;
+                    string persistenceFailure = null;
                     if (!reservation.AdvanceDataRevisionAfterMutation() ||
-                        !NearbyResourceService.ReservationMatches(player, capture.Scope, reservation))
+                        reservation.DataRevision == sourceRevisionBefore ||
+                        !NearbyResourceService.ReservationMatches(player, capture.Scope, reservation) ||
+                        !ContainerDiscovery.PersistedInventoryMatchesLive(reservation.Container, out persistenceFailure))
                     {
-                        failure = "required storage reservation changed after transfer";
+                        failure = persistenceFailure ?? "required storage reservation or persisted inventory changed after transfer";
                         return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                     }
                     continue;
@@ -977,9 +1057,18 @@ namespace Stackmaster
             }
 
                 var expectedUnits = withdrawal.RequiredUnits;
-                if (completed.Sum(move => move.Quantity) != expectedUnits)
+                var observations = expectedDebits.Select(expectedDebit => new SourceDebitObservation(
+                    sourceTotalsBefore[expectedDebit.Key],
+                    TotalUnits(expectedDebit.Key),
+                    expectedDebit.Value)).ToArray();
+                if (completed.Sum(move => move.Quantity) != expectedUnits ||
+                    !AuthoritativeTransferConservation.IsExactTransfer(
+                        observations,
+                        playerTotalBefore,
+                        TotalUnits(playerInventory),
+                        expectedUnits))
                 {
-                    failure = "quick-grab transfer did not complete the exact material set";
+                    failure = "quick-grab authoritative source/player conservation check failed";
                     return RollbackOrDisable(player, capture.Scope, reservations, completed, backups, failure, out failure);
                 }
                 return true;
@@ -1095,10 +1184,12 @@ namespace Stackmaster
                 }
 
                 var playerBefore = TotalUnits(playerInventory);
+                string persistenceFailure;
                 if (!playerInventory.RemoveItem(destination, move.Quantity) ||
                     TotalUnits(playerInventory) != playerBefore - move.Quantity ||
                     !move.Reservation.AdvanceDataRevisionAfterMutation() ||
-                    !NearbyResourceService.ReservationMatches(player, scope, move.Reservation))
+                    !NearbyResourceService.ReservationMatches(player, scope, move.Reservation) ||
+                    !ContainerDiscovery.PersistedInventoryMatchesLive(move.Reservation.Container, out persistenceFailure))
                 {
                     return false;
                 }
@@ -1184,7 +1275,11 @@ namespace Stackmaster
             {
                 try
                 {
+                    string persistenceFailure;
                     allRestored &= reservation.AdvanceDataRevisionAfterMutation();
+                    allRestored &= ContainerDiscovery.PersistedInventoryMatchesLive(
+                        reservation.Container,
+                        out persistenceFailure);
                 }
                 catch (Exception exception)
                 {
