@@ -32,10 +32,14 @@ Rollback if any regression blocks play: **remove 1.3.5 and return to Stackmaster
 
 ## Hammer reservation-row checks
 
+The dedicated-server verification assemblies do not contain the rendered client HUD hierarchy, so these position, clipping, and click-close checks require the live Valheim client.
+
 - [ ] Create at least one ordinary reservation and open the current tabbed Hammer menu.
-  - Expected: the reservation row is visible directly above the Categories / Materials / Recent / Favorites tabs.
+  - Expected: the reservation row is visible directly above the full Categories / Materials / Recent / Favorites tab strip.
+- [ ] Repeat with a narrow resolution or larger UI scale if practical.
+  - Expected: the row remains above the full tab strip, stays inside the safe area, is not clipped by the BuildUi panel, and does not overlap the tabs.
 - [ ] Click a reservation card body.
-  - Expected: that exact piece is selected and the menu closes exactly like a normal recipe click.
+  - Expected: that exact piece is selected through the normal Valheim selection path, the Hammer menu closes, and the reservation row hides in the same click.
 - [ ] Click the card's separate `-` / final-count `X` control.
   - Expected: exactly one reservation is removed without selecting the piece or moving materials.
 
