@@ -16,6 +16,7 @@ internal static class Program
             ChestSortKeyScopesPlayerWorldAndChest,
             ChestSortRejectsUnsafeIdentityAndStoredValues,
             ReservationStripMovesByExactRequestedOffset,
+            ReservationStripMovesUpInScreenSpaceFromVersion133,
             ReservationStripUsesPreferredLabelWidthAndGap,
             ReservationStripScalesAndClampsOverflow,
             SuccessfulDepositsDeduplicateTouchedDestinations,
@@ -269,10 +270,24 @@ internal static class Program
         var layout = ReservationStripLayoutPlanner.Plan(600f, 1f, 70f);
         Equal(12f, layout.RootOffsetX - ReservationStripLayoutPlanner.PreviousRootOffsetX,
             "the entire strip moves exactly twelve UI pixels right from 1.3.2");
-        Equal(-10f, layout.RootOffsetY - ReservationStripLayoutPlanner.PreviousRootOffsetY,
-            "the entire strip moves exactly ten UI pixels up in the inventory transform");
+        Equal(10f, layout.RootOffsetY - ReservationStripLayoutPlanner.PreviousRootOffsetY,
+            "the 1.3.4 top-right anchored strip is ten logical UI pixels above the 1.3.2 position");
         Equal(20f, layout.RootOffsetX, "new horizontal root offset");
-        Equal(-10f, layout.RootOffsetY, "new vertical root offset");
+        Equal(10f, layout.RootOffsetY, "corrected vertical root offset");
+    }
+
+    private static void ReservationStripMovesUpInScreenSpaceFromVersion133()
+    {
+        Equal(-10f, ReservationStripLayoutPlanner.Version133RootOffsetY, "1.3.3 rendered vertical offset");
+        Equal(20f, ReservationStripLayoutPlanner.RootOffsetY - ReservationStripLayoutPlanner.Version133RootOffsetY, "1.3.4 logical upward delta");
+
+        foreach (var uiScale in new[] { 0.75f, 1f, 1.25f, 1.5f, 2f })
+        {
+            var version133ScreenY = ReservationStripLayoutPlanner.Version133RootOffsetY * uiScale;
+            var version134ScreenY = ReservationStripLayoutPlanner.RootOffsetY * uiScale;
+            True(version134ScreenY > version133ScreenY, "positive anchoredPosition.y must move the top-right anchored row upward in screen space");
+            Equal(20f * uiScale, version134ScreenY - version133ScreenY, "scaled screen-space upward delta");
+        }
     }
 
     private static void ReservationStripUsesPreferredLabelWidthAndGap()

@@ -13,7 +13,8 @@ namespace Stackmaster.Core
         public const float PreviousRootOffsetX = 8f;
         public const float PreviousRootOffsetY = 0f;
         public const float RootOffsetX = PreviousRootOffsetX + 12f;
-        public const float RootOffsetY = PreviousRootOffsetY - 10f;
+        public const float Version133RootOffsetY = PreviousRootOffsetY - 10f;
+        public const float RootOffsetY = Version133RootOffsetY + 20f;
         public const float RootHeight = 54f;
         public const float SafeRightMargin = 8f;
         public const float LabelLeftInset = 8f;
