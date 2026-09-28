@@ -40,23 +40,25 @@ namespace Stackmaster
             }
         }
 
-        internal static void SelectFromBuildMenu(string pieceKey, BuildUi expectedOwner)
+        internal static bool SelectFromBuildMenu(string pieceKey, BuildUi expectedOwner)
         {
             try
             {
                 var player = Player.m_localPlayer;
                 var hud = Hud.instance;
                 if (player == null || hud == null || expectedOwner == null ||
-                    !ReferenceEquals(hud.m_buildUi, expectedOwner) || !Hud.IsPieceSelectionVisible()) return;
+                    !ReferenceEquals(hud.m_buildUi, expectedOwner) || !Hud.IsPieceSelectionVisible()) return false;
                 Piece piece;
-                if (!TryResolveCurrentPiece(player, pieceKey, requireActiveHammer: true, out piece)) return;
+                if (!TryResolveCurrentPiece(player, pieceKey, requireActiveHammer: true, out piece)) return false;
                 // Preserve Valheim's exact BuildUi selection, sound, touch, menu-close, and placement
                 // transition. The scoped bypass skips only Stackmaster's modifier-click reservation prefix.
                 QuickGrabMaterialsAction.SelectReservationCard(expectedOwner, piece);
+                return true;
             }
             catch (Exception exception)
             {
                 LogSelectionFailureOnce(exception);
+                return false;
             }
         }
 

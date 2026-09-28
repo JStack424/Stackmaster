@@ -212,6 +212,7 @@ namespace Stackmaster
             RuntimeContractValidator.RequireField(failures, typeof(Hud), "m_buildUi", typeof(BuildUi), false);
             RuntimeContractValidator.RequireField(failures, typeof(BuildUi), "m_tabContainer", typeof(RectTransform), false);
             RuntimeContractValidator.RequireMethod(failures, typeof(Hud), "IsPieceSelectionVisible", true, false);
+            RuntimeContractValidator.RequireMethod(failures, typeof(BuildUi), "OnSelectPiece", false, false, typeof(Piece));
             return failures.Count == 0
                 ? new CompatibilityResult(true, "verified optional build-menu reservation UI contract")
                 : new CompatibilityResult(false, string.Join("; ", failures));

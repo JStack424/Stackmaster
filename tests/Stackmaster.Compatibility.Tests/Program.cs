@@ -126,6 +126,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("ItemDrop", "m_itemData")
             };
             foreach (var field in fields) contract.Field(field.Type, field.Name);
+            contract.Field("BuildUi", "m_tabContainer", "UnityEngine.RectTransform", 0);
             contract.NestedField("ItemDrop", "ItemData", "m_shared", "SharedData", FieldAttributes.Public);
             contract.NestedNestedField(
                 "ItemDrop", "ItemData", "SharedData", "m_maxStackSize", "System.Int32", FieldAttributes.Public);
@@ -143,6 +144,12 @@ namespace Stackmaster.Compatibility.Tests
                 "KeyHints", "UpdateHints", Array.Empty<string>(), "KeyHints", "m_buildMenuHintsKB");
             contract.MethodReadsFieldByName(
                 "KeyHints", "UpdateHints", Array.Empty<string>(), "KeyHints", "m_buildMenuHintsGP");
+            contract.MethodCalls(
+                "BuildUi", "OnSelectPiece", "System.Void", new[] { "Piece" },
+                "Player", "SetSelectedPiece", "System.Boolean", new[] { "Piece" });
+            contract.MethodCalls(
+                "BuildUi", "OnSelectPiece", "System.Void", new[] { "Piece" },
+                "Hud", "CloseBuildUi", "System.Void", Array.Empty<string>());
 
             // Stackmaster debits the prepared plan before letting vanilla create output,
             // then suppresses these exact vanilla charging calls. Keep this a structural

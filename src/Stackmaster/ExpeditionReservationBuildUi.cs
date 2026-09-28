@@ -16,12 +16,12 @@ namespace Stackmaster
     {
         private const string RootName = "StackmasterBuildMenuReservations";
         private static readonly FieldInfo TabContainerField = typeof(BuildUi).GetField(
-            "m_tabContainer",
-            BindingFlags.Instance | BindingFlags.NonPublic);
+            "m_tabContainer", BindingFlags.Instance | BindingFlags.NonPublic);
         private static ReservationStripView _view;
         private static BuildUi _owner;
-        private static RectTransform _menuAnchor;
         private static Player _player;
+        private static RectTransform _menuRect;
+        private static RectTransform _hostRect;
         private static string _digest;
         private static bool _refreshRequested = true;
         private static bool _disabled;
@@ -41,14 +41,14 @@ namespace Stackmaster
                     Hide();
                     return;
                 }
-                var currentAnchor = ResolveMenuAnchor(buildUi);
-                if (!ReferenceEquals(_owner, buildUi) || !ReferenceEquals(_player, player) ||
-                    !ReferenceEquals(_menuAnchor, currentAnchor) || _view == null)
+                if (!ReferenceEquals(_owner, buildUi) || !ReferenceEquals(_player, player) || _view == null ||
+                    _menuRect == null || _hostRect == null)
                 {
-                    Attach(buildUi, player, currentAnchor);
+                    Attach(buildUi, player);
                 }
+                _view.Root.transform.SetAsLastSibling();
                 RefreshVisible(player);
-                UpdateGeometry((RectTransform)buildUi.transform, _menuAnchor);
+                UpdateGeometry(_menuRect, _hostRect);
             }
             catch (Exception exception)
             {
@@ -86,7 +86,7 @@ namespace Stackmaster
             var digest = Digest(records);
             if (_refreshRequested || !string.Equals(digest, _digest, StringComparison.Ordinal))
             {
-                _view.Render(records, pieceKey => ReservationCardInteractions.SelectFromBuildMenu(pieceKey, _owner), ReleaseOne);
+                _view.Render(records, SelectPiece, ReleaseOne);
                 _digest = digest;
                 _refreshRequested = false;
             }
@@ -107,11 +107,12 @@ namespace Stackmaster
             _view = null;
             _owner = null;
             _player = null;
-            _menuAnchor = null;
+            _menuRect = null;
+            _hostRect = null;
             _digest = null;
         }
 
-        private static void Attach(BuildUi buildUi, Player player, RectTransform menuAnchor)
+        private static void Attach(BuildUi buildUi, Player player)
         {
             Destroy();
             var compatibility = CompatibilityGate.EvaluateBuildMenuReservationUi();
@@ -120,60 +121,70 @@ namespace Stackmaster
                 Disable("The optional build-menu reservation row is unavailable: " + compatibility.Reason);
                 return;
             }
-            var menuRect = buildUi.transform as RectTransform;
-            if (menuRect == null) throw new InvalidOperationException("BuildUi did not have a RectTransform.");
-            if (menuAnchor == null || !menuAnchor.gameObject.activeInHierarchy ||
-                !menuAnchor.IsChildOf(menuRect))
-            {
-                throw new InvalidOperationException("BuildUi did not expose its active tab-container RectTransform.");
-            }
-            var stale = menuRect.Find(RootName);
+            var menuRect = TabContainerField?.GetValue(buildUi) as RectTransform;
+            if (menuRect == null) throw new InvalidOperationException("BuildUi tab container is unavailable.");
+            var hostRect = buildUi.transform.parent as RectTransform;
+            if (hostRect == null) throw new InvalidOperationException("BuildUi parent UI root is unavailable.");
+
+            var stale = hostRect.Find(RootName);
             if (stale != null)
             {
                 stale.gameObject.SetActive(false);
                 Object.Destroy(stale.gameObject);
             }
+            var legacy = buildUi.transform.Find(RootName);
+            if (legacy != null)
+            {
+                legacy.gameObject.SetActive(false);
+                Object.Destroy(legacy.gameObject);
+            }
             var template = buildUi.GetComponentsInChildren<TMP_Text>(true)
                 .FirstOrDefault(candidate => candidate != null && candidate.font != null);
-            _view = new ReservationStripView(menuRect, RootName, template);
+            _view = new ReservationStripView(hostRect, RootName, template);
             _owner = buildUi;
             _player = player;
-            _menuAnchor = menuAnchor;
-            _view.RootRect.anchorMin = _view.RootRect.anchorMax = menuRect.pivot;
+            _menuRect = menuRect;
+            _hostRect = hostRect;
+            _view.RootRect.anchorMin = _view.RootRect.anchorMax = hostRect.pivot;
             _view.RootRect.pivot = Vector2.zero;
             _view.RootRect.sizeDelta = new Vector2(menuRect.rect.width, BuildMenuReservationLayoutPlanner.Height);
             _view.Root.transform.SetAsLastSibling();
             _refreshRequested = true;
         }
 
-        private static void UpdateGeometry(RectTransform menuRect, RectTransform menuAnchor)
+        private static void UpdateGeometry(RectTransform menuRect, RectTransform hostRect)
         {
-            if (_view == null || menuRect == null || menuAnchor == null) return;
-            var menuCorners = new Vector3[4];
-            var anchorCorners = new Vector3[4];
-            menuRect.GetWorldCorners(menuCorners);
-            menuAnchor.GetWorldCorners(anchorCorners);
-            var scaleX = Mathf.Abs(menuRect.lossyScale.x);
-            var scaleY = Mathf.Abs(menuRect.lossyScale.y);
-            if (scaleX <= 0.0001f || scaleY <= 0.0001f)
-                throw new InvalidOperationException("The build-menu transform had an invalid UI scale.");
+            if (_view == null || menuRect == null || hostRect == null) return;
 
-            // BuildUi is a full-screen controller in the current tabbed interface. Its rect top is
-            // not the visible menu top. Convert the real Categories / Materials / Recent /
-            // Favorites tab strip into BuildUi-local coordinates and anchor immediately above it.
-            var anchorBottomLeft = menuRect.InverseTransformPoint(anchorCorners[0]);
-            var anchorTopRight = menuRect.InverseTransformPoint(anchorCorners[2]);
-            var rect = menuRect.rect;
-            var safeLeft = rect.xMin + (Screen.safeArea.xMin - menuCorners[0].x) / scaleX;
-            var safeRight = rect.xMin + (Screen.safeArea.xMax - menuCorners[0].x) / scaleX;
-            var safeTop = rect.yMin + (Screen.safeArea.yMax - menuCorners[0].y) / scaleY;
+            // BuildUi is the activation/input root, not a reliable visible-panel bound. m_tabContainer
+            // is the top edge of the Categories / Materials / Recent / Favorites panel, so anchor to it and
+            // express the result in BuildUi's parent where the row cannot be clipped by BuildUi.
+            var corners = new Vector3[4];
+            menuRect.GetWorldCorners(corners);
+            var menuLeft = float.PositiveInfinity;
+            var menuRight = float.NegativeInfinity;
+            var menuTop = float.NegativeInfinity;
+            foreach (var corner in corners)
+            {
+                var local = hostRect.InverseTransformPoint(corner);
+                menuLeft = Mathf.Min(menuLeft, local.x);
+                menuRight = Mathf.Max(menuRight, local.x);
+                menuTop = Mathf.Max(menuTop, local.y);
+            }
+
+            var hostCorners = new Vector3[4];
+            hostRect.GetWorldCorners(hostCorners);
+            var scaleX = Mathf.Abs(hostRect.lossyScale.x);
+            var scaleY = Mathf.Abs(hostRect.lossyScale.y);
+            if (scaleX <= 0.0001f || scaleY <= 0.0001f)
+                throw new InvalidOperationException("The build-menu canvas root had an invalid UI scale.");
+            var safeArea = Screen.safeArea;
+            var hostBounds = hostRect.rect;
+            var safeLeft = hostBounds.xMin + (safeArea.xMin - hostCorners[0].x) / scaleX;
+            var safeRight = hostBounds.xMin + (safeArea.xMax - hostCorners[0].x) / scaleX;
+            var safeTop = hostBounds.yMin + (safeArea.yMax - hostCorners[0].y) / scaleY;
             var geometry = BuildMenuReservationLayoutPlanner.Plan(
-                anchorBottomLeft.x,
-                anchorTopRight.x,
-                anchorTopRight.y,
-                safeLeft,
-                safeRight,
-                safeTop);
+                menuLeft, menuRight, menuTop, safeLeft, safeRight, safeTop);
             if (!geometry.Visible)
             {
                 _view.SetVisible(false);
@@ -186,10 +197,12 @@ namespace Stackmaster
             _view.ApplyInnerGeometry(geometry.Width, inner.LabelWidth, inner.ViewportLeft, inner.ViewportRight);
         }
 
-        private static RectTransform ResolveMenuAnchor(BuildUi buildUi)
+        private static void SelectPiece(string pieceKey)
         {
-            if (buildUi == null || TabContainerField == null) return null;
-            return TabContainerField.GetValue(buildUi) as RectTransform;
+            if (!ReservationCardInteractions.SelectFromBuildMenu(pieceKey, _owner)) return;
+            // The row lives beside BuildUi on the canvas to avoid menu clipping, so hide it in
+            // the same click frame while BuildUi.OnSelectPiece completes the normal menu close.
+            Hide();
         }
 
         private static void ReleaseOne(string pieceKey, string visibleName)

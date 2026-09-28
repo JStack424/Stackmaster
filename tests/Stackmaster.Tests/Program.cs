@@ -322,6 +322,8 @@ internal static class Program
         Equal(784f, clamped.Width, "safe-area width bounds horizontal overflow");
         True(!BuildMenuReservationLayoutPlanner.Plan(100f, 700f, 550f, 0f, 800f, 600f).Visible,
             "row hides rather than overlapping when no safe space exists above the menu");
+        True(!BuildMenuReservationLayoutPlanner.Plan(0f, 800f, 600f, 0f, 800f, 600f).Visible,
+            "a full-screen BuildUi activation root cannot be used as the visible menu anchor");
     }
 
     private static void ReservationWithoutMaterialsSummaryUsesCornerStyleWording()
