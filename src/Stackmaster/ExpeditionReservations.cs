@@ -289,6 +289,9 @@ namespace Stackmaster
                 }
 
                 _state = committed;
+                // The placed unit no longer needs any matching optional gather that has not yet
+                // committed inventory movement.
+                QuickGrabMaterialsAction.CancelOneMaterialTransfer(pieceKey);
                 RequestRefreshAfterDurableChange();
                 return SuccessfulBuildReservationResult.Consumed;
             }

@@ -1464,7 +1464,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("UseItem", interactions)
         self.assertEqual(1, interactions.count("player.SetSelectedPiece(piece)"))
         self.assertIn("QuickGrabMaterialsAction.SelectReservationCard(expectedOwner, piece)", interactions)
-        self.assertIn("QuickGrabMaterialsAction.CancelOneMaterialTransfer(pieceKey)", runtime)
+        self.assertEqual(2, runtime.count("QuickGrabMaterialsAction.CancelOneMaterialTransfer(pieceKey)"))
         self.assertIn("request.PieceKey", quick_grab)
         self.assertIn("_running && !_cancelActiveTransfer", quick_grab)
         self.assertIn("_cancelActiveTransfer", quick_grab)
