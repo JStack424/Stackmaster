@@ -59,9 +59,14 @@ namespace Stackmaster
         {
             if (_disabled || _view == null || _owner == null || player == null ||
                 !ReferenceEquals(player, Player.m_localPlayer) || !ReferenceEquals(player, _player) ||
-                !ReferenceEquals(Hud.instance != null ? Hud.instance.m_buildUi : null, _owner) ||
-                !_owner.gameObject.activeInHierarchy)
+                !ReferenceEquals(Hud.instance != null ? Hud.instance.m_buildUi : null, _owner))
             {
+                return;
+            }
+            if (!_owner.gameObject.activeInHierarchy || !Hud.IsPieceSelectionVisible() ||
+                !ReservationCardInteractions.HasActiveHammer(player))
+            {
+                Hide();
                 return;
             }
             IReadOnlyList<ExpeditionReservationRecord> records;
