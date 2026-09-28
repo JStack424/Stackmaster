@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Test-candidate status:** 1.3.4 keeps the live-passing 1.3.3 reservation behavior while correcting its inverted inventory-row vertical offset, adding a mirrored reservation row above the active Hammer build menu, separating card selection from a dedicated one-count `-` / final-count `X` removal control, and moving successful no-material reservation feedback to the compact white corner summary. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
+> **Test-candidate status:** 1.3.4 keeps the live-passing 1.3.3 reservation behavior while correcting its inverted inventory-row vertical offset, adding a mirrored reservation row above the active Hammer build menu, separating card selection from a dedicated one-count `-` / final-count `X` removal control, moving successful no-material reservation feedback to the compact white corner summary, and keeping `Stack`/`Pile`-named material structures as material-only Quick Grab targets. This local test build still requires live Valheim validation, and 1.2.0 remains the production release.
 
 ## About this project
 
@@ -46,7 +46,7 @@ Stackmaster removes repetitive container management without adding free resource
 
 | Control | Behavior |
 | --- | --- |
-| `Left Alt` + click a build piece | Add one persistent reservation, then grab one complete material set when it is safely available, without closing the build menu. |
+| `Left Alt` + click a build piece | Add one persistent reservation, then grab one complete material set when safely available, without closing the menu. Pieces whose localized name contains `Stack` or `Pile` are material-only: they still gather the complete set but never create a reservation. |
 
 The modifier follows the configured **Quick Stack** shortcut, which uses `Left Alt + E` by default. While the build menu is open, its keyboard/mouse action list shows **Quick Grab Materials** with **Left Alt + Click** by default and updates that shortcut text when the configured modifiers change. Version 1.2.0 does not add a controller-specific action.
 
@@ -94,10 +94,11 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
 - **Quick Grab Materials**
   - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to add one persistent reservation and attempt to grab one complete material set from eligible storage.
   - Keeps the build menu open and leaves ordinary clicks unchanged.
-  - Treats every valid modified click as one additional reservation. Repeated clicks increment it deterministically, including while away from supplies.
-  - Saves the reservation before any shared inventory can change. Earlier reservation state migrates from PlayerPrefs on the first mutation; new state is flushed to a detached file and published with an atomic same-directory replacement. Malformed, mixed-invalid, or changed recipe identity and failed durable saves remain fail-closed, create no active or durable phantom reservation, and move no materials.
+  - Treats every valid modified click as one additional reservation. Repeated clicks increment it deterministically, including while away from supplies, except for decorative material pieces whose player-visible localized name contains `Stack` or `Pile` anywhere (ordinal, case-insensitive, including compound names such as `Woodpile`). Those vanilla or modded pieces remain material-only Quick Grab targets and never create a reservation.
+  - Uses the raw localization token and exact stable prefab name as deterministic fallbacks only when localization is unavailable. Already-saved Stack/Pile records are removed without moving materials once their exact piece identity resolves; unresolved historical identities are never guessed.
+  - Saves ordinary reservations before any shared inventory can change. Earlier reservation state migrates from PlayerPrefs on the first mutation; new state is flushed to a detached file and published with an atomic same-directory replacement. Malformed, mixed-invalid, or changed recipe identity and failed durable saves remain fail-closed, create no active or durable phantom reservation, and move no materials.
   - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
-  - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity. Zero stock, partial stock, unreachable storage, ownership failure, or capacity failure keeps the saved reservation but performs no partial transfer.
+  - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity. For ordinary pieces, zero stock, partial stock, unreachable storage, ownership failure, or capacity failure keeps the saved reservation but performs no partial transfer. For Stack/Pile material pieces, the same shortage moves nothing, creates no reservation, and uses the ordinary truthful material-gather failure response.
   - Clearly distinguishes `grabbed materials and added reservation` from a compact white corner summary such as `Reserved Cart ×2 — materials not gathered.` Reservation-only clicks do not create failed-deposit warnings.
   - Shows the same live reserved-piece cards and counts in two horizontally bounded rows: one immediately to the right of the player inventory and one anchored directly above the active Hammer build menu. The inventory row is 20 logical UI pixels above its incorrectly inverted 1.3.3 position (10 above 1.3.2), while its 12-pixel rightward move and corrected label spacing remain unchanged.
   - Clicking the main card selects that exact currently available piece through Valheim's current PieceTable. Inventory-row selection is a safe no-op unless the Hammer is already active; it never auto-equips a tool. The build-menu row follows the ordinary selection, sound, close, and placement transition.
