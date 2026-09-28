@@ -113,7 +113,6 @@ namespace Stackmaster
             try
             {
                 ReservationCardInteractions.ReleaseOne(pieceKey, visibleName);
-                Refresh(Player.m_localPlayer);
             }
             catch (Exception exception)
             {

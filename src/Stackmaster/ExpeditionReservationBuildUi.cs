@@ -159,8 +159,6 @@ namespace Stackmaster
             try
             {
                 ReservationCardInteractions.ReleaseOne(pieceKey, visibleName);
-                _refreshRequested = true;
-                RefreshVisible(Player.m_localPlayer);
             }
             catch (Exception exception)
             {

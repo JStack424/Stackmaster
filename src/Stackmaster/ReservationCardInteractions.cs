@@ -16,11 +16,9 @@ namespace Stackmaster
             if (player == null) return false;
             if (!ExpeditionReservations.TryReleaseOne(player, pieceKey))
             {
-                InventoryIntegration.RequestExpeditionRefresh();
                 RuntimeContext.ShowCenter("Stackmaster could not save that reservation release; it was left unchanged.");
                 return false;
             }
-            InventoryIntegration.RequestExpeditionRefresh();
             RuntimeContext.ShowTopLeft("Stackmaster: released 1 × " + visibleName + " reservation.");
             return true;
         }
