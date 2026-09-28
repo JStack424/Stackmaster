@@ -325,6 +325,9 @@ namespace Stackmaster
                 }
 
                 _state = committed;
+                // Releasing saved intent also cancels one not-yet-committed optional material
+                // gather for that same piece; the remove interaction itself can never move items.
+                QuickGrabMaterialsAction.CancelOneMaterialTransfer(pieceKey);
                 RequestRefreshAfterDurableChange();
                 return true;
             }

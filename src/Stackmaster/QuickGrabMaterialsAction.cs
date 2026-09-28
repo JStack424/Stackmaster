@@ -135,12 +135,14 @@ namespace Stackmaster
         internal PendingQuickGrabRequest(
             Player player,
             Piece piece,
+            string pieceKey,
             IReadOnlyList<ResourceRequirement> reservationRequirements,
             string displayName,
             int committedCount)
         {
             Player = player;
             Piece = piece;
+            PieceKey = pieceKey;
             ReservationRequirements = reservationRequirements;
             DisplayName = displayName;
             CommittedCount = committedCount;
@@ -148,6 +150,7 @@ namespace Stackmaster
 
         internal Player Player { get; }
         internal Piece Piece { get; }
+        internal string PieceKey { get; }
         internal IReadOnlyList<ResourceRequirement> ReservationRequirements { get; }
         internal string DisplayName { get; }
         internal int CommittedCount { get; }
@@ -168,6 +171,8 @@ namespace Stackmaster
         private static int _generation;
         private static string _activeDisplayName;
         private static int _activeCommittedCount;
+        private static string _activePieceKey;
+        private static bool _cancelActiveTransfer;
         private static int _reservationCardSelectionDepth;
 
         internal static bool IsReservationCardSelection => _reservationCardSelectionDepth > 0;
@@ -226,10 +231,35 @@ namespace Stackmaster
             PendingRequests.Enqueue(new PendingQuickGrabRequest(
                 player,
                 piece,
+                pieceKey,
                 reservationRequirements,
                 displayName,
                 committedCount));
             StartNext();
+        }
+
+        internal static void CancelOneMaterialTransfer(string pieceKey)
+        {
+            if (string.IsNullOrEmpty(pieceKey)) return;
+            if (_running && string.Equals(_activePieceKey, pieceKey, StringComparison.Ordinal))
+            {
+                _cancelActiveTransfer = true;
+                return;
+            }
+
+            var retained = new Queue<PendingQuickGrabRequest>();
+            var canceled = false;
+            while (PendingRequests.Count > 0)
+            {
+                var request = PendingRequests.Dequeue();
+                if (!canceled && string.Equals(request.PieceKey, pieceKey, StringComparison.Ordinal))
+                {
+                    canceled = true;
+                    continue;
+                }
+                retained.Enqueue(request);
+            }
+            while (retained.Count > 0) PendingRequests.Enqueue(retained.Dequeue());
         }
 
         private static void StartNext()
@@ -255,6 +285,8 @@ namespace Stackmaster
             var piece = request.Piece;
             _activeDisplayName = request.DisplayName;
             _activeCommittedCount = request.CommittedCount;
+            _activePieceKey = request.PieceKey;
+            _cancelActiveTransfer = false;
             var generation = _generation;
             _running = true;
             try
@@ -337,6 +369,8 @@ namespace Stackmaster
             _running = false;
             _activeDisplayName = null;
             _activeCommittedCount = 0;
+            _activePieceKey = null;
+            _cancelActiveTransfer = false;
             StartNext();
         }
 
@@ -349,6 +383,8 @@ namespace Stackmaster
             _running = false;
             _activeDisplayName = null;
             _activeCommittedCount = 0;
+            _activePieceKey = null;
+            _cancelActiveTransfer = false;
         }
 
         internal static void RearmSession()
@@ -357,6 +393,8 @@ namespace Stackmaster
             _running = false;
             _activeDisplayName = null;
             _activeCommittedCount = 0;
+            _activePieceKey = null;
+            _cancelActiveTransfer = false;
         }
 
         private static IEnumerator FinishAfterOwnership(
@@ -369,6 +407,11 @@ namespace Stackmaster
         {
             if (generation != _generation || !RuntimeContext.Compatibility.IsCompatible)
             {
+                yield break;
+            }
+            if (_cancelActiveTransfer)
+            {
+                Complete(generation);
                 yield break;
             }
 
@@ -390,6 +433,7 @@ namespace Stackmaster
                 var refreshFailed = false;
                 var deadline = Time.realtimeSinceStartup + OwnershipTimeoutSeconds;
                 while (generation == _generation &&
+                       !_cancelActiveTransfer &&
                        ReferenceEquals(player, Player.m_localPlayer) &&
                        !ownership.IsComplete &&
                        Time.realtimeSinceStartup < deadline)
@@ -411,6 +455,7 @@ namespace Stackmaster
                 try
                 {
                     if (generation != _generation ||
+                        _cancelActiveTransfer ||
                         !RuntimeContext.Compatibility.IsCompatible ||
                         !ReferenceEquals(player, Player.m_localPlayer))
                     {
