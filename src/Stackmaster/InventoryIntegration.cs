@@ -494,6 +494,7 @@ namespace Stackmaster
         internal static void OnSessionDisconnected()
         {
             OnInventoryHidden();
+            ExpeditionReservationBuildUi.Destroy();
             _sortingChestOnClose = false;
             if (_toggleAnchor != null)
             {
@@ -505,6 +506,7 @@ namespace Stackmaster
         {
             OnInventoryHidden();
             ExpeditionReservationUi.RearmSession();
+            ExpeditionReservationBuildUi.RearmSession();
             _sortingChestOnClose = false;
             _overlaysDisabled = false;
             _overlayFailureLogged = false;
@@ -525,6 +527,7 @@ namespace Stackmaster
             _overlayRefreshPending = false;
             _expeditionRefreshPending = false;
             ExpeditionReservationUi.Destroy();
+            ExpeditionReservationBuildUi.Destroy();
             UnbindPlayerInventory();
             UnbindChestToggle();
             if (RuntimeContext.Plugin != null && RuntimeContext.Plugin.AutoSortEnabled != null)
@@ -625,6 +628,18 @@ namespace Stackmaster
         {
             _overlayRefreshPending = true;
             _expeditionRefreshPending = true;
+            // Both strips are optional views of the already-committed reservation state. Refresh
+            // them independently so one drifting hierarchy cannot affect the other or gameplay.
+            try { ExpeditionReservationUi.Refresh(Player.m_localPlayer); }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogWarning("Inventory reservation row refresh failed safely: " + exception.GetType().Name);
+            }
+            try { ExpeditionReservationBuildUi.RequestRefresh(); }
+            catch (Exception exception)
+            {
+                RuntimeContext.Plugin?.Log.LogWarning("Build-menu reservation row refresh failed safely: " + exception.GetType().Name);
+            }
         }
 
         internal static void HideFailedDepositOverlay(InventoryElement element)

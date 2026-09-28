@@ -134,16 +134,22 @@ namespace Stackmaster
         internal PendingQuickGrabRequest(
             Player player,
             Piece piece,
-            IReadOnlyList<ResourceRequirement> reservationRequirements)
+            IReadOnlyList<ResourceRequirement> reservationRequirements,
+            string displayName,
+            int committedCount)
         {
             Player = player;
             Piece = piece;
             ReservationRequirements = reservationRequirements;
+            DisplayName = displayName;
+            CommittedCount = committedCount;
         }
 
         internal Player Player { get; }
         internal Piece Piece { get; }
         internal IReadOnlyList<ResourceRequirement> ReservationRequirements { get; }
+        internal string DisplayName { get; }
+        internal int CommittedCount { get; }
     }
 
     internal static class QuickGrabMaterialsAction
@@ -159,6 +165,8 @@ namespace Stackmaster
         private static readonly Queue<PendingQuickGrabRequest> PendingRequests = new Queue<PendingQuickGrabRequest>();
         private static bool _running;
         private static int _generation;
+        private static string _activeDisplayName;
+        private static int _activeCommittedCount;
 
         internal static void Begin(Player player, Piece piece)
         {
@@ -179,12 +187,14 @@ namespace Stackmaster
                 RuntimeContext.ShowCenter("Stackmaster could not identify that piece safely; no reservation was added and no materials were moved.");
                 return;
             }
+            int committedCount;
             string reservationFailure;
             if (!ExpeditionReservations.TryAddQuickGrabReservation(
                     player,
                     pieceKey,
                     displayName,
                     reservationRequirements,
+                    out committedCount,
                     out reservationFailure))
             {
                 ShowFailure(reservationFailure);
@@ -196,7 +206,9 @@ namespace Stackmaster
             PendingRequests.Enqueue(new PendingQuickGrabRequest(
                 player,
                 piece,
-                reservationRequirements));
+                reservationRequirements,
+                displayName,
+                committedCount));
             StartNext();
         }
 
@@ -221,6 +233,8 @@ namespace Stackmaster
 
             var player = request.Player;
             var piece = request.Piece;
+            _activeDisplayName = request.DisplayName;
+            _activeCommittedCount = request.CommittedCount;
             var generation = _generation;
             _running = true;
             try
@@ -301,6 +315,8 @@ namespace Stackmaster
             }
 
             _running = false;
+            _activeDisplayName = null;
+            _activeCommittedCount = 0;
             StartNext();
         }
 
@@ -311,12 +327,16 @@ namespace Stackmaster
             _generation++;
             PendingRequests.Clear();
             _running = false;
+            _activeDisplayName = null;
+            _activeCommittedCount = 0;
         }
 
         internal static void RearmSession()
         {
             PendingRequests.Clear();
             _running = false;
+            _activeDisplayName = null;
+            _activeCommittedCount = 0;
         }
 
         private static IEnumerator FinishAfterOwnership(
@@ -1182,7 +1202,12 @@ namespace Stackmaster
         {
             var detail = string.IsNullOrWhiteSpace(failure) ? "the complete material set was not available" : failure;
             RuntimeContext.Plugin?.Log.LogInfo("Quick Grab reservation saved without materials: " + detail + ".");
-            RuntimeContext.ShowCenter("Stackmaster: reservation added without materials — " + detail + ".");
+            var visibleName = Localization.instance != null
+                ? Localization.instance.Localize(_activeDisplayName ?? string.Empty)
+                : _activeDisplayName ?? string.Empty;
+            RuntimeContext.ShowTopLeft(QuickStackSummaryFormatter.FormatReservationWithoutMaterials(
+                string.IsNullOrWhiteSpace(visibleName) ? "build piece" : visibleName,
+                _activeCommittedCount));
         }
     }
 }

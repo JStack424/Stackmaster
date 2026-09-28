@@ -107,6 +107,8 @@ namespace Stackmaster
             if (RuntimeContext.Compatibility.IsCompatible)
             {
                 StorageAction.Update();
+                // Cosmetic build-menu integration is patch-free and failure-isolated.
+                ExpeditionReservationBuildUi.Tick();
                 return;
             }
 

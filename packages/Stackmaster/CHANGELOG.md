@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.4 (local test candidate)
+
+Interaction and live-layout corrections on top of Joe's otherwise live-passing 1.3.3 test paths. This candidate still requires live Valheim validation, and 1.2.0 remains the production release.
+
+- Corrects the 1.3.3 inventory reservation row's live-observed vertical inversion. The row moves exactly 20 logical UI pixels upward from its 1.3.3 rendered position, landing 10 pixels above 1.3.2, while retaining the 12-pixel rightward move, measured label spacing, safe-area clamp, and bounded horizontal overflow.
+- Mirrors the same persisted reservation cards in a horizontally bounded row anchored directly above the active Hammer build menu's actual `RectTransform`. It hides when empty or invalid and rebuilds safely across menu, player, world, and UI lifecycles without adding a release-critical Harmony patch.
+- Makes each card body a selection control rather than removal. Build-menu cards select through Valheim's available PieceTable and follow the ordinary sound/menu-close/placement transition. Inventory cards select only when the Hammer is already active and never auto-equip it. Missing or unavailable pieces fail closed without changing reservations.
+- Adds a separate top-right removal control to every card in both rows: literal `-` while count is above one and literal `X` for the final count. It consumes the left-click/tap before one durable, fail-closed release; it moves no materials and cannot also select the card or click UI underneath.
+- Keeps both rows on one shared presenter, selection/release policy, and persisted model so icon, count, removal label, ordering, and immediate post-mutation refresh cannot drift.
+- Moves successful reservation-without-materials feedback out of the large yellow center channel and into the existing compact white corner Stackmaster summary, with the localized piece name and committed total count. Persistence and hard failures remain restrained warning/error paths.
+- Preserves 1.3.3's live-passing material, placement-decrement, replenishment, sorting, orange-attribution, and fail-closed persistence behavior.
+
 ## 1.3.3 (local test candidate)
 
 Reservation-only Quick Grab support and a narrow reservation-strip layout correction on top of 1.3.2. Live Valheim validation is still pending, and version 1.2.0 remains the production release.
@@ -13,7 +25,7 @@ Reservation-only Quick Grab support and a narrow reservation-strip layout correc
 - Clicking a reservation icon remains a separate durable one-count release and never moves materials or starts Quick Stack.
 - Measures the styled `Reserved` label’s preferred rendered width on every geometry refresh instead of reserving a fixed English-string width.
 - Begins the icon viewport only after the full label width, two UI pixels of glyph safety padding, and an eight UI-pixel visible internal gap, preventing the first reservation icon from overlapping wider fonts or localized text.
-- Moves the complete reservation strip exactly 12 UI pixels right and 10 UI pixels up relative to 1.3.2, while preserving the safe-area right margin and horizontal overflow behavior.
+- Intended to move the complete reservation strip 12 UI pixels right and 10 UI pixels up relative to 1.3.2; live testing showed the vertical sign was inverted and rendered 10 pixels down. 1.3.4 corrects that inversion while preserving the safe-area right margin and horizontal overflow behavior.
 - Keeps 1.3.2 sorting, exact reservation attribution, carried non-stackable exclusion, touched-destination chest sorting, safe-area handling, and optional-UI failure isolation unchanged.
 
 ## 1.3.2 (local test candidate)

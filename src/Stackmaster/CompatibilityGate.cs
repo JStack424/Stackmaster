@@ -193,13 +193,26 @@ namespace Stackmaster
 
         internal static CompatibilityResult EvaluateExpeditionReservationUi()
         {
-            // Piece.m_icon is used only by the optional reservation strip. A changed or missing
+            // Piece.m_icon is used only by the optional reservation strips. A changed or missing
             // icon field disables that surface without disabling persistence, Quick Grab, Quick
             // Stack, sorting, protection, or any other gameplay behavior.
             var failures = new List<string>();
             RuntimeContractValidator.RequireField(failures, typeof(Piece), "m_icon", typeof(Sprite), false);
             return failures.Count == 0
                 ? new CompatibilityResult(true, "verified optional reservation UI contract")
+                : new CompatibilityResult(false, string.Join("; ", failures));
+        }
+
+        internal static CompatibilityResult EvaluateBuildMenuReservationUi()
+        {
+            // This cosmetic surface is deliberately outside Evaluate() and the Harmony manifest.
+            // Hierarchy drift can remove only the mirrored row, never gameplay or persistence.
+            var failures = new List<string>();
+            RuntimeContractValidator.RequireField(failures, typeof(Piece), "m_icon", typeof(Sprite), false);
+            RuntimeContractValidator.RequireField(failures, typeof(Hud), "m_buildUi", typeof(BuildUi), false);
+            RuntimeContractValidator.RequireMethod(failures, typeof(Hud), "IsPieceSelectionVisible", true, false);
+            return failures.Count == 0
+                ? new CompatibilityResult(true, "verified optional build-menu reservation UI contract")
                 : new CompatibilityResult(false, string.Join("; ", failures));
         }
 

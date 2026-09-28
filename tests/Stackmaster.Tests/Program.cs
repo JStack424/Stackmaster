@@ -17,6 +17,9 @@ internal static class Program
             ChestSortRejectsUnsafeIdentityAndStoredValues,
             ReservationStripMovesByExactRequestedOffset,
             ReservationStripMovesUpInScreenSpaceFromVersion133,
+            ReservationCardRemovalLabelsTransitionPerOneCount,
+            BuildMenuReservationRowAnchorsAboveActualMenuAndClampsSafely,
+            ReservationWithoutMaterialsSummaryUsesCornerStyleWording,
             ReservationStripUsesPreferredLabelWidthAndGap,
             ReservationStripScalesAndClampsOverflow,
             SuccessfulDepositsDeduplicateTouchedDestinations,
@@ -288,6 +291,39 @@ internal static class Program
             True(version134ScreenY > version133ScreenY, "positive anchoredPosition.y must move the top-right anchored row upward in screen space");
             Equal(20f * uiScale, version134ScreenY - version133ScreenY, "scaled screen-space upward delta");
         }
+    }
+
+    private static void ReservationCardRemovalLabelsTransitionPerOneCount()
+    {
+        Equal("-", ReservationCardPresentation.RemovalLabel(3), "three reservations use one-count minus removal");
+        Equal("-", ReservationCardPresentation.RemovalLabel(2), "two reservations still use one-count minus removal");
+        Equal("X", ReservationCardPresentation.RemovalLabel(1), "the final reservation uses X removal");
+        Throws<ArgumentOutOfRangeException>(() => ReservationCardPresentation.RemovalLabel(0), "empty cards are never rendered");
+    }
+
+    private static void BuildMenuReservationRowAnchorsAboveActualMenuAndClampsSafely()
+    {
+        var ordinary = BuildMenuReservationLayoutPlanner.Plan(100f, 700f, 400f, 0f, 800f, 600f);
+        True(ordinary.Visible, "row fits above the actual menu");
+        Equal(100f, ordinary.Left, "row follows actual menu left edge");
+        Equal(408f, ordinary.Bottom, "row keeps the clean gap above menu top");
+        Equal(600f, ordinary.Width, "row follows actual menu width");
+        Equal(54f, ordinary.Height, "row uses shared strip height");
+
+        var clamped = BuildMenuReservationLayoutPlanner.Plan(-50f, 900f, 400f, 0f, 800f, 600f);
+        Equal(8f, clamped.Left, "safe-area left margin is enforced");
+        Equal(784f, clamped.Width, "safe-area width bounds horizontal overflow");
+        True(!BuildMenuReservationLayoutPlanner.Plan(100f, 700f, 550f, 0f, 800f, 600f).Visible,
+            "row hides rather than overlapping when no safe space exists above the menu");
+    }
+
+    private static void ReservationWithoutMaterialsSummaryUsesCornerStyleWording()
+    {
+        Equal("Stackmaster:\n• Reserved Cart ×2 — materials not gathered.",
+            QuickStackSummaryFormatter.FormatReservationWithoutMaterials("Cart", 2),
+            "shortage success uses the compact Stackmaster corner summary");
+        Throws<ArgumentOutOfRangeException>(() => QuickStackSummaryFormatter.FormatReservationWithoutMaterials("Cart", 0),
+            "a success summary requires a committed count");
     }
 
     private static void ReservationStripUsesPreferredLabelWidthAndGap()

@@ -111,8 +111,10 @@ namespace Stackmaster
             string pieceKey,
             string displayName,
             IReadOnlyList<ResourceRequirement> requirements,
+            out int committedCount,
             out string failure)
         {
+            committedCount = 0;
             failure = null;
             try
             {
@@ -158,6 +160,10 @@ namespace Stackmaster
                 }
 
                 _state = committed;
+                committedCount = committed.Records
+                    .Where(record => string.Equals(record.PieceKey, pieceKey, StringComparison.Ordinal))
+                    .Select(record => record.Count)
+                    .Single();
                 try
                 {
                     InventoryIntegration.RequestExpeditionRefresh();
