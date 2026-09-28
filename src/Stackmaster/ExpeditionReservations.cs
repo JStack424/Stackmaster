@@ -9,8 +9,9 @@ namespace Stackmaster
 {
     /// <summary>
     /// Persistent local Quick Grab Materials reservations, scoped to one character and one world.
-    /// The saved counts feed additive Quick Stack retention, player sorting, and optional UI.
-    /// Each successful exact-piece placement and each explicit icon click releases one count.
+    /// Stack/Pile material structures are excluded at admission and remain gather-only. The saved
+    /// counts for ordinary pieces feed additive Quick Stack retention, player sorting, and optional
+    /// UI. Each successful exact-piece placement and each explicit icon click releases one count.
     /// </summary>
     internal enum SuccessfulBuildReservationResult
     {
@@ -23,6 +24,7 @@ namespace Stackmaster
     internal static class ExpeditionReservations
     {
         private const string CloneSuffix = "(Clone)";
+        private const string PiecePrefix = "prefab:";
         private static ExpeditionReservationState _state = new ExpeditionReservationState();
         private static string _loadedKey;
         private static bool _storageHealthy = true;
@@ -108,18 +110,35 @@ namespace Stackmaster
 
         internal static bool TryAddQuickGrabReservation(
             Player player,
+            Piece piece,
             string pieceKey,
             string displayName,
             IReadOnlyList<ResourceRequirement> requirements,
+            out bool reservationCreated,
             out int committedCount,
             out string failure)
         {
+            reservationCreated = false;
             committedCount = 0;
             failure = null;
             try
             {
-                if (!_storageHealthy || !_writesHealthy || player == null || string.IsNullOrEmpty(pieceKey) ||
-                    string.IsNullOrEmpty(displayName) || requirements == null || !EnsureLoaded(player))
+                if (player == null || piece == null || string.IsNullOrEmpty(pieceKey) ||
+                    string.IsNullOrEmpty(displayName) || requirements == null)
+                {
+                    failure = "the material request could not be identified safely";
+                    return false;
+                }
+
+                // Admission is decided before touching reservation storage. Stack/Pile pieces are
+                // valid material gathers even if reservation persistence is unavailable, and this
+                // domain boundary prevents every downstream reservation side effect by construction.
+                if (IsMaterialOnlyQuickGrabPiece(piece, pieceKey, displayName))
+                {
+                    return true;
+                }
+
+                if (!_storageHealthy || !_writesHealthy || !EnsureLoaded(player))
                 {
                     failure = "reservations are unavailable";
                     return false;
@@ -160,6 +179,7 @@ namespace Stackmaster
                 }
 
                 _state = committed;
+                reservationCreated = true;
                 committedCount = committed.Records
                     .Where(record => string.Equals(record.PieceKey, pieceKey, StringComparison.Ordinal))
                     .Select(record => record.Count)
@@ -379,6 +399,70 @@ namespace Stackmaster
             return true;
         }
 
+        private static bool IsMaterialOnlyQuickGrabPiece(Piece piece, string pieceKey, string rawDisplayName)
+        {
+            string prefabName;
+            if (piece == null || !TryPrefabName(pieceKey, out prefabName)) return false;
+
+            var localizedName = rawDisplayName ?? string.Empty;
+            var localizationResolved = false;
+            var localization = Localization.instance;
+            if (localization != null)
+            {
+                localizedName = localization.Localize(rawDisplayName ?? string.Empty) ?? string.Empty;
+                var rawIsToken = (rawDisplayName ?? string.Empty).TrimStart().StartsWith("$", StringComparison.Ordinal);
+                localizationResolved = !string.IsNullOrWhiteSpace(localizedName) &&
+                    (!rawIsToken || !string.Equals(localizedName, rawDisplayName, StringComparison.Ordinal));
+            }
+
+            return QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                localizedName,
+                localizationResolved,
+                rawDisplayName,
+                prefabName);
+        }
+
+        private static bool TryPrefabName(string pieceKey, out string prefabName)
+        {
+            prefabName = null;
+            if (string.IsNullOrEmpty(pieceKey) || !pieceKey.StartsWith(PiecePrefix, StringComparison.Ordinal))
+                return false;
+            prefabName = pieceKey.Substring(PiecePrefix.Length);
+            return !string.IsNullOrWhiteSpace(prefabName);
+        }
+
+        private static bool TryResolveExactPiece(string pieceKey, out Piece piece)
+        {
+            piece = null;
+            string prefabName;
+            if (!TryPrefabName(pieceKey, out prefabName)) return false;
+
+            var scene = ZNetScene.instance;
+            var prefab = scene != null ? scene.GetPrefab(prefabName) : null;
+            var candidate = prefab != null ? prefab.GetComponent<Piece>() : null;
+            if (candidate == null)
+            {
+                var player = Player.m_localPlayer;
+                var table = player != null ? player.GetBuildTool() : null;
+                candidate = (table != null ? table.m_pieces : null)?
+                    .Where(value => value != null &&
+                        string.Equals(Utils.GetPrefabName(value), prefabName, StringComparison.Ordinal))
+                    .Select(value => value.GetComponent<Piece>())
+                    .FirstOrDefault(value => value != null);
+            }
+
+            string resolvedKey;
+            string ignoredDisplayName;
+            if (candidate == null ||
+                !TryGetStablePieceIdentity(candidate, out resolvedKey, out ignoredDisplayName) ||
+                !string.Equals(resolvedKey, pieceKey, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            piece = candidate;
+            return true;
+        }
+
         internal static bool TryGetStableItemIdentity(
             ItemDrop.ItemData item,
             out string prefabName,
@@ -464,7 +548,7 @@ namespace Stackmaster
                 ZNet.instance.GetWorldUID());
             if (string.Equals(_loadedKey, key, StringComparison.Ordinal))
             {
-                return true;
+                return TryCleanupResolvedMaterialOnlyReservations();
             }
 
             try
@@ -489,13 +573,63 @@ namespace Stackmaster
                 }
                 _state = parsed;
                 _loadedKey = key;
-                return true;
+                return TryCleanupResolvedMaterialOnlyReservations();
             }
             catch (Exception exception)
             {
                 DisableStorage("Expedition reservations could not be read and were disabled for this session: " + exception.GetType().Name);
                 return false;
             }
+        }
+
+        private static bool TryCleanupResolvedMaterialOnlyReservations()
+        {
+            var excludedKeys = new List<string>();
+            foreach (var record in _state.Records)
+            {
+                Piece piece;
+                if (!TryResolveExactPiece(record.PieceKey, out piece))
+                {
+                    // Historical identities that cannot be resolved exactly remain untouched. No
+                    // display-name or prefab-name guess is allowed to delete persisted user intent.
+                    continue;
+                }
+                string resolvedKey;
+                string rawDisplayName;
+                if (TryGetStablePieceIdentity(piece, out resolvedKey, out rawDisplayName) &&
+                    string.Equals(resolvedKey, record.PieceKey, StringComparison.Ordinal) &&
+                    IsMaterialOnlyQuickGrabPiece(piece, resolvedKey, rawDisplayName))
+                {
+                    excludedKeys.Add(record.PieceKey);
+                }
+            }
+            if (excludedKeys.Count == 0) return true;
+            if (!_writesHealthy)
+            {
+                DisableStorage("Resolved Stack/Pile reservations could not be cleaned up because reservation storage is read-only; reservations were disabled for this session so those materials are not locked.");
+                return false;
+            }
+
+            var previousPayload = _state.Serialize();
+            ExpeditionReservationState committed;
+            ExpeditionReservationPersistenceResult result;
+            if (!ExpeditionReservationPersistence.TryRemoveResolvedMaterialOnlyDurably(
+                    _state,
+                    excludedKeys,
+                    payload => AtomicReservationFileStore.TryWrite(_loadedKey, previousPayload, payload),
+                    out committed,
+                    out result))
+            {
+                _writesHealthy = false;
+                DisableStorage("Resolved Stack/Pile reservations could not be removed from storage; reservations were disabled for this session so those materials are not locked.");
+                return false;
+            }
+
+            _state = committed;
+            RuntimeContext.Plugin?.Log.LogInfo(
+                "Removed " + excludedKeys.Count + " resolved Stack/Pile reservation record(s) without moving materials.");
+            RequestRefreshAfterDurableChange();
+            return true;
         }
 
         private static void RequestRefreshAfterDurableChange()

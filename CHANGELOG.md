@@ -10,7 +10,10 @@ Interaction and live-layout corrections on top of Joe's otherwise live-passing 1
 - Adds a separate top-right removal control to every card in both rows: literal `-` while count is above one and literal `X` for the final count. It consumes the left-click/tap before one durable, fail-closed release; it moves no materials and cannot also select the card or click UI underneath.
 - Keeps both rows on one shared presenter, selection/release policy, and persisted model so icon, count, removal label, ordering, and immediate post-mutation refresh cannot drift.
 - Moves successful reservation-without-materials feedback out of the large yellow center channel and into the existing compact white corner Stackmaster summary, with the localized piece name and committed total count. Persistence and hard failures remain restrained warning/error paths.
-- Preserves 1.3.3's live-passing material, placement-decrement, replenishment, sorting, orange-attribution, and fail-closed persistence behavior.
+- Treats every vanilla or modded build piece whose player-visible localized name contains `Stack` or `Pile` anywhere, case-insensitively, as a material-only Quick Grab target. Full exact sets still gather normally, while shortages remain all-or-nothing and show the ordinary material-gather failure without creating a reservation or reservation-only success notice.
+- Centralizes that admission rule before persistence, with the raw localization token and exact stable prefab name used only when localization is unavailable. Excluded pieces therefore contribute no persisted count, reservation card, Quick Stack target, orange allocation, reservation-first sorting, or later placement decrement.
+- Removes already-persisted Stack/Pile reservations once their exact current piece identity resolves, durably and without moving or depositing materials, then refreshes both reservation rows and inventory allocation. Unresolved historical identities remain untouched rather than being guessed.
+- Preserves 1.3.3's live-passing material, placement-decrement, replenishment, sorting, orange-attribution, and fail-closed persistence behavior for every ordinary reservable piece.
 
 ## 1.3.3 (local test candidate)
 

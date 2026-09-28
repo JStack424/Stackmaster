@@ -1300,6 +1300,56 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(signature, gate)
 
+    def test_stack_and_pile_pieces_are_material_only_at_reservation_admission_and_migrate_exactly(self):
+        policy = (ROOT / "src" / "Stackmaster.Core" / "QuickGrabReservationAdmissionPolicy.cs").read_text(encoding="utf-8")
+        state = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationState.cs").read_text(encoding="utf-8")
+        persistence = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationPersistence.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "ExpeditionReservations.cs").read_text(encoding="utf-8")
+        action = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
+
+        self.assertIn('IndexOf("stack", StringComparison.OrdinalIgnoreCase)', policy)
+        self.assertIn('IndexOf("pile", StringComparison.OrdinalIgnoreCase)', policy)
+        self.assertIn("if (localizationResolved)", policy)
+        localized_branch = policy[policy.index("if (localizationResolved)"):policy.index("return ContainsMaterialStructureWord(rawDisplayName)")]
+        self.assertIn("localizedDisplayName", localized_branch)
+        self.assertNotIn("stablePrefabName", localized_branch)
+        self.assertIn("rawDisplayName", policy)
+        self.assertIn("stablePrefabName", policy)
+
+        admission = runtime[
+            runtime.index("internal static bool TryAddQuickGrabReservation"):
+            runtime.index("private static string FailureFor")
+        ]
+        self.assertIn("IsMaterialOnlyQuickGrabPiece(piece, pieceKey, displayName)", admission)
+        self.assertLess(admission.index("IsMaterialOnlyQuickGrabPiece"), admission.index("EnsureLoaded(player)"))
+        material_only_return = admission[admission.index("if (IsMaterialOnlyQuickGrabPiece"):admission.index("if (!_storageHealthy")]
+        self.assertNotIn("AtomicReservationFileStore", material_only_return)
+        self.assertIn("return true;", material_only_return)
+        self.assertIn("reservationCreated = true;", admission)
+
+        self.assertIn("bool ReservationCreated", action)
+        self.assertIn("_activeHasReservation = request.ReservationCreated", action)
+        self.assertIn("if (_activeHasReservation && !ExpeditionReservations.CanCommitQuickGrab(player))", action)
+        self.assertIn('RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials ("', action)
+        self.assertIn("ShowMaterialFailure(failure)", action)
+        dispatcher = action[action.index("private static void ShowMaterialFailure"):action.index("private static void ShowReservationOnly")]
+        self.assertIn("if (_activeHasReservation)", dispatcher)
+        self.assertIn("ShowFailure(failure)", dispatcher)
+        self.assertNotIn("FormatReservationWithoutMaterials", dispatcher)
+
+        cleanup = runtime[
+            runtime.index("private static bool TryCleanupResolvedMaterialOnlyReservations"):
+            runtime.index("private static void RequestRefreshAfterDurableChange")
+        ]
+        self.assertIn("TryResolveExactPiece(record.PieceKey, out piece)", cleanup)
+        self.assertIn("TryRemoveResolvedMaterialOnlyDurably", cleanup)
+        self.assertIn("AtomicReservationFileStore.TryWrite", cleanup)
+        self.assertIn("RequestRefreshAfterDurableChange()", cleanup)
+        self.assertNotIn("QuickStack", cleanup)
+        self.assertNotIn("Transfer", cleanup)
+        self.assertIn("RemoveReservations", state)
+        self.assertIn("TryRemoveResolvedMaterialOnlyDurably", persistence)
+
     def test_expedition_reservations_persist_before_optional_full_grab_and_stay_policy_isolated(self):
         state = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationState.cs").read_text(encoding="utf-8")
         persistence = (ROOT / "src" / "Stackmaster.Core" / "ExpeditionReservationPersistence.cs").read_text(encoding="utf-8")

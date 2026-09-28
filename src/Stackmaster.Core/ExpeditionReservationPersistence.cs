@@ -80,6 +80,49 @@ namespace Stackmaster.Core
             return true;
         }
 
+        public static bool TryRemoveResolvedMaterialOnlyDurably(
+            ExpeditionReservationState current,
+            IReadOnlyCollection<string> pieceKeys,
+            Func<string, bool> persist,
+            out ExpeditionReservationState committed,
+            out ExpeditionReservationPersistenceResult result)
+        {
+            if (current == null) throw new ArgumentNullException(nameof(current));
+            if (pieceKeys == null) throw new ArgumentNullException(nameof(pieceKeys));
+            if (persist == null) throw new ArgumentNullException(nameof(persist));
+
+            committed = current;
+            ExpeditionReservationState candidate;
+            if (!ExpeditionReservationState.TryParse(current.Serialize(), out candidate))
+            {
+                result = ExpeditionReservationPersistenceResult.PersistenceFailed;
+                return false;
+            }
+            if (candidate.RemoveReservations(pieceKeys) == 0)
+            {
+                result = ExpeditionReservationPersistenceResult.NotFound;
+                return false;
+            }
+
+            try
+            {
+                if (!persist(candidate.Serialize()))
+                {
+                    result = ExpeditionReservationPersistenceResult.PersistenceFailed;
+                    return false;
+                }
+            }
+            catch
+            {
+                result = ExpeditionReservationPersistenceResult.PersistenceFailed;
+                return false;
+            }
+
+            committed = candidate;
+            result = ExpeditionReservationPersistenceResult.Released;
+            return true;
+        }
+
         public static bool TryReleaseDurably(
             ExpeditionReservationState current,
             string pieceKey,

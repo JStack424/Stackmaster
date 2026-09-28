@@ -55,6 +55,10 @@ internal static class Program
             RememberedDestinationStateRejectsMalformedPayloads,
             RememberedDestinationStatePrunesAndCaps,
             ExpeditionReservationKeysSeparatePlayersAndWorlds,
+            MaterialOnlyQuickGrabNamesUseLocalizedAuthorityAndFallbacks,
+            MaterialOnlyQuickGrabFullGatherHasNoReservationEffects,
+            MaterialOnlyQuickGrabShortageMovesNothingAndReservesNothing,
+            ResolvedMaterialOnlyReservationMigrationIsDurableAndExact,
             ReservationOnlyQuickGrabWithZeroAvailablePersistsWithoutMovement,
             ReservationOnlyQuickGrabWithPartialAvailablePersistsWithoutPartialMovement,
             ReservationOnlyQuickGrabAwayFromStoragePersists,
@@ -950,6 +954,126 @@ internal static class Program
             "different players in one world never share reservation state");
         True(first != ExpeditionReservationPreferencePolicy.Key(101, 202),
             "one player in different worlds never shares reservation state");
+    }
+
+    private static void MaterialOnlyQuickGrabNamesUseLocalizedAuthorityAndFallbacks()
+    {
+        foreach (var visibleName in new[]
+                 {
+                     "Wood Stack", "Stone pile", "resource stack", "Treasure PiLe", "Woodpile",
+                     "MixedCaseSTACKMarker", "Modded Crystal Pile"
+                 })
+        {
+            True(QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                    visibleName, true, "$piece_unrelated", "UnrelatedPrefab"),
+                "localized Stack/Pile substring is material-only with ordinal case-insensitive matching: " + visibleName);
+        }
+
+        foreach (var visibleName in new[] { "Cart", "Stone Wall", "Stocked Shelf", "Piling Beam", "Firewood" })
+        {
+            True(!QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                    visibleName, true, "$piece_wood_stack", "wood_pile"),
+                "a resolved unrelated localized name is authoritative over fallback identifiers: " + visibleName);
+        }
+
+        True(QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                "$piece_wood_stack", false, "$piece_wood_stack", "MaterialBundle"),
+            "an unresolved raw localization token provides the fail-safe Stack match");
+        True(QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                string.Empty, false, "$piece_material_bundle", "modded_StonePile_Large"),
+            "an unresolved modded piece uses its exact stable prefab name as the Pile fallback");
+        True(!QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                string.Empty, false, "$piece_cart", "piece_cart"),
+            "unavailable localization does not exclude unrelated fallback identities");
+    }
+
+    private static void MaterialOnlyQuickGrabFullGatherHasNoReservationEffects()
+    {
+        True(QuickGrabReservationAdmissionPolicy.IsMaterialOnly(
+                "Wood Stack", true, "$piece_woodstack", "wood_stack"),
+            "Wood Stack is admitted as a material-only Quick Grab target");
+        var state = new ExpeditionReservationState();
+        var plan = QuickGrabPlan(
+            new[] { new ResourceRequirement("Wood", 50) },
+            Resource("chest", "wood", "Wood", 1, 50, 1, 0));
+
+        True(plan.IsSatisfiable, "a complete material-only recipe still gathers normally");
+        Equal(50, plan.PlannedUnits, "the ordinary gather plans the full exact material set");
+        Equal(0, state.Records.Count, "material-only admission creates no persisted reservation record or card source");
+        Equal(0, state.AggregateRequirements().Count,
+            "material-only admission creates no additive target, orange allocation, or reservation-first sort quantity");
+        True(!state.TryReleaseReservation("prefab:wood_stack", 1),
+            "later placement has no reservation record to decrement");
+    }
+
+    private static void MaterialOnlyQuickGrabShortageMovesNothingAndReservesNothing()
+    {
+        var state = new ExpeditionReservationState();
+        var plan = QuickGrabPlan(
+            new[] { new ResourceRequirement("Stone", 50) },
+            Resource("chest", "stone", "Stone", 1, 49, 1, 0));
+
+        True(!plan.IsSatisfiable, "one missing unit rejects a Stack/Pile material gather");
+        Equal(0, plan.Steps.Count, "the all-or-nothing planner exposes no partial movement steps");
+        Equal(0, plan.PlannedUnits, "no material units are transferred from a partial source set");
+        Equal(0, state.Records.Count, "shortage creates no reservation and therefore no reservation-only success notice");
+        Equal(0, state.AggregateRequirements().Count,
+            "shortage creates no target, orange allocation, or sorting effect");
+    }
+
+    private static void ResolvedMaterialOnlyReservationMigrationIsDurableAndExact()
+    {
+        var original = new ExpeditionReservationState(new[]
+        {
+            new ExpeditionReservationRecord(
+                "prefab:wood_stack", "$piece_woodstack", 2,
+                new[] { new ResourceRequirement("Wood", 50) }),
+            new ExpeditionReservationRecord(
+                "prefab:cart", "$piece_cart", 1,
+                new[] { new ResourceRequirement("Wood", 20), new ResourceRequirement("BronzeNails", 10) }),
+            new ExpeditionReservationRecord(
+                "legacy:unresolved", "$piece_stonepile", 1,
+                new[] { new ResourceRequirement("Stone", 50) })
+        });
+        var before = original.Serialize();
+        var writes = 0;
+        ExpeditionReservationState committed;
+        ExpeditionReservationPersistenceResult result;
+        True(ExpeditionReservationPersistence.TryRemoveResolvedMaterialOnlyDurably(
+                original,
+                new[] { "prefab:wood_stack" },
+                payload =>
+                {
+                    writes++;
+                    return true;
+                },
+                out committed,
+                out result),
+            "an exactly resolved excluded record is removed durably");
+
+        Equal(1, writes, "migration publishes one atomic candidate without any material operation");
+        Equal(ExpeditionReservationPersistenceResult.Released, result, "migration reports a committed removal");
+        Equal(before, original.Serialize(), "detached migration never mutates active state before persistence");
+        True(!committed.Records.Any(record => record.PieceKey == "prefab:wood_stack"),
+            "resolved Wood Stack reservation is absent from persistence and target calculations");
+        True(committed.Records.Any(record => record.PieceKey == "prefab:cart"),
+            "unrelated resolved reservation is preserved");
+        True(committed.Records.Any(record => record.PieceKey == "legacy:unresolved"),
+            "unresolved historical identity remains fail-closed rather than guessed from its display token");
+        Equal(70, committed.AggregateRequirements().Single(requirement => requirement.ItemName == "Stone").Quantity +
+                  committed.AggregateRequirements().Single(requirement => requirement.ItemName == "Wood").Quantity,
+            "only surviving records contribute additive targets after migration");
+
+        ExpeditionReservationState failed;
+        True(!ExpeditionReservationPersistence.TryRemoveResolvedMaterialOnlyDurably(
+                original,
+                new[] { "prefab:wood_stack" },
+                payload => false,
+                out failed,
+                out result),
+            "failed migration persistence does not publish an in-memory-only cleanup");
+        True(ReferenceEquals(original, failed), "failed cleanup leaves the active state reference unchanged");
+        Equal(before, original.Serialize(), "failed cleanup leaves the exact prior payload unchanged");
     }
 
     private static void ReservationOnlyQuickGrabWithZeroAvailablePersistsWithoutMovement()

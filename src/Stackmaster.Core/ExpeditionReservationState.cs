@@ -208,6 +208,26 @@ namespace Stackmaster.Core
             return true;
         }
 
+        /// <summary>
+        /// Removes complete records by exact stable identity. This is used only after the runtime
+        /// resolves a saved identity back to its exact current piece and confirms that the piece is
+        /// material-only under the centralized reservation-admission rule.
+        /// </summary>
+        public int RemoveReservations(IEnumerable<string> pieceKeys)
+        {
+            if (pieceKeys == null) throw new ArgumentNullException(nameof(pieceKeys));
+            var removed = 0;
+            foreach (var pieceKey in pieceKeys.Distinct(StringComparer.Ordinal))
+            {
+                if (string.IsNullOrWhiteSpace(pieceKey))
+                {
+                    throw new ArgumentException("Reservation piece keys cannot be empty.", nameof(pieceKeys));
+                }
+                if (_records.Remove(pieceKey)) removed++;
+            }
+            return removed;
+        }
+
         public IReadOnlyList<ResourceRequirement> AggregateRequirements()
         {
             var totals = new Dictionary<RequirementIdentity, int>();
