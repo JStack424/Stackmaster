@@ -1466,6 +1466,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("QuickGrabMaterialsAction.SelectReservationCard(expectedOwner, piece)", interactions)
         self.assertIn("QuickGrabMaterialsAction.CancelOneMaterialTransfer(pieceKey)", runtime)
         self.assertIn("request.PieceKey", quick_grab)
+        self.assertIn("_running && !_cancelActiveTransfer", quick_grab)
         self.assertIn("_cancelActiveTransfer", quick_grab)
         self.assertIn("owner.OnSelectPiece(piece)", quick_grab)
         self.assertIn("if (QuickGrabMaterialsAction.IsReservationCardSelection) return true", quick_grab)

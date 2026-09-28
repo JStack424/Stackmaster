@@ -241,7 +241,8 @@ namespace Stackmaster
         internal static void CancelOneMaterialTransfer(string pieceKey)
         {
             if (string.IsNullOrEmpty(pieceKey)) return;
-            if (_running && string.Equals(_activePieceKey, pieceKey, StringComparison.Ordinal))
+            if (_running && !_cancelActiveTransfer &&
+                string.Equals(_activePieceKey, pieceKey, StringComparison.Ordinal))
             {
                 _cancelActiveTransfer = true;
                 return;
