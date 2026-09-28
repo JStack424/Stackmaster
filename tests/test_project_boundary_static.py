@@ -1331,11 +1331,22 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("_activeHasReservation = request.ReservationCreated", action)
         self.assertIn("if (_activeHasReservation && !ExpeditionReservations.CanCommitQuickGrab(player))", action)
         self.assertIn('RuntimeContext.ShowTopLeft("Stackmaster: grabbed materials ("', action)
-        self.assertIn("ShowMaterialFailure(failure)", action)
-        dispatcher = action[action.index("private static void ShowMaterialFailure"):action.index("private static void ShowReservationOnly")]
-        self.assertIn("if (_activeHasReservation)", dispatcher)
-        self.assertIn("ShowFailure(failure)", dispatcher)
-        self.assertNotIn("FormatReservationWithoutMaterials", dispatcher)
+        self.assertIn("ShowExpectedMaterialUnavailable(failure)", action)
+        expected_unavailable = action[action.index("private static void ShowExpectedMaterialUnavailable"):action.index("private static void ShowMaterialFault")]
+        self.assertIn("if (_activeHasReservation)", expected_unavailable)
+        self.assertIn("ShowReservationOnly(failure)", expected_unavailable)
+        self.assertIn("ShowFailure(failure)", expected_unavailable)
+        material_fault = action[action.index("private static void ShowMaterialFault"):action.index("private static void ShowReservationOnly")]
+        self.assertIn("Log.LogWarning", material_fault)
+        self.assertIn("RuntimeContext.ShowCenter", material_fault)
+        self.assertIn("reservation remains saved", material_fault)
+        self.assertNotIn("ShowReservationOnly", material_fault)
+        self.assertNotIn("FormatReservationWithoutMaterials", material_fault)
+        self.assertIn('ShowMaterialFault("the build-piece recipe changed")', action)
+        self.assertIn('ShowMaterialFault("reservation storage became unavailable before material transfer")', action)
+        self.assertIn('ShowMaterialFault("a previous ownership transition is still pending")', action)
+        self.assertEqual(3, action.count("expectedUnavailable = true;"))
+        self.assertIn("if (expectedUnavailable) ShowExpectedMaterialUnavailable(failure);", action)
 
         cleanup = runtime[
             runtime.index("private static bool TryCleanupResolvedMaterialOnlyReservations"):
