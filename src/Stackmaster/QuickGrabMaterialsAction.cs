@@ -16,6 +16,7 @@ namespace Stackmaster
     {
         internal static bool Prefix([HarmonyArgument(0)] Piece piece)
         {
+            if (QuickGrabMaterialsAction.IsReservationCardSelection) return true;
             var intercepting = false;
             try
             {
@@ -167,6 +168,25 @@ namespace Stackmaster
         private static int _generation;
         private static string _activeDisplayName;
         private static int _activeCommittedCount;
+        private static int _reservationCardSelectionDepth;
+
+        internal static bool IsReservationCardSelection => _reservationCardSelectionDepth > 0;
+
+        internal static void SelectReservationCard(BuildUi owner, Piece piece)
+        {
+            if (owner == null || piece == null) return;
+            _reservationCardSelectionDepth++;
+            try
+            {
+                // Preserve Valheim's full normal BuildUi selection path while preventing our own
+                // modifier-click reservation prefix from intercepting this separate card control.
+                owner.OnSelectPiece(piece);
+            }
+            finally
+            {
+                _reservationCardSelectionDepth--;
+            }
+        }
 
         internal static void Begin(Player player, Piece piece)
         {

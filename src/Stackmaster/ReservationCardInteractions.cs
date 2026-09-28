@@ -52,14 +52,9 @@ namespace Stackmaster
                     !ReferenceEquals(hud.m_buildUi, expectedOwner) || !Hud.IsPieceSelectionVisible()) return;
                 Piece piece;
                 if (!TryResolveCurrentPiece(player, pieceKey, requireActiveHammer: true, out piece)) return;
-                // Use Valheim's own available PieceTable selection, then the same button sound and
-                // menu-close transition as BuildUi.OnSelectPiece. Calling OnSelectPiece directly would
-                // re-enter Stackmaster's modifier-click reservation patch. Selection never mutates reservations.
-                if (player.SetSelectedPiece(piece))
-                {
-                    player.PlayButtonSound();
-                    Hud.CloseBuildUi();
-                }
+                // Preserve Valheim's exact BuildUi selection, sound, touch, menu-close, and placement
+                // transition. The scoped bypass skips only Stackmaster's modifier-click reservation prefix.
+                QuickGrabMaterialsAction.SelectReservationCard(expectedOwner, piece);
             }
             catch (Exception exception)
             {
