@@ -2132,6 +2132,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("__instance.m_hoverName.text += hintPrefix + fuelName", storage)
         self.assertIn("FuelQuickGrabAction.SelectAvailablePriority(target, capture)", storage)
         self.assertIn("hoveredObject.GetComponentInParent<Container>() != null", storage)
+        hover = storage[
+            storage.index("internal static class FuelQuickGrabHoverPatch"):
+            storage.index("internal static class ContainerInteractPatch")
+        ]
+        self.assertEqual(1, hover.count("CaptureForQuickGrab"))
+        self.assertNotIn("SelectionRefreshSeconds", hover)
+        self.assertNotIn("Time.unscaledTime", hover)
+        self.assertLess(hover.index("ReferenceEquals(_cachedPlayer"), hover.index("CaptureForQuickGrab"))
+        self.assertGreaterEqual(storage.count("FuelQuickGrabHoverPatch.InvalidateSelection();"), 2)
 
     def test_whole_home_station_coverage_uses_only_connected_workbench_mesh(self):
         station = (PLUGIN_DIR / "WholeHomeCraftingStationService.cs").read_text(encoding="utf-8")

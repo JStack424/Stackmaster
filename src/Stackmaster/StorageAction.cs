@@ -81,6 +81,7 @@ namespace Stackmaster
                 // action so the same key press cannot also insert a carried item or operate it.
                 _lastActionFrame = Time.frameCount;
                 ZInput.ResetButtonStatus("Use");
+                FuelQuickGrabHoverPatch.InvalidateSelection();
                 FuelQuickGrabAction.Begin(player, fuelTarget);
                 return;
             }
@@ -108,6 +109,7 @@ namespace Stackmaster
             {
                 _lastActionFrame = Time.frameCount;
                 ZInput.ResetButtonStatus("Use");
+                FuelQuickGrabHoverPatch.InvalidateSelection();
                 FuelQuickGrabAction.Begin(player, fuelTarget);
             }
             return true;
@@ -639,11 +641,20 @@ namespace Stackmaster
 
     internal static class FuelQuickGrabHoverPatch
     {
-        private const float SelectionRefreshSeconds = 0.35f;
         private static Player _cachedPlayer;
         private static GameObject _cachedHover;
         private static string _cachedFuelName;
-        private static float _nextSelectionRefresh;
+
+        // Fuel availability requires a complete read-only scan of the connected home. Cache the
+        // result for the exact hovered object instead of repeating that scan every HUD refresh.
+        // The authoritative key press always captures fresh storage, and invalidates this advisory
+        // value so a successful or failed action is reflected on the next hover update.
+        internal static void InvalidateSelection()
+        {
+            _cachedPlayer = null;
+            _cachedHover = null;
+            _cachedFuelName = null;
+        }
 
         private static void Postfix(Hud __instance, [HarmonyArgument(0)] Player player)
         {
@@ -654,14 +665,23 @@ namespace Stackmaster
                     !ReferenceEquals(player, Player.m_localPlayer) || ZInput.IsGamepadActive() ||
                     string.IsNullOrEmpty(__instance.m_hoverName.text))
                 {
+                    InvalidateSelection();
                     return;
                 }
 
                 var hoveredObject = player.GetHoverObject();
-                if (hoveredObject == null || hoveredObject.GetComponentInParent<Container>() != null) return;
+                if (hoveredObject == null || hoveredObject.GetComponentInParent<Container>() != null)
+                {
+                    InvalidateSelection();
+                    return;
+                }
 
                 FuelQuickGrabTarget target;
-                if (!FuelQuickGrabTargetResolver.TryResolve(hoveredObject, out target) || target.Priorities.Count == 0) return;
+                if (!FuelQuickGrabTargetResolver.TryResolve(hoveredObject, out target) || target.Priorities.Count == 0)
+                {
+                    InvalidateSelection();
+                    return;
+                }
 
                 var shortcut = RuntimeContext.Plugin.StorageActionShortcut.Value;
                 var shortcutText = string.Join(" + ", shortcut.Modifiers.Select(FormatKey)
@@ -681,7 +701,7 @@ namespace Stackmaster
         private static string GetFuelName(Player player, GameObject hoveredObject, FuelQuickGrabTarget target)
         {
             if (ReferenceEquals(_cachedPlayer, player) && ReferenceEquals(_cachedHover, hoveredObject) &&
-                Time.unscaledTime < _nextSelectionRefresh && !string.IsNullOrEmpty(_cachedFuelName))
+                !string.IsNullOrEmpty(_cachedFuelName))
             {
                 return _cachedFuelName;
             }
@@ -704,7 +724,6 @@ namespace Stackmaster
             _cachedPlayer = player;
             _cachedHover = hoveredObject;
             _cachedFuelName = selected.DisplayName;
-            _nextSelectionRefresh = Time.unscaledTime + SelectionRefreshSeconds;
             return _cachedFuelName;
         }
 
