@@ -35,6 +35,20 @@ namespace Stackmaster
             return HasBuildStation(player, requiredStation, placementPosition, true);
         }
 
+        internal static bool HasBuildStationForRemoval(Player player, CraftingStation requiredStation, Vector3 piecePosition)
+        {
+            if (player == null || requiredStation == null) return false;
+
+            // Defer to vanilla whenever its ordinary player-centered station test succeeds.
+            if (CraftingStation.HaveBuildStationInRange(requiredStation.m_name, player.transform.position) != null)
+            {
+                return true;
+            }
+            var plugin = RuntimeContext.Plugin;
+            if (plugin == null || !plugin.WholeHomeCraftingStationsEnabled.Value) return false;
+            return HasBuildStation(player, requiredStation, piecePosition, true);
+        }
+
         private static bool HasBuildStation(
             Player player,
             CraftingStation requiredStation,
@@ -157,6 +171,37 @@ namespace Stackmaster
                 __instance,
                 ___m_placementGhost,
                 ref ___m_placementStatus);
+        }
+    }
+
+    internal static class WholeHomeRemovalStationPatch
+    {
+        private static bool Prefix(
+            Player __instance,
+            [HarmonyLib.HarmonyArgument(0)] Piece piece,
+            bool ___m_noPlacementCost,
+            ref bool __result)
+        {
+            if (!RuntimeContext.Compatibility.IsCompatible || ___m_noPlacementCost ||
+                __instance == null || piece == null || piece.m_craftingStation == null ||
+                (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoWorkbench)) ||
+                CraftingStation.HaveBuildStationInRange(
+                    piece.m_craftingStation.m_name,
+                    __instance.transform.position) != null)
+            {
+                return true;
+            }
+
+            if (!WholeHomeCraftingStationService.HasBuildStationForRemoval(
+                    __instance,
+                    piece.m_craftingStation,
+                    piece.transform.position))
+            {
+                return true;
+            }
+
+            __result = true;
+            return false;
         }
     }
 }

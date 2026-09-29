@@ -36,6 +36,7 @@ namespace Stackmaster
         private readonly long _requestSession;
         private Container _waitingFor;
         private ContainerHandle _waitingHandle;
+        private bool _waitingForOwnerAssignment;
         private bool _grantReceived;
 
         internal OwnershipBatch(IEnumerable<ContainerHandle> handles, ISet<Container> unresolvedResponses)
@@ -59,10 +60,10 @@ namespace Stackmaster
                 }
                 else if (!handle.NetworkView.HasOwner())
                 {
-                    // UID 0 is ZRoutedRpc.Everybody, not an authoritative owner. Wait for
-                    // vanilla's regular ownership pass instead of broadcasting a stack request.
-                    FailedContainerIds[handle.Id] = "container is temporarily unowned";
-                    RemovePendingHandle(handle);
+                    // UID 0 is ZRoutedRpc.Everybody, not an authoritative RPC destination. Keep
+                    // this exact intent pending while vanilla's next ownership pass assigns it;
+                    // never broadcast StackAll and never make the player click Craft a second time.
+                    _requestOrder.Enqueue(handle.Container);
                 }
                 else if (handle.NetworkView.IsOwner() && handle.Container.IsOwner())
                 {
@@ -88,7 +89,8 @@ namespace Stackmaster
 
         internal bool HandleResponse(Container container, bool granted)
         {
-            if (!ReferenceEquals(_waitingFor, container) || _waitingHandle == null)
+            if (_waitingForOwnerAssignment ||
+                !ReferenceEquals(_waitingFor, container) || _waitingHandle == null)
             {
                 return false;
             }
@@ -99,9 +101,7 @@ namespace Stackmaster
                 OwnerRejectedContainerIds.Add(handle.Id);
                 FailedContainerIds[handle.Id] = "container owner reported busy or unavailable";
                 RemovePendingHandle(handle);
-                _waitingFor = null;
-                _waitingHandle = null;
-                _grantReceived = false;
+                ClearWaiting();
                 CancelRemaining("ownership batch cancelled after a required container was unavailable");
             }
             else
@@ -114,13 +114,44 @@ namespace Stackmaster
         internal void Refresh()
         {
             var handle = _waitingHandle;
-            if (!_grantReceived || handle == null)
+            if (handle == null)
             {
                 return;
             }
+
             var zdo = OwnershipLeaseManager.ResolveZdo(handle);
             var expectedOwnerRevision = OwnershipLeasePolicy.NextOwnerRevision(handle.ResourceOwnerRevision);
-            if (zdo != null && zdo.OwnerRevision == expectedOwnerRevision &&
+            if (_waitingForOwnerAssignment)
+            {
+                if (zdo == null) return;
+
+                // The only safe automatic continuation is vanilla assigning this exact unowned
+                // generation to the local peer. Any other owner/revision transition invalidates
+                // the original snapshot and fails closed rather than issuing a stale RPC.
+                var decision = UnownedAssignmentPolicy.Decide(
+                    handle.ResourceOwner,
+                    handle.ResourceOwnerRevision,
+                    zdo.GetOwner(),
+                    zdo.OwnerRevision,
+                    _requestSession);
+                if (decision == UnownedAssignmentDecision.Wait) return;
+                if (decision == UnownedAssignmentDecision.ContinueLocally &&
+                    handle.NetworkView.IsOwner() && handle.Container.IsOwner())
+                {
+                    SuccessfulContainerIds.Add(handle.Id);
+                }
+                else
+                {
+                    FailedContainerIds[handle.Id] =
+                        "container ownership changed while waiting for vanilla assignment";
+                }
+                RemovePendingHandle(handle);
+                ClearWaiting();
+                RequestNext();
+                return;
+            }
+
+            if (_grantReceived && zdo != null && zdo.OwnerRevision == expectedOwnerRevision &&
                 zdo.GetOwner() == _requestSession)
             {
                 SuccessfulContainerIds.Add(handle.Id);
@@ -130,9 +161,7 @@ namespace Stackmaster
                     _requestSession,
                     expectedOwnerRevision));
                 RemovePendingHandle(handle);
-                _waitingFor = null;
-                _waitingHandle = null;
-                _grantReceived = false;
+                ClearWaiting();
                 RequestNext();
             }
         }
@@ -141,17 +170,15 @@ namespace Stackmaster
         {
             // Keep the durable handle directly. Unity's destroyed-object null semantics must
             // not erase an in-flight request merely because its scene Container unloaded.
-            TimedOutAcquisitionHandle = _waitingHandle;
-            TimedOutRequestContainer = _grantReceived ? null : _waitingFor;
+            TimedOutAcquisitionHandle = _waitingForOwnerAssignment ? null : _waitingHandle;
+            TimedOutRequestContainer = _waitingForOwnerAssignment || _grantReceived ? null : _waitingFor;
             foreach (var handle in _pending.Values)
             {
                 FailedContainerIds[handle.Id] = "ownership response timed out";
             }
             _pending.Clear();
             _requestOrder.Clear();
-            _waitingFor = null;
-            _waitingHandle = null;
-            _grantReceived = false;
+            ClearWaiting();
         }
 
         private void RemovePendingHandle(ContainerHandle handle)
@@ -186,6 +213,11 @@ namespace Stackmaster
                 {
                     _waitingFor = container;
                     _waitingHandle = handle;
+                    _waitingForOwnerAssignment = !handle.NetworkView.HasOwner();
+                    if (_waitingForOwnerAssignment)
+                    {
+                        return;
+                    }
                     // StackAll initiates vanilla's owner-authorized RPC_RequestStack handshake.
                     // The matching response patch below suppresses the original broad transfer.
                     container.StackAll();
@@ -198,11 +230,18 @@ namespace Stackmaster
                     OwnershipLeaseManager.WatchPotentialAcquisition(handle);
                     FailedContainerIds[handle.Id] = "ownership request failed: " + exception.GetType().Name;
                     RemovePendingHandle(handle);
-                    _waitingFor = null;
-                    _waitingHandle = null;
+                    ClearWaiting();
                     CancelRemaining("ownership batch cancelled after a required request failed");
                 }
             }
+        }
+
+        private void ClearWaiting()
+        {
+            _waitingFor = null;
+            _waitingHandle = null;
+            _waitingForOwnerAssignment = false;
+            _grantReceived = false;
         }
     }
 

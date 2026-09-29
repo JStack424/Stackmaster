@@ -73,7 +73,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ResolveExactMethod", installer)
         self.assertNotRegex(installer, r"typeof\((InventoryGui|Container|InventoryGrid|Player|Hud|BuildUi|Game|ZNet)\)")
         self.assertEqual(
-            36,
+            38,
             len(re.findall(r"^\s{12}(?:Prefix|Postfix|Both|Transactional)\(", manifest, flags=re.MULTILINE)),
         )
         self.assertIn(
@@ -333,7 +333,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             self.assertIn(f"original.{field_name} = snapshot.{field_name}", action)
         self.assertIn("Quick-grab cache refresh failed after commit", action)
         self.assertIn("reservationsReleased = NearbyResourceService.ReleaseReservations", action)
-        self.assertIn("for (var attempt = 0; attempt < 2 && !released; attempt++)", nearby)
+        self.assertIn("attempt < 2 && result == ReservationClearResult.Retry", nearby)
         self.assertIn("PendingReservationReleases", nearby)
         self.assertIn("UpdatePendingReservationReleases", nearby)
         self.assertIn("NearbyResourceService.UpdatePendingReservationReleases();", ownership)
@@ -343,7 +343,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RuntimeContext.Disable", action)
         self.assertIn("ReleaseReservations(reservations, false)", action)
         self.assertIn("OwnershipLeaseManager.ReleaseBatch(ownership", action)
-        self.assertIn("if (releaseMatchingOwnership)", nearby)
+        self.assertIn("if (releaseMatchingOwnership && ownershipCleanupHandles.Count > 0)", nearby)
         self.assertNotIn("ClaimOwnership()", action)
 
     def test_every_quick_grab_success_uses_live_persisted_sources_and_global_conservation(self):
@@ -400,6 +400,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("container.SetInUse(false)", transaction_release)
         self.assertIn("HasPendingReservationRelease(string containerId)", nearby)
         self.assertIn("PendingReservationReleases.ContainsKey(containerId)", nearby)
+        self.assertIn("OperationScopedReservationRegistry ActiveReservations", nearby)
+        self.assertIn("ActiveReservations.TryBegin(handle.Id, out operationGeneration)", nearby)
+        self.assertIn("ActiveReservations.IsCurrent(handle.Id, reservation.OperationGeneration)", nearby)
+        self.assertIn(".Where(NearbyResourceService.CanReleaseMatchingOwnership)", nearby)
         self.assertIn("FlushPendingReservationReleasesBeforeOwnershipShutdown", nearby)
         disable = runtime[runtime.index("internal static void Disable(string reason)"):runtime.index("internal static void Shutdown()")]
         self.assertLess(
@@ -418,10 +422,13 @@ class ProjectBoundaryTests(unittest.TestCase):
             safety.index("NearbyResourceService.UpdatePendingReservationReleases();"),
             safety.index("OwnershipLeaseManager.Update();"),
         )
-        clear = nearby[nearby.index("private static bool TryClearReservation"):nearby.index("internal static bool RevalidateContainers")]
+        clear = nearby[nearby.index("private static ReservationClearResult TryClearReservation"):nearby.index("internal static bool RevalidateContainers")]
+        self.assertIn("ActiveReservations.IsCurrent(handle.Id, reservation.OperationGeneration)", clear)
         self.assertIn("!string.Equals(zdo.m_uid.ToString(), handle.Id", clear)
         self.assertIn("zdo.OwnerRevision != reservation.OwnerRevision", clear)
         self.assertLess(clear.index("zdo.OwnerRevision != reservation.OwnerRevision"), clear.index("container.SetInUse(false)"))
+        self.assertIn("return ReservationClearResult.Superseded", clear)
+        self.assertIn("result == ReservationClearResult.Released && pending.ReleaseMatchingOwnership", nearby)
         self.assertIn("OwnershipCoordinator.HasUnresolvedCleanup || NearbyResourceService.HasPendingReservationReleases", plugin)
         self.assertIn("=> !hasPendingReservationCleanup", policy)
 
@@ -760,7 +767,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("RetryLeaseSeconds = 10f", ownership)
         self.assertIn("AcquiredOwnerships", ownership)
         self.assertIn("!handle.NetworkView.HasOwner()", ownership)
-        self.assertIn('FailedContainerIds[handle.Id] = "container is temporarily unowned"', ownership)
+        self.assertIn("_waitingForOwnerAssignment = !handle.NetworkView.HasOwner()", ownership)
+        self.assertIn("UnownedAssignmentPolicy.Decide", ownership)
+        self.assertIn("UnownedAssignmentDecision.ContinueLocally", ownership)
+        self.assertNotIn('FailedContainerIds[handle.Id] = "container is temporarily unowned"', ownership)
         self.assertIn("handle.ResourceOwner", ownership)
         self.assertIn("AcquiredSession", ownership)
         self.assertIn("ZDOMan.GetSessionID() == acquisition.AcquiredSession", ownership)
@@ -798,7 +808,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Crafting)", nearby)
         self.assertIn("ResourceTransactionContext.Complete(ResourceActionKind.Building)", nearby)
         self.assertIn("if (retainSuccessfulBuildOwnership)", nearby)
-        self.assertIn("OwnershipLeaseManager.RenewForSuccessfulBuild(held.Select(item => item.Handle))", nearby)
+        self.assertIn("OwnershipLeaseManager.RenewForSuccessfulBuild(ownershipCleanupHandles)", nearby)
         transaction_release = nearby[
             nearby.index("private static void ReleaseReservations("):
             nearby.index("internal sealed class RuntimeResourceStack")
@@ -824,9 +834,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("OwnershipLeaseManager.ReleaseBatch(ownership", nearby)
         self.assertIn("if (!transactionBegan)", nearby)
         self.assertIn("OwnershipLeaseManager.ReleaseMatching(requiredHandles", nearby)
-        transaction_release = nearby.index("OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle)")
+        transaction_release = nearby.index("OwnershipLeaseManager.ReleaseMatching(ownershipCleanupHandles")
         reservation_clear = nearby.rfind("container.SetInUse(false)", 0, transaction_release)
         self.assertLess(reservation_clear, transaction_release)
+        self.assertIn(".Where(NearbyResourceService.CanReleaseMatchingOwnership)", nearby)
         rollback = nearby[nearby.index("internal static bool Rollback()") : nearby.index("private static void Clear(bool retainSuccessfulBuildOwnership)")]
         self.assertLess(rollback.index("NearbyResourceService.Rollback"), rollback.index("ReleaseReservations"))
         self.assertIn('OwnershipLeaseManager.ReleaseBatch(ownership, "storage action ended")', storage)
@@ -842,7 +853,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         plugin = PLUGIN.read_text(encoding="utf-8")
 
         self.assertIn("TimedOutAcquisitionHandle", ownership)
-        self.assertIn("TimedOutAcquisitionHandle = _waitingHandle", ownership)
+        self.assertIn("TimedOutAcquisitionHandle = _waitingForOwnerAssignment ? null : _waitingHandle", ownership)
+        self.assertIn("TimedOutRequestContainer = _waitingForOwnerAssignment || _grantReceived ? null : _waitingFor", ownership)
         self.assertIn("var handle = _waitingHandle", ownership)
         self.assertNotIn("if (!_grantReceived || _waitingFor == null)", ownership)
         self.assertIn("WatchPotentialAcquisition", ownership)
@@ -2107,6 +2119,19 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("QuickGrabMaterialsAction.ExecuteAtomic", fuel)
         self.assertIn("OwnershipLeaseManager.ReleaseBatch", fuel)
         self.assertIn("StorageScopeKind.WorkbenchMesh", fuel)
+        self.assertIn("hoveredObject.GetComponentInParent<ZNetView>()", fuel)
+        self.assertIn("ownerView.GetComponentsInChildren<Piece>(true)", fuel)
+        self.assertIn("piece = pieces.Length == 1 ? pieces[0] : null", fuel)
+        self.assertIn("BelongsToOwner(candidate, piece, ownerView)", fuel)
+        self.assertIn("FindFuelComponent<Fireplace>(hoveredObject, piece, ownerView)", fuel)
+        self.assertIn("Utils.GetPrefabName(itemDrop.gameObject)", fuel)
+        self.assertNotIn("TryGetStableItemIdentity(itemDrop.m_itemData", fuel)
+        self.assertIn('Postfix(typeof(Hud), "UpdateCrosshair", false, typeof(void), new[] { typeof(Player), typeof(float) }, typeof(FuelQuickGrabHoverPatch))', manifest)
+        self.assertIn("internal static class FuelQuickGrabHoverPatch", storage)
+        self.assertIn('"</b></color>] Get "', storage)
+        self.assertIn("__instance.m_hoverName.text += hintPrefix + fuelName", storage)
+        self.assertIn("FuelQuickGrabAction.SelectAvailablePriority(target, capture)", storage)
+        self.assertIn("hoveredObject.GetComponentInParent<Container>() != null", storage)
 
     def test_whole_home_station_coverage_uses_only_connected_workbench_mesh(self):
         station = (PLUGIN_DIR / "WholeHomeCraftingStationService.cs").read_text(encoding="utf-8")
@@ -2123,6 +2148,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("WholeHomeCraftingStationsEnabled.Value", nearby)
         self.assertIn("WholeHomePlacementGuardContext.Begin", nearby)
         self.assertIn("HasBuildStationForPlacement", station)
+        self.assertIn("HasBuildStationForRemoval", station)
         self.assertIn("requirePositionInPlayerMesh && !scope.Contains(requiredPosition)", station)
         self.assertIn("station.GetType() != requiredStation.GetType()", station)
         self.assertIn("zdo.GetPrefab() != expectedPrefabHash", station)
@@ -2131,8 +2157,15 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("WholeHomePlacementGhostPatch", station)
         manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         self.assertIn('Postfix(typeof(Player), "UpdatePlacementGhost", false, typeof(void), new[] { typeof(bool) }, typeof(WholeHomePlacementGhostPatch))', manifest)
+        self.assertIn('Prefix(typeof(Player), "CheckCanRemovePiece", false, typeof(bool), new[] { typeof(Piece) }, typeof(WholeHomeRemovalStationPatch))', manifest)
+        self.assertIn("WholeHomeCraftingStationService.HasBuildStationForRemoval", station)
+        self.assertIn("piece.transform.position", station)
         self.assertIn("placementStatus = Player.PlacementStatus.Invalid", station)
         self.assertIn('RuntimeContext.ShowCenter("$msg_missingstation")', station)
+        self.assertIn("ApplyWholeHomeStationAvailability(__instance, piece, player, requirements.Length)", nearby)
+        self.assertIn("WholeHomeCraftingStationService.HasBuildStation(player, requiredStation)", nearby)
+        self.assertIn("amount.text = string.Empty", nearby)
+        self.assertIn("icon.color = Color.white", nearby)
         self.assertIn("This does not expand station radii or connect separate homes", plugin)
 
     def test_new_fuel_and_station_runtime_contracts_fail_closed(self):
@@ -2155,6 +2188,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             'typeof(SiegeMachine)',
             '"m_engine", typeof(Smelter)',
             '"m_useFuel", typeof(bool)',
+            '"m_hoverName"',
             '"HaveBuildStationInRange", typeof(string), typeof(Vector3)',
         ):
             self.assertIn(contract, gate)

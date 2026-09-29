@@ -53,6 +53,7 @@ namespace Stackmaster
             Postfix(typeof(Player), "HaveRequirementItems", false, typeof(bool), new[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) }, typeof(NearbyRequirementPatches), "RecipePostfix"),
             Postfix(typeof(Player), "HaveRequirements", false, typeof(bool), new[] { typeof(Piece), typeof(Player.RequirementMode) }, typeof(NearbyRequirementPatches), "PiecePostfix"),
             Postfix(typeof(Hud), "SetupPieceInfo", false, typeof(void), new[] { typeof(Piece) }, typeof(NearbyBuildHudPatch)),
+            Postfix(typeof(Hud), "UpdateCrosshair", false, typeof(void), new[] { typeof(Player), typeof(float) }, typeof(FuelQuickGrabHoverPatch)),
             Prefix(typeof(BuildUi), "OnSelectPiece", false, typeof(void), new[] { typeof(Piece) }, typeof(QuickGrabMaterialsClickPatch)),
             Postfix(typeof(KeyHints), "Update", false, typeof(void), Type.EmptyTypes, typeof(QuickGrabMaterialsBuildHintPatch)),
             Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]
@@ -66,6 +67,7 @@ namespace Stackmaster
             Transactional(typeof(InventoryGui), "DoCrafting", false, typeof(void), new[] { typeof(Player) }, typeof(NearbyCraftingActionPatch)),
             Transactional(typeof(Player), "UpdatePlacement", false, typeof(void), new[] { typeof(bool), typeof(float) }, typeof(NearbyBuildingActionPatch)),
             Postfix(typeof(Player), "UpdatePlacementGhost", false, typeof(void), new[] { typeof(bool) }, typeof(WholeHomePlacementGhostPatch)),
+            Prefix(typeof(Player), "CheckCanRemovePiece", false, typeof(bool), new[] { typeof(Piece) }, typeof(WholeHomeRemovalStationPatch)),
             Both(typeof(Player), "TryPlacePiece", false, typeof(bool), new[] { typeof(Piece) }, typeof(NearbyTryPlacePiecePatch)),
             Prefix(typeof(Inventory), "RemoveItem", false, typeof(void), new[] { typeof(string), typeof(int), typeof(int), typeof(bool) }, typeof(NearbyResourceRemovalPatch))
         };

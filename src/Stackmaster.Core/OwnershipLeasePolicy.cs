@@ -43,6 +43,38 @@ namespace Stackmaster.Core
                !logicallyReserved;
     }
 
+    public enum UnownedAssignmentDecision
+    {
+        Wait,
+        ContinueLocally,
+        Reject
+    }
+
+    public static class UnownedAssignmentPolicy
+    {
+        public static UnownedAssignmentDecision Decide(
+            long originalOwner,
+            ushort originalOwnerRevision,
+            long currentOwner,
+            ushort currentOwnerRevision,
+            long localSession)
+        {
+            if (originalOwner != 0L)
+            {
+                return UnownedAssignmentDecision.Reject;
+            }
+            if (currentOwner == 0L)
+            {
+                return UnownedAssignmentDecision.Wait;
+            }
+
+            return currentOwner == localSession &&
+                   currentOwnerRevision == OwnershipLeasePolicy.NextOwnerRevision(originalOwnerRevision)
+                ? UnownedAssignmentDecision.ContinueLocally
+                : UnownedAssignmentDecision.Reject;
+        }
+    }
+
     public static class OwnershipLeasePolicy
     {
         public static ushort NextOwnerRevision(ushort current)

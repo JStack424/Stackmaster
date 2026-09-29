@@ -48,7 +48,24 @@ namespace Stackmaster
 
             try
             {
-                var piece = hoveredObject.GetComponentInParent<Piece>();
+                var ownerView = hoveredObject.GetComponentInParent<ZNetView>();
+                Piece piece;
+                if (ownerView != null)
+                {
+                    // Valheim often exposes a child Switch as the live hover target. Some piece
+                    // prefabs keep the interactive component and Piece as siblings below their
+                    // owning network root rather than in one parent chain. Stay inside the exact
+                    // nearest ZNetView and fail closed unless that root has one unique Piece.
+                    var pieces = ownerView.GetComponentsInChildren<Piece>(true)
+                        .Where(candidate => ReferenceEquals(candidate.GetComponentInParent<ZNetView>(), ownerView))
+                        .Take(2)
+                        .ToArray();
+                    piece = pieces.Length == 1 ? pieces[0] : null;
+                }
+                else
+                {
+                    piece = hoveredObject.GetComponentInParent<Piece>();
+                }
                 if (piece == null || piece.gameObject == null || !piece.gameObject.activeInHierarchy ||
                     !piece.m_enabled || !piece.IsPlacedByPlayer() || hoveredObject.GetComponentInParent<Container>() != null)
                 {
@@ -62,34 +79,34 @@ namespace Stackmaster
                 }
                 var displayName = Localize(piece.m_name);
 
-                var shieldGenerator = piece.GetComponentInChildren<ShieldGenerator>(true);
+                var shieldGenerator = FindFuelComponent<ShieldGenerator>(hoveredObject, piece, ownerView);
                 if (shieldGenerator != null && string.Equals(piecePrefabName, "piece_shieldgenerator", StringComparison.Ordinal))
                 {
                     return TryResolveList(displayName, shieldGenerator.m_fuelItems, out target);
                 }
 
-                var siegeMachine = piece.GetComponentInChildren<SiegeMachine>(true);
+                var siegeMachine = FindFuelComponent<SiegeMachine>(hoveredObject, piece, ownerView);
                 if (siegeMachine != null && siegeMachine.m_engine != null &&
                     string.Equals(piecePrefabName, "BatteringRam", StringComparison.Ordinal))
                 {
                     return TryResolveConversions(displayName, siegeMachine.m_engine.m_conversion, out target);
                 }
 
-                var fireplace = piece.GetComponentInChildren<Fireplace>(true);
+                var fireplace = FindFuelComponent<Fireplace>(hoveredObject, piece, ownerView);
                 if (fireplace != null && fireplace.m_canRefill && !fireplace.m_infiniteFuel && fireplace.m_fuelItem != null &&
                     fireplace.m_maxFuel > 0f && !float.IsNaN(fireplace.m_maxFuel) && !float.IsInfinity(fireplace.m_maxFuel))
                 {
                     return TryResolveDirect(displayName, fireplace.m_fuelItem, out target);
                 }
 
-                var cookingStation = piece.GetComponentInChildren<CookingStation>(true);
+                var cookingStation = FindFuelComponent<CookingStation>(hoveredObject, piece, ownerView);
                 if (cookingStation != null && cookingStation.m_useFuel && cookingStation.m_maxFuel > 0 &&
                     cookingStation.m_fuelItem != null)
                 {
                     return TryResolveDirect(displayName, cookingStation.m_fuelItem, out target);
                 }
 
-                var smelter = piece.GetComponentInChildren<Smelter>(true);
+                var smelter = FindFuelComponent<Smelter>(hoveredObject, piece, ownerView);
                 if (smelter != null && smelter.m_maxFuel > 0 && smelter.m_fuelItem != null)
                 {
                     return TryResolveDirect(displayName, smelter.m_fuelItem, out target);
@@ -105,6 +122,25 @@ namespace Stackmaster
             }
             return false;
         }
+
+        private static T FindFuelComponent<T>(GameObject hoveredObject, Piece piece, ZNetView ownerView)
+            where T : Component
+        {
+            var direct = hoveredObject.GetComponentInParent<T>();
+            if (direct != null && BelongsToOwner(direct, piece, ownerView)) return direct;
+
+            Component root = ownerView != null ? (Component)ownerView : piece;
+            var matches = root.GetComponentsInChildren<T>(true)
+                .Where(candidate => BelongsToOwner(candidate, piece, ownerView))
+                .Take(2)
+                .ToArray();
+            return matches.Length == 1 ? matches[0] : null;
+        }
+
+        private static bool BelongsToOwner(Component candidate, Piece piece, ZNetView ownerView)
+            => candidate != null && (ownerView != null
+                ? ReferenceEquals(candidate.GetComponentInParent<ZNetView>(), ownerView)
+                : ReferenceEquals(candidate.GetComponentInParent<Piece>(), piece));
 
         private static bool TryResolveDirect(string displayName, ItemDrop fuelItem, out FuelQuickGrabTarget target)
         {
@@ -156,9 +192,13 @@ namespace Stackmaster
             item = null;
             if (itemDrop == null || itemDrop.m_itemData == null || itemDrop.m_itemData.m_shared == null ||
                 itemDrop.m_itemData.m_shared.m_maxStackSize <= 0) return false;
-            string prefabName;
-            int quality;
-            if (!ExpeditionReservations.TryGetStableItemIdentity(itemDrop.m_itemData, out prefabName, out quality)) return false;
+            // Component fuel references point at item prefabs. Their ItemData.m_dropPrefab is
+            // populated only by ItemDrop.Awake and is legitimately null for inactive serialized
+            // prefab references, so derive the canonical identity from the referenced ItemDrop's
+            // own GameObject instead of rejecting every otherwise valid live device.
+            var prefabName = Utils.GetPrefabName(itemDrop.gameObject);
+            var quality = itemDrop.m_itemData.m_quality;
+            if (string.IsNullOrWhiteSpace(prefabName) || quality < 0) return false;
             item = new FuelQuickGrabItem(
                 prefabName,
                 itemDrop.m_itemData.m_shared.m_name,
@@ -183,7 +223,7 @@ namespace Stackmaster
 
     internal static class FuelQuickGrabAction
     {
-        private const float OwnershipTimeoutSeconds = 2f;
+        private const float OwnershipTimeoutSeconds = 3f;
         private static readonly QuickGrabMaterialsWithdrawalPlanner WithdrawalPlanner = new QuickGrabMaterialsWithdrawalPlanner();
         private static bool _running;
         private static int _generation;
@@ -439,6 +479,35 @@ namespace Stackmaster
             return TryPlanFromCapture(player, target, capture, out prepared, out failure, out expectedUnavailable);
         }
 
+        internal static FuelQuickGrabItem SelectAvailablePriority(
+            FuelQuickGrabTarget target,
+            NearbyResourceCapture capture)
+        {
+            if (target == null || capture == null) return null;
+            var selection = FuelQuickGrabPolicy.Select(target.Priorities.Select(candidate =>
+                new FuelQuickGrabCandidate(
+                    candidate.PrefabName,
+                    EligibleStacks(candidate, capture).Sum(stack => checked(stack.Quantity)),
+                    candidate.MaximumStack)));
+            return selection == null
+                ? null
+                : target.Priorities.FirstOrDefault(item =>
+                    string.Equals(item.PrefabName, selection.Identity, StringComparison.Ordinal));
+        }
+
+        private static ResourceStack[] EligibleStacks(FuelQuickGrabItem candidate, NearbyResourceCapture capture)
+            => capture.Stacks.Where(stack =>
+            {
+                RuntimeResourceStack runtime;
+                string prefabName;
+                int quality;
+                return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
+                    capture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
+                    ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
+                    string.Equals(prefabName, candidate.PrefabName, StringComparison.Ordinal) &&
+                    quality == candidate.Quality;
+            }).ToArray();
+
         private static bool TryPlanFromCapture(
             Player player,
             FuelQuickGrabTarget target,
@@ -457,33 +526,14 @@ namespace Stackmaster
                 return false;
             }
 
-            var eligibleByPrefab = target.Priorities.ToDictionary(
-                candidate => candidate.PrefabName,
-                candidate => capture.Stacks.Where(stack =>
-                {
-                    RuntimeResourceStack runtime;
-                    string prefabName;
-                    int quality;
-                    return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
-                        capture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
-                        ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
-                        string.Equals(prefabName, candidate.PrefabName, StringComparison.Ordinal) &&
-                        quality == candidate.Quality;
-                }).ToArray(),
-                StringComparer.Ordinal);
-            var selection = FuelQuickGrabPolicy.Select(target.Priorities.Select(candidate =>
-                new FuelQuickGrabCandidate(
-                    candidate.PrefabName,
-                    eligibleByPrefab[candidate.PrefabName].Sum(stack => checked(stack.Quantity)),
-                    candidate.MaximumStack)));
-            if (selection != null)
+            var candidate = SelectAvailablePriority(target, capture);
+            if (candidate != null)
             {
-                var candidate = target.Priorities.First(item =>
-                    string.Equals(item.PrefabName, selection.Identity, StringComparison.Ordinal));
-                var eligible = eligibleByPrefab[candidate.PrefabName];
-                var requirement = new ResourceRequirement(candidate.ItemName, selection.Quantity, candidate.Quality);
+                var eligible = EligibleStacks(candidate, capture);
+                var selectedQuantity = Math.Min(eligible.Sum(stack => checked(stack.Quantity)), candidate.MaximumStack);
+                var requirement = new ResourceRequirement(candidate.ItemName, selectedQuantity, candidate.Quality);
                 var withdrawal = WithdrawalPlanner.Plan(new[] { requirement }, eligible);
-                if (!withdrawal.IsSatisfiable || withdrawal.PlannedUnits != selection.Quantity)
+                if (!withdrawal.IsSatisfiable || withdrawal.PlannedUnits != selectedQuantity)
                 {
                     failure = "home fuel stock could not be planned exactly";
                     return false;

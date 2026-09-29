@@ -1,11 +1,12 @@
 # Stackmaster 1.4.0 live test checklist
 
-This is a local test candidate, not a production-approved release. Roll back to **Stackmaster 1.3.5** if any regression blocks play or any item count is wrong.
+This is a local test candidate, not a production-approved release. If any regression blocks play or any item count is wrong, roll back to **Stackmaster 1.3.5** and fully restart Valheim.
 
 ## Fuel Quick Grab
 
 - [ ] **Container precedence:** Aim at a vanilla chest and press `Left Alt + E`. Expected: ordinary Quick Stack runs; no fuel-specific result appears.
-- [ ] **Ordinary interaction:** Aim at each supported device and press plain `E`. Expected: normal Valheim interaction/loading behavior remains unchanged.
+- [ ] **Ordinary interaction and hint:** Aim at each supported device. Expected: vanilla `E` text and normal interaction/loading remain unchanged, with a second localized `[Alt + E] Get <prioritized fuel>` line shown only for recognized fuel targets.
+- [ ] **Hovered child/switch:** Aim directly at the live fuel-input switch on a Smelter/Kiln and press `Left Alt + E`. Expected: Stackmaster resolves the owning device, shows the fuel hint, and withdraws the selected fuel instead of reporting an invalid target.
 - [ ] **Fireplace family:** Test a refillable campfire/hearth/bonfire with fuel in an eligible home chest. Expected: `Left Alt + E` pulls fuel but does not add fuel to or otherwise operate the fireplace.
 - [ ] **Smelter:** Test a Smelter with coal in an eligible home chest. Expected: coal is withdrawn into the backpack; ore/output behavior is unchanged and the press does not load coal.
 - [ ] **Charcoal Kiln priority:** Test Wood, Fine Wood, and Core Wood in eligible chests, then remove higher-priority types one at a time. Expected: each press pulls exactly one type in the order Wood → Fine Wood → Core Wood; types never mix.
@@ -21,6 +22,7 @@ This is a local test candidate, not a production-approved release. Roll back to 
 ## Whole-home crafting stations
 
 - [ ] **Connected Workbench home:** Place one Forge/Stonecutter/Artisan Table inside a connected Workbench mesh, move to another point in that same mesh outside the station's vanilla radius, and select a gated Hammer piece. Expected: the piece is build-eligible when its normal material/DLC requirements are met.
+- [ ] **Hammer station display:** While the previous piece is selected outside the station's vanilla radius but inside the same home, inspect its Hammer requirement row. Expected: the exact station icon stays available and does not flash red or show `None`.
 - [ ] **Every vanilla gate sampled:** Check representative Workbench-, Stonecutter-, Forge-, Black Forge-, Artisan Table-, and Galdr Table-gated Hammer pieces. Expected: each uses the exact required station type; one station never substitutes for another.
 - [ ] **Build point stays in the same home:** Stand inside the home and aim the placement ghost just outside that connected Workbench mesh. Expected: extended station eligibility is denied at the boundary; moving the ghost back inside the same mesh restores it.
 - [ ] **Vanilla-first behavior:** Stand inside a station's normal radius. Expected: behavior is identical with the whole-home option on or off.
@@ -30,7 +32,16 @@ This is a local test candidate, not a production-approved release. Roll back to 
 - [ ] **Outside-home fallback:** Stand outside every Workbench mesh but near the configured storage radius and a station. Expected: whole-home coverage does not activate; only vanilla station radius applies.
 - [ ] **Loaded/active requirement:** Unload, destroy, disable, or move the only qualifying station. Expected: extended eligibility disappears without stale access or a crash.
 - [ ] **Free-build/DLC/material rules:** Check no-cost/free-build, an unavailable DLC-gated piece if possible, sufficient materials, and insufficient materials. Expected: only station eligibility changes; all other vanilla checks remain unchanged.
-- [ ] **Removal/repair:** Repair and dismantle inside and outside the mesh. Expected: vanilla behavior is unchanged.
+- [ ] **Same-home removal/repair:** Dismantle and repair a station-gated piece while outside the required station's vanilla radius but inside the same connected home. Expected: both succeed under the same exact station identity/topology rule that allowed placement.
+- [ ] **Removal fail-closed cases:** Repeat with the option off, a disconnected/wrong/unloaded station, or a piece outside the player's mesh. Expected: Valheim still shows the ordinary missing-station denial; repair and all other removal checks remain unchanged.
+
+## Rapid chest-backed crafting
+
+- [ ] **Same recipe, same chest:** Put enough materials for at least four copies of one recipe in one eligible chest, then start the next craft immediately each time the prior bar completes. Expected: all four clicks start and finish; every output appears once; the chest loses exactly four recipe costs; there is no alternating failed click or stuck in-use chest.
+- [ ] **Different recipes, same chest:** Alternate quickly between two recipes whose materials are in the same eligible chest. Expected: each selected recipe starts once, receives the correct output, and consumes only its exact cost; cleanup from the prior recipe never cancels the next.
+- [ ] **Same and different recipes, different chests:** Repeat rapid crafting with one recipe drawing across multiple chests, then alternate recipes that draw from different chests. Expected: every craft succeeds once and only the selected minimum source set is debited exactly.
+- [ ] **Cancel/failure/close boundaries:** During separate chest-backed attempts, cancel the bar, force an ordinary validation failure by changing required stock, and close the inventory before completion; immediately start a valid craft after each. Expected: the interrupted craft grants no output and leaks no debit, reservation, ownership, or in-use state; the next valid craft succeeds on its first click.
+- [ ] **Disconnect boundary:** Begin a chest-backed craft, disconnect/log out, reconnect, and craft again. Expected: the interrupted operation cannot affect the new session; the new craft succeeds once with exact item conservation and no stuck chest or Stackmaster disable.
 
 ## Regression and multiplayer
 
@@ -40,4 +51,4 @@ This is a local test candidate, not a production-approved release. Roll back to 
 - [ ] **World-switch reservation UI:** In world A, create a reservation and confirm both the inventory row and Hammer row appear. Log out, enter world B, open inventory and Hammer, then log out and reconnect to world A. Expected: both rows are recreated for the active scene, no `MissingReferenceException` appears, and Stackmaster remains active without restarting Valheim.
 - [ ] Disable/re-enable or unload/reload Stackmaster after an interrupted action. Expected: no stale ownership, reservation, input suppression, station eligibility, or duplicate action.
 
-If an item is lost/duplicated, a device operates on the chord, a separate home grants station access, or Stackmaster disables after a world change, stop testing and return to **Stackmaster 1.3.5**.
+If an item is lost/duplicated, a device operates on the chord, a separate home grants station access, or Stackmaster disables after a world change, stop testing, return to **Stackmaster 1.3.5**, and fully restart Valheim.

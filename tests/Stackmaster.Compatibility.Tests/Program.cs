@@ -50,6 +50,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("InventoryGui", "SetupRequirement", new[] { "UnityEngine.Transform", "Requirement", "Player", "System.Boolean", "System.Int32", "System.Int32" }),
                 ("InventoryGui", "get_instance", Array.Empty<string>()),
                 ("Hud", "SetupPieceInfo", new[] { "Piece" }),
+                ("Hud", "UpdateCrosshair", new[] { "Player", "System.Single" }),
                 ("Hud", "IsPieceSelectionVisible", Array.Empty<string>()),
                 ("BuildUi", "OnSelectPiece", new[] { "Piece" }),
                 ("Player", "GetBuildTool", Array.Empty<string>()),
@@ -86,6 +87,9 @@ namespace Stackmaster.Compatibility.Tests
                 ("Player", "HaveRequirements", new[] { "Piece", "RequirementMode" }),
                 ("Player", "GetFirstRequiredItem", new[] { "Inventory", "Recipe", "System.Int32", "System.Int32&", "System.Int32&", "System.Int32" }),
                 ("Player", "UpdatePlacement", new[] { "System.Boolean", "System.Single" }),
+                ("Player", "CheckCanRemovePiece", new[] { "Piece" }),
+                ("Player", "RemovePiece", Array.Empty<string>()),
+                ("Player", "Repair", new[] { "ItemData", "Piece" }),
                 ("Player", "TryPlacePiece", new[] { "Piece" }),
                 ("Inventory", "RemoveItem", new[] { "System.String", "System.Int32", "System.Int32", "System.Boolean" }),
                 ("Inventory", "MoveItemToThis", new[] { "Inventory", "ItemData", "System.Int32", "System.Int32", "System.Int32" }),
@@ -117,7 +121,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("InventoryGui", "m_touchMultiCrafting"), ("InventoryGui", "m_multiCrafting"),
                 ("InventoryGui", "m_multiCraftAmount"), ("InventoryGui", "m_dragItem"),
                 ("InventoryGui", "m_dragInventory"), ("Hud", "m_requirementItems"),
-                ("Hud", "m_buildUi"), ("BuildUi", "m_tabContainer"), ("PieceTable", "m_pieces"),
+                ("Hud", "m_hoverName"), ("Hud", "m_buildUi"), ("BuildUi", "m_tabContainer"), ("PieceTable", "m_pieces"),
                 ("Container", "m_nview"), ("Container", "m_wagon"),
                 ("Inventory", "m_onChanged"), ("Inventory", "m_inventory"),
                 ("Player", "m_customData"), ("Player", "m_noPlacementCost"),
@@ -128,6 +132,8 @@ namespace Stackmaster.Compatibility.Tests
             foreach (var field in fields) contract.Field(field.Type, field.Name);
             contract.Field("BuildUi", "m_tabContainer", "UnityEngine.RectTransform", 0);
             contract.NestedField("ItemDrop", "ItemData", "m_shared", "SharedData", FieldAttributes.Public);
+            contract.NestedField("ItemDrop", "ItemData", "m_dropPrefab", "UnityEngine.GameObject",
+                FieldAttributes.Public | (FieldAttributes)0x80);
             contract.NestedNestedField(
                 "ItemDrop", "ItemData", "SharedData", "m_maxStackSize", "System.Int32", FieldAttributes.Public);
 
@@ -150,6 +156,22 @@ namespace Stackmaster.Compatibility.Tests
             contract.MethodCalls(
                 "BuildUi", "OnSelectPiece", "System.Void", new[] { "Piece" },
                 "Hud", "CloseBuildUi", "System.Void", Array.Empty<string>());
+            contract.MethodCalls(
+                "Hud", "SetupPieceInfo", "System.Void", new[] { "Piece" },
+                "CraftingStation", "HaveBuildStationInRange", "CraftingStation",
+                new[] { "System.String", "UnityEngine.Vector3" });
+            contract.MethodReadsFieldByName(
+                "Hud", "SetupPieceInfo", new[] { "Piece" }, "Hud", "m_requirementItems");
+            contract.MethodCalls(
+                "Player", "RemovePiece", "System.Boolean", Array.Empty<string>(),
+                "Player", "CheckCanRemovePiece", "System.Boolean", new[] { "Piece" });
+            contract.MethodCalls(
+                "Player", "Repair", "System.Void", new[] { "ItemData", "Piece" },
+                "Player", "CheckCanRemovePiece", "System.Boolean", new[] { "Piece" });
+            contract.MethodCalls(
+                "Player", "CheckCanRemovePiece", "System.Boolean", new[] { "Piece" },
+                "CraftingStation", "HaveBuildStationInRange", "CraftingStation",
+                new[] { "System.String", "UnityEngine.Vector3" });
 
             // Stackmaster debits the prepared plan before letting vanilla create output,
             // then suppresses these exact vanilla charging calls. Keep this a structural
@@ -231,7 +253,7 @@ namespace Stackmaster.Compatibility.Tests
                 .GetMethod("PrepareCleanupSafety", BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, null)!).Cast<object>().ToArray();
 
-            Equal(36, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
+            Equal(38, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
             Equal(descriptors.Length, prepared.Length, "PatchInstaller.Prepare returns every manifest operation");
             Equal(2, cleanupSafety.Length, "cleanup safety installation filters the canonical manifest");
 

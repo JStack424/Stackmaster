@@ -161,7 +161,7 @@ namespace Stackmaster
 
     internal static class QuickGrabMaterialsAction
     {
-        private const float OwnershipTimeoutSeconds = 2f;
+        private const float OwnershipTimeoutSeconds = 3f;
         private static readonly QuickGrabMaterialsWithdrawalPlanner WithdrawalPlanner = new QuickGrabMaterialsWithdrawalPlanner();
         private static readonly QuickGrabCapacityPlanner CapacityPlanner = new QuickGrabCapacityPlanner();
         private static readonly MethodInfo AddItemAtMethod = AccessTools.DeclaredMethod(

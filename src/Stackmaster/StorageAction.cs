@@ -12,7 +12,7 @@ namespace Stackmaster
 {
     internal static class StorageAction
     {
-        private const float OwnershipTimeoutSeconds = 2f;
+        private const float OwnershipTimeoutSeconds = 3f;
         private static readonly FieldInfo CurrentContainerField = AccessTools.Field(typeof(InventoryGui), "m_currentContainer");
         private static readonly FieldInfo CraftTimerField = AccessTools.Field(typeof(InventoryGui), "m_craftTimer");
         private static readonly FieldInfo DragItemField = AccessTools.Field(typeof(InventoryGui), "m_dragItem");
@@ -634,6 +634,96 @@ namespace Stackmaster
         private static bool Prefix(Player __instance, [HarmonyArgument(0)] GameObject go)
         {
             return !RuntimeContext.Compatibility.IsCompatible || !StorageAction.HandleFuelPieceInteraction(__instance, go);
+        }
+    }
+
+    internal static class FuelQuickGrabHoverPatch
+    {
+        private const float SelectionRefreshSeconds = 0.35f;
+        private static Player _cachedPlayer;
+        private static GameObject _cachedHover;
+        private static string _cachedFuelName;
+        private static float _nextSelectionRefresh;
+
+        private static void Postfix(Hud __instance, [HarmonyArgument(0)] Player player)
+        {
+            try
+            {
+                if (!RuntimeContext.Compatibility.IsCompatible || RuntimeContext.Plugin == null ||
+                    __instance == null || __instance.m_hoverName == null || player == null ||
+                    !ReferenceEquals(player, Player.m_localPlayer) || ZInput.IsGamepadActive() ||
+                    string.IsNullOrEmpty(__instance.m_hoverName.text))
+                {
+                    return;
+                }
+
+                var hoveredObject = player.GetHoverObject();
+                if (hoveredObject == null || hoveredObject.GetComponentInParent<Container>() != null) return;
+
+                FuelQuickGrabTarget target;
+                if (!FuelQuickGrabTargetResolver.TryResolve(hoveredObject, out target) || target.Priorities.Count == 0) return;
+
+                var shortcut = RuntimeContext.Plugin.StorageActionShortcut.Value;
+                var shortcutText = string.Join(" + ", shortcut.Modifiers.Select(FormatKey)
+                    .Concat(new[] { FormatKey(shortcut.MainKey) })
+                    .ToArray());
+                var hintPrefix = "\n[<color=yellow><b>" + shortcutText + "</b></color>] Get ";
+                if (__instance.m_hoverName.text.IndexOf(hintPrefix, StringComparison.Ordinal) >= 0) return;
+                var fuelName = GetFuelName(player, hoveredObject, target);
+                __instance.m_hoverName.text += hintPrefix + fuelName;
+            }
+            catch (Exception exception)
+            {
+                NearbyHudFailOpen.ReportOnce("fuel interaction hint", exception);
+            }
+        }
+
+        private static string GetFuelName(Player player, GameObject hoveredObject, FuelQuickGrabTarget target)
+        {
+            if (ReferenceEquals(_cachedPlayer, player) && ReferenceEquals(_cachedHover, hoveredObject) &&
+                Time.unscaledTime < _nextSelectionRefresh && !string.IsNullOrEmpty(_cachedFuelName))
+            {
+                return _cachedFuelName;
+            }
+
+            var selected = target.Priorities[0];
+            try
+            {
+                var capture = NearbyResourceService.CaptureForQuickGrab(player, true, true);
+                if (capture != null && capture.Scope != null && capture.Scope.Kind == StorageScopeKind.WorkbenchMesh)
+                {
+                    selected = FuelQuickGrabAction.SelectAvailablePriority(target, capture) ?? selected;
+                }
+            }
+            catch
+            {
+                // Hover text is advisory only. Keep the configured primary fuel hint and let the
+                // authoritative action report any storage-capture failure on the actual key press.
+            }
+
+            _cachedPlayer = player;
+            _cachedHover = hoveredObject;
+            _cachedFuelName = selected.DisplayName;
+            _nextSelectionRefresh = Time.unscaledTime + SelectionRefreshSeconds;
+            return _cachedFuelName;
+        }
+
+        private static string FormatKey(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.LeftAlt:
+                case KeyCode.RightAlt:
+                    return "Alt";
+                case KeyCode.LeftControl:
+                case KeyCode.RightControl:
+                    return "Ctrl";
+                case KeyCode.LeftShift:
+                case KeyCode.RightShift:
+                    return "Shift";
+                default:
+                    return key.ToString();
+            }
         }
     }
 

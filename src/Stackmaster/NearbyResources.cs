@@ -80,13 +80,15 @@ namespace Stackmaster
 
     internal sealed class ContainerReservation
     {
-        internal ContainerReservation(ContainerHandle handle)
+        internal ContainerReservation(ContainerHandle handle, long operationGeneration)
         {
             Handle = handle;
+            OperationGeneration = operationGeneration;
         }
 
         internal ContainerHandle Handle { get; }
         internal Container Container => Handle.Container;
+        internal long OperationGeneration { get; }
         internal long LocalSession { get; private set; }
         internal uint DataRevision { get; private set; }
         internal ushort OwnerRevision { get; private set; }
@@ -249,18 +251,23 @@ namespace Stackmaster
             var reservationsReleased = NearbyResourceService.ReleaseReservations(
                 held,
                 releaseMatchingOwnership: false);
+            var ownershipCleanupHandles = held
+                .Where(NearbyResourceService.CanReleaseMatchingOwnership)
+                .Select(item => item.Handle)
+                .ToArray();
 
             // Only ownership that Stackmaster demonstrably acquired and this successful build
             // actually consumed can enter or renew the sliding build lease. A failed exact
             // in-use cleanup is retained and blocks even shutdown ownership release until the
-            // session-lifetime safety update clears that reservation first.
+            // session-lifetime safety update clears that reservation first. A superseded cleanup
+            // callback is excluded too, so operation A cannot release operation B's current lease.
             if (retainSuccessfulBuildOwnership)
             {
-                OwnershipLeaseManager.RenewForSuccessfulBuild(held.Select(item => item.Handle));
+                OwnershipLeaseManager.RenewForSuccessfulBuild(ownershipCleanupHandles);
             }
             else
             {
-                OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                OwnershipLeaseManager.ReleaseMatching(ownershipCleanupHandles,
                     "nearby-resource transaction ended");
             }
             if (!reservationsReleased)
@@ -391,12 +398,21 @@ namespace Stackmaster
         internal bool PlayerSatisfied { get; }
     }
 
+    internal enum ReservationClearResult
+    {
+        Released,
+        Retry,
+        Superseded
+    }
+
     internal static class NearbyResourceService
     {
         private const string PlayerInventoryId = "player";
         private static readonly ResourceWithdrawalPlanner Planner = new ResourceWithdrawalPlanner();
         private static readonly Dictionary<string, PendingReservationRelease> PendingReservationReleases =
             new Dictionary<string, PendingReservationRelease>(StringComparer.Ordinal);
+        private static readonly OperationScopedReservationRegistry ActiveReservations =
+            new OperationScopedReservationRegistry();
         private static float _nextReservationReleaseRetryAt;
         private static readonly MethodInfo AddItemAtMethod = AccessTools.DeclaredMethod(
             typeof(Inventory),
@@ -417,11 +433,17 @@ namespace Stackmaster
         internal static bool HasPendingReservationRelease(string containerId)
             => !string.IsNullOrEmpty(containerId) && PendingReservationReleases.ContainsKey(containerId);
 
+        internal static bool CanReleaseMatchingOwnership(ContainerReservation reservation)
+            => reservation != null && reservation.Handle != null &&
+               !ActiveReservations.HasActive(reservation.Handle.Id) &&
+               !HasPendingReservationRelease(reservation.Handle.Id);
+
         internal static void DiscardEndedSessionState()
         {
             // Called only after a different ZNet instance has started. Records from the ended
             // transport can no longer match a live reservation and must not cross into the new world.
             PendingReservationReleases.Clear();
+            ActiveReservations.Clear();
             _nextReservationReleaseRetryAt = 0f;
             ResetCaches();
         }
@@ -1574,7 +1596,18 @@ namespace Stackmaster
                     reservations = Array.Empty<ContainerReservation>();
                     return false;
                 }
-                var reservation = new ContainerReservation(handle);
+                long operationGeneration;
+                if (!ActiveReservations.TryBegin(handle.Id, out operationGeneration))
+                {
+                    failure = NearbyResourceOwnership.InUseMessage;
+                    ReleaseReservations(held, releaseMatchingOwnershipOnFailure);
+                    reservations = Array.Empty<ContainerReservation>();
+                    return false;
+                }
+                var reservation = new ContainerReservation(handle, operationGeneration);
+                // Add it before every fallible baseline/in-use step so the exact operation token
+                // is always retired or retained for retry by the ordinary cleanup path.
+                held.Add(reservation);
                 if (!reservation.CaptureRevisionBaseline())
                 {
                     failure = "required container reservation baseline could not be captured";
@@ -1582,9 +1615,6 @@ namespace Stackmaster
                     reservations = Array.Empty<ContainerReservation>();
                     return false;
                 }
-                // Add it before SetInUse so cleanup still releases a reservation if a patched
-                // effects path throws after setting the local in-use flag.
-                held.Add(reservation);
                 try
                 {
                     handle.Container.SetInUse(true);
@@ -1621,6 +1651,7 @@ namespace Stackmaster
                 var view = handle != null ? handle.NetworkView : null;
                 var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
                 if (handle == null || handle.Container == null || zdo == null ||
+                    !ActiveReservations.IsCurrent(handle.Id, reservation.OperationGeneration) ||
                     !view.IsOwner() || !handle.Container.IsOwner() || !handle.Container.IsInUse() ||
                     !string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
                     zdo.DataRevision != reservation.DataRevision ||
@@ -1642,26 +1673,30 @@ namespace Stackmaster
             if (reservations == null) return true;
             var allReleased = true;
             var held = reservations.ToArray();
+            var ownershipCleanupHandles = new List<ContainerHandle>();
             foreach (var reservation in held.Reverse())
             {
-                var released = false;
-                for (var attempt = 0; attempt < 2 && !released; attempt++)
+                var result = ReservationClearResult.Retry;
+                for (var attempt = 0;
+                     attempt < 2 && result == ReservationClearResult.Retry;
+                     attempt++)
                 {
-                    released = TryClearReservation(reservation);
+                    result = TryClearReservation(reservation);
                 }
-                if (released)
+
+                if (result == ReservationClearResult.Released)
+                {
+                    // A current operation that completed makes every older pending callback for
+                    // this container obsolete. Drop it before ownership cleanup so an old record
+                    // cannot block or later release this operation's exact lease.
+                    PendingReservationReleases.Remove(reservation.Handle.Id);
+                    ownershipCleanupHandles.Add(reservation.Handle);
+                }
+                else if (result == ReservationClearResult.Retry)
                 {
                     PendingReservationRelease pending;
                     if (PendingReservationReleases.TryGetValue(reservation.Handle.Id, out pending) &&
                         SameReservation(pending.Reservation, reservation))
-                    {
-                        PendingReservationReleases.Remove(reservation.Handle.Id);
-                    }
-                }
-                else
-                {
-                    PendingReservationRelease pending;
-                    if (PendingReservationReleases.TryGetValue(reservation.Handle.Id, out pending))
                     {
                         pending.ReleaseMatchingOwnership |= releaseMatchingOwnership;
                     }
@@ -1673,12 +1708,14 @@ namespace Stackmaster
                     _nextReservationReleaseRetryAt = Time.realtimeSinceStartup + 1f;
                     allReleased = false;
                 }
+                // Superseded means this callback belongs to an older operation. It must neither
+                // touch the current in-use flag nor release the current operation's lease.
             }
-            if (releaseMatchingOwnership)
+            if (releaseMatchingOwnership && ownershipCleanupHandles.Count > 0)
             {
                 try
                 {
-                    OwnershipLeaseManager.ReleaseMatching(held.Select(item => item.Handle),
+                    OwnershipLeaseManager.ReleaseMatching(ownershipCleanupHandles,
                         "pre-transaction reservation ended");
                 }
                 catch (Exception exception)
@@ -1709,9 +1746,10 @@ namespace Stackmaster
             foreach (var pair in PendingReservationReleases.ToArray())
             {
                 var pending = pair.Value;
-                if (!TryClearReservation(pending.Reservation)) continue;
+                var result = TryClearReservation(pending.Reservation);
+                if (result == ReservationClearResult.Retry) continue;
                 PendingReservationReleases.Remove(pair.Key);
-                if (pending.ReleaseMatchingOwnership)
+                if (result == ReservationClearResult.Released && pending.ReleaseMatchingOwnership)
                 {
                     try
                     {
@@ -1731,38 +1769,51 @@ namespace Stackmaster
         {
             return left != null && right != null &&
                    string.Equals(left.Handle.Id, right.Handle.Id, StringComparison.Ordinal) &&
-                   left.LocalSession == right.LocalSession &&
-                   left.DataRevision == right.DataRevision &&
-                   left.OwnerRevision == right.OwnerRevision;
+                   left.OperationGeneration == right.OperationGeneration;
         }
 
-        private static bool TryClearReservation(ContainerReservation reservation)
+        private static ReservationClearResult TryClearReservation(ContainerReservation reservation)
         {
             try
             {
                 var handle = reservation != null ? reservation.Handle : null;
-                var container = handle != null ? handle.Container : null;
-                if (container == null) return true;
-                if (ZDOMan.instance == null || ZDOMan.GetSessionID() != reservation.LocalSession) return true;
+                if (handle == null ||
+                    !ActiveReservations.IsCurrent(handle.Id, reservation.OperationGeneration))
+                {
+                    return ReservationClearResult.Superseded;
+                }
+
+                var container = handle.Container;
+                if (container == null ||
+                    ZDOMan.instance == null ||
+                    ZDOMan.GetSessionID() != reservation.LocalSession)
+                {
+                    ActiveReservations.Complete(handle.Id, reservation.OperationGeneration);
+                    return ReservationClearResult.Released;
+                }
+
                 var view = handle.NetworkView;
                 var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
-                if (zdo == null) return false;
+                if (zdo == null) return ReservationClearResult.Retry;
                 if (!string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
                     zdo.OwnerRevision != reservation.OwnerRevision)
                 {
-                    // The exact reservation identity/owner generation is gone. Never clear a
-                    // later owner's legitimate in-use state.
-                    return true;
+                    // The exact reservation identity/owner generation is gone. Retire only this
+                    // operation token and never clear a later owner's legitimate in-use state.
+                    ActiveReservations.Complete(handle.Id, reservation.OperationGeneration);
+                    return ReservationClearResult.Released;
                 }
-                if (!view.IsOwner() || !container.IsOwner()) return false;
-                if (!container.IsInUse()) return true;
-                container.SetInUse(false);
-                return !container.IsInUse();
+                if (!view.IsOwner() || !container.IsOwner()) return ReservationClearResult.Retry;
+                if (container.IsInUse()) container.SetInUse(false);
+                if (container.IsInUse()) return ReservationClearResult.Retry;
+
+                ActiveReservations.Complete(handle.Id, reservation.OperationGeneration);
+                return ReservationClearResult.Released;
             }
             catch (Exception exception)
             {
                 RuntimeContext.Plugin?.Log.LogError("Failed to release a pre-transaction container reservation: " + exception);
-                return false;
+                return ReservationClearResult.Retry;
             }
         }
 
@@ -1955,7 +2006,9 @@ namespace Stackmaster
             var handle = reservation.Handle;
             var view = handle.NetworkView;
             var zdo = view != null && view.IsValid() ? view.GetZDO() : null;
-            return zdo != null && view.IsOwner() && handle.Container.IsOwner() && handle.Container.IsInUse() &&
+            return zdo != null &&
+                   ActiveReservations.IsCurrent(handle.Id, reservation.OperationGeneration) &&
+                   view.IsOwner() && handle.Container.IsOwner() && handle.Container.IsInUse() &&
                    string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal) &&
                    zdo.DataRevision == reservation.DataRevision &&
                    zdo.OwnerRevision == reservation.OwnerRevision &&
@@ -2000,7 +2053,7 @@ namespace Stackmaster
     internal static class NearbyResourceOwnership
     {
         internal const string InUseMessage = "The required materials are currently in use";
-        private const float OwnershipTimeoutSeconds = 2f;
+        private const float OwnershipTimeoutSeconds = 3f;
         private static bool _running;
         private static int _generation;
 
@@ -2366,16 +2419,22 @@ namespace Stackmaster
             }
 
             var plugin = RuntimeContext.Plugin;
-            if (!RuntimeContext.Compatibility.IsCompatible || plugin == null ||
-                (!plugin.ShowStorageAmountsInRequirementMenus.Value &&
-                 !plugin.BuildingFromNearbyChestsEnabled.Value) ||
-                __instance == null || piece == null || Player.m_localPlayer == null)
+            if (!RuntimeContext.Compatibility.IsCompatible || plugin == null || __instance == null ||
+                piece == null || Player.m_localPlayer == null)
             {
                 return;
             }
 
             var requirements = piece.m_resources ?? Array.Empty<Piece.Requirement>();
             var player = Player.m_localPlayer;
+            ApplyWholeHomeStationAvailability(__instance, piece, player, requirements.Length);
+
+            if (!plugin.ShowStorageAmountsInRequirementMenus.Value &&
+                !plugin.BuildingFromNearbyChestsEnabled.Value)
+            {
+                return;
+            }
+
             var scopeSignature = StorageScopeProvider.Resolve(player).Signature;
             if (!ReferenceEquals(_cachedPlayer, player) || !ReferenceEquals(_cachedPiece, piece) ||
                 !string.Equals(_cachedScopeSignature, scopeSignature, StringComparison.Ordinal) || Time.time >= _nextRefreshTime)
@@ -2418,6 +2477,37 @@ namespace Stackmaster
                     ? Color.red
                     : Color.white;
             }
+        }
+
+        private static void ApplyWholeHomeStationAvailability(
+            Hud hud,
+            Piece piece,
+            Player player,
+            int stationRequirementIndex)
+        {
+            var plugin = RuntimeContext.Plugin;
+            var requiredStation = piece.m_craftingStation;
+            if (plugin == null || !plugin.WholeHomeCraftingStationsEnabled.Value || requiredStation == null ||
+                CraftingStation.HaveBuildStationInRange(requiredStation.m_name, player.transform.position) != null ||
+                !WholeHomeCraftingStationService.HasBuildStation(player, requiredStation))
+            {
+                return;
+            }
+
+            var requirementItems = hud.m_requirementItems ?? Array.Empty<GameObject>();
+            if (stationRequirementIndex < 0 || stationRequirementIndex >= requirementItems.Length) return;
+
+            var stationRoot = requirementItems[stationRequirementIndex];
+            if (stationRoot == null || !stationRoot.activeInHierarchy) return;
+            var iconTransform = stationRoot.transform.Find("res_icon");
+            var amountTransform = stationRoot.transform.Find("res_amount");
+            var icon = iconTransform == null ? null : iconTransform.GetComponent<UnityEngine.UI.Image>();
+            var amount = amountTransform == null ? null : amountTransform.GetComponent<TMP_Text>();
+            if (icon == null || amount == null) return;
+
+            icon.color = Color.white;
+            amount.text = string.Empty;
+            amount.color = Color.white;
         }
     }
 

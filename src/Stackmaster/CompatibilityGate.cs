@@ -162,6 +162,7 @@ namespace Stackmaster
             RequireField(failures, typeof(InventoryGui), "m_splitDialog");
             RequireField(failures, typeof(InventoryGui), "m_variantDialog");
             RequireField(failures, typeof(Hud), "m_requirementItems");
+            RuntimeContractValidator.RequireField(failures, typeof(Hud), "m_hoverName", typeof(TMPro.TMP_Text), false);
             RequireField(failures, typeof(KeyHints), "m_buildMenuHintsKB");
             RequireField(failures, typeof(Container), "m_nview");
             RequireField(failures, typeof(Container), "m_wagon");

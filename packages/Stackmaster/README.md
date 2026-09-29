@@ -76,6 +76,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Uses safe ownership, revision, capacity, conservation, persistence, and rollback checks before shared inventory changes are accepted.
 - **Fuel Quick Grab**
   - `Left Alt + E` on a recognized fuel-consuming piece pulls fuel from eligible chests in the same connected workbench home only.
+  - A matching `[Alt + E] Get <fuel>` hint appears below the device's normal interaction text and follows the first available device-priority fuel.
   - Supports refillable fireplaces, smelters and the Charcoal Kiln, fuel-enabled cooking stations, the Shield Generator, and the Battering Ram.
   - Chooses one fuel type per press by device priority, uses the first type with any available stock, and never mixes fuel types.
   - Pulls partial available stock when needed, but never exceeds the selected item's normal maximum stack size or backpack capacity.
@@ -84,8 +85,10 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
 - **Storage-aware build, craft, and stations**
   - Independently controls chest-backed building, chest-backed crafting, storage-total display, and whole-home crafting-station coverage.
   - Uses player materials first, then the minimum eligible chest set needed for the complete action, without duplicate costs or whole-stack overconsumption.
+  - Supports rapid consecutive chest-backed crafts without requiring every other click; each craft owns an isolated reservation and exact cleanup cannot invalidate the next one.
   - Shows exact `required / available` totals for building, crafting, upgrades, quality, and multi-craft quantities when display is enabled.
   - When whole-home stations are enabled, one loaded valid station inside the connected Workbench mesh satisfies that exact station requirement throughout the same mesh.
+  - The same exact rule applies to the Hammer station display, building, repairing, and dismantling, so an available same-home station is never shown as `None`.
   - Vanilla in-range station access is always checked first; outside a valid mesh, with the option off, or for mismatched/unloaded stations, vanilla behavior is unchanged.
   - Station coverage changes eligibility only: it does not enlarge station radii, bridge homes, bypass DLC/free-build rules, or provide materials.
 - **Quick Grab Materials and reservations**

@@ -168,6 +168,16 @@ internal static class Program
             QuickGrabCapacityAcceptsExactWeightLimit,
             QuickGrabFallbackRollbackPreservesEquippedItemIdentityAndState,
             ReservationCleanupMustPrecedeOwnershipRelease,
+            StaleReservationCleanupCannotClearNewSameChestOperation,
+            StaleReservationCleanupCannotClearNewDifferentRecipeOperation,
+            DifferentChestReservationCleanupRemainsIndependent,
+            ReservationBoundaryCleanupInvalidatesDelayedCallbacks,
+            RapidSameRecipeCraftsConserveExactItems,
+            RapidDifferentRecipeCraftsConserveExactItems,
+            RapidMultiChestCraftsConserveExactItems,
+            BoundaryAbortsConserveExactItems,
+            UnownedContainerWaitsForVanillaLocalAssignment,
+            UnownedContainerRejectsUnrelatedAssignment,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
             ResourcePlanMinimizesDistinctContainers,
             ResourcePlanMinimizesAcrossDifferentMaterials,
@@ -3112,6 +3122,143 @@ internal static class Program
             "pending exact local reservation blocks ownership relinquish, including shutdown");
         True(ReservationOwnershipCleanupPolicy.CanRelinquishOwnership(false),
             "ownership cleanup resumes only after the exact reservation is no longer pending");
+    }
+
+    private static void StaleReservationCleanupCannotClearNewSameChestOperation()
+    {
+        var reservations = new OperationScopedReservationRegistry();
+        True(reservations.TryBegin("shared-chest", out var first), "first recipe reserves its source chest");
+        True(reservations.Complete("shared-chest", first), "first recipe releases its exact reservation");
+        True(reservations.TryBegin("shared-chest", out var second), "same recipe immediately reserves the same chest again");
+        True(!reservations.Complete("shared-chest", first), "delayed first cleanup cannot complete the second reservation");
+        True(reservations.IsCurrent("shared-chest", second), "the second same-recipe craft remains reserved");
+    }
+
+    private static void StaleReservationCleanupCannotClearNewDifferentRecipeOperation()
+    {
+        var reservations = new OperationScopedReservationRegistry();
+        True(reservations.TryBegin("shared-chest", out var woodRecipe), "wood recipe reserves the shared chest");
+        True(reservations.Complete("shared-chest", woodRecipe), "wood recipe releases its exact reservation");
+        True(reservations.TryBegin("shared-chest", out var resinRecipe), "different recipe reuses the shared chest");
+        True(!reservations.Complete("shared-chest", woodRecipe), "stale wood cleanup cannot clear resin recipe state");
+        True(reservations.IsCurrent("shared-chest", resinRecipe), "different-recipe reservation remains current");
+    }
+
+    private static void DifferentChestReservationCleanupRemainsIndependent()
+    {
+        var reservations = new OperationScopedReservationRegistry();
+        True(reservations.TryBegin("wood-chest", out var wood), "first source chest reserves");
+        True(reservations.TryBegin("metal-chest", out var metal), "different source chest reserves independently");
+        True(reservations.Complete("wood-chest", wood), "first chest cleanup succeeds");
+        True(reservations.IsCurrent("metal-chest", metal), "first chest cleanup cannot affect the second chest");
+    }
+
+    private static void ReservationBoundaryCleanupInvalidatesDelayedCallbacks()
+    {
+        foreach (var boundary in new[] { "cancel", "failure", "close", "disconnect" })
+        {
+            var reservations = new OperationScopedReservationRegistry();
+            True(reservations.TryBegin("boundary-chest", out var ended), boundary + " operation reserves the chest");
+            True(reservations.Complete("boundary-chest", ended), boundary + " cleanup releases the exact reservation");
+            True(reservations.TryBegin("boundary-chest", out var next), boundary + " permits a fresh operation");
+            True(!reservations.Complete("boundary-chest", ended), boundary + " delayed callback cannot clear the fresh operation");
+            True(reservations.IsCurrent("boundary-chest", next), boundary + " leaves the fresh reservation intact");
+        }
+    }
+
+    private static void RapidSameRecipeCraftsConserveExactItems()
+    {
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal) { ["shared-wood"] = 12 };
+        for (var craft = 0; craft < 2; craft++)
+        {
+            var plan = ResourcePlan(
+                new[] { new ResourceRequirement("Wood", 5) },
+                Resource("shared-chest", "shared-wood", "Wood", 1, 12 - (craft * 5), 0, 0));
+            var debit = new ExactResourceDebit<FakeDebitReceipt>(plan);
+            True(debit.TryApply(step => Debit(stock, step), out var failure), failure ?? "rapid same-recipe debit failed");
+            debit.Commit();
+        }
+        Equal(2, stock["shared-wood"], "two rapid same-recipe crafts consume exactly two costs");
+    }
+
+    private static void RapidDifferentRecipeCraftsConserveExactItems()
+    {
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["wood-stack"] = 7,
+            ["resin-stack"] = 6
+        };
+        var first = new ExactResourceDebit<FakeDebitReceipt>(ResourcePlan(
+            new[] { new ResourceRequirement("Wood", 4) },
+            Resource("wood-chest", "wood-stack", "Wood", 1, 7, 0, 0)));
+        True(first.TryApply(step => Debit(stock, step), out var firstFailure), firstFailure ?? "first rapid recipe failed");
+        first.Commit();
+        var second = new ExactResourceDebit<FakeDebitReceipt>(ResourcePlan(
+            new[] { new ResourceRequirement("Resin", 5) },
+            Resource("resin-chest", "resin-stack", "Resin", 1, 6, 0, 0)));
+        True(second.TryApply(step => Debit(stock, step), out var secondFailure), secondFailure ?? "second rapid recipe failed");
+        second.Commit();
+        Equal(3, stock["wood-stack"], "different-recipe sequence conserves remaining wood");
+        Equal(1, stock["resin-stack"], "different-recipe sequence conserves remaining resin");
+        Equal(4, stock.Values.Sum(), "different-recipe sequence consumes only the exact combined cost");
+    }
+
+    private static void RapidMultiChestCraftsConserveExactItems()
+    {
+        var stock = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["near-wood"] = 6,
+            ["far-wood"] = 6
+        };
+        for (var craft = 0; craft < 2; craft++)
+        {
+            var plan = ResourcePlan(
+                new[] { new ResourceRequirement("Wood", 5) },
+                Resource("near-chest", "near-wood", "Wood", 1, stock["near-wood"], 0, 0),
+                Resource("far-chest", "far-wood", "Wood", 1, stock["far-wood"], 1, 0));
+            var debit = new ExactResourceDebit<FakeDebitReceipt>(plan);
+            True(debit.TryApply(step => Debit(stock, step), out var failure), failure ?? "rapid multi-chest debit failed");
+            debit.Commit();
+        }
+        Equal(2, stock.Values.Sum(), "two rapid multi-chest crafts consume exactly two costs");
+    }
+
+    private static void BoundaryAbortsConserveExactItems()
+    {
+        foreach (var boundary in new[] { "cancel", "failure", "close", "disconnect" })
+        {
+            var stock = new Dictionary<string, int>(StringComparer.Ordinal) { ["boundary-wood"] = 5 };
+            var debit = new ExactResourceDebit<FakeDebitReceipt>(ResourcePlan(
+                new[] { new ResourceRequirement("Wood", 5) },
+                Resource("boundary-chest", "boundary-wood", "Wood", 1, 5, 0, 0)));
+            True(debit.TryApply(step => Debit(stock, step), out var failure), failure ?? boundary + " setup debit failed");
+            True(debit.Rollback(receipt => Restore(stock, receipt)), boundary + " restores every provisional debit");
+            Equal(5, stock["boundary-wood"], boundary + " preserves the exact pre-operation item total");
+            True(!debit.Rollback(receipt => Restore(stock, receipt)), boundary + " stale rollback cannot duplicate items");
+        }
+    }
+
+    private static void UnownedContainerWaitsForVanillaLocalAssignment()
+    {
+        Equal(UnownedAssignmentDecision.Wait,
+            UnownedAssignmentPolicy.Decide(0L, 40, 0L, 40, 777L),
+            "an unowned source waits instead of failing the first rapid craft attempt");
+        Equal(UnownedAssignmentDecision.ContinueLocally,
+            UnownedAssignmentPolicy.Decide(0L, 40, 777L, 41, 777L),
+            "the same intent continues after vanilla's exact local assignment");
+    }
+
+    private static void UnownedContainerRejectsUnrelatedAssignment()
+    {
+        Equal(UnownedAssignmentDecision.Reject,
+            UnownedAssignmentPolicy.Decide(0L, 40, 888L, 41, 777L),
+            "assignment to a remote peer is rejected");
+        Equal(UnownedAssignmentDecision.Reject,
+            UnownedAssignmentPolicy.Decide(0L, 40, 777L, 42, 777L),
+            "an unexpected owner revision is rejected");
+        Equal(UnownedAssignmentDecision.Reject,
+            UnownedAssignmentPolicy.Decide(888L, 40, 0L, 40, 777L),
+            "an inconsistent originally-owned snapshot cannot enter the unowned wait path");
     }
 
     private static void ResourcePlanUsesPlayerThenDeterministicContainerOrder()

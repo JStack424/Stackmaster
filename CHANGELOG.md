@@ -8,10 +8,13 @@ Fuel Quick Grab and connected-home crafting-station coverage. Automated verifica
 - Selects one device-prioritized fuel type per press, uses partial stock when necessary, never mixes types, and caps the withdrawal at the item's canonical maximum stack size and backpack capacity.
 - Draws fuel only from eligible vanilla chests in the player's connected canonical Workbench mesh; player-carried stock and outside-home radius fallback are not fuel sources.
 - Suppresses the same recognized chord's normal use/load interaction through both the regular input path and the exact player interaction hook, while preserving container Quick Stack precedence and ordinary `E`.
+- Resolves fuel devices from Valheim's actual hovered child/switch and their serialized fuel-prefab references, and adds a localized `[Alt + E] Get <fuel>` line beneath vanilla hover text for recognized targets.
 - Adds a default-on **Enable whole-home crafting stations** option. One loaded valid station inside the connected Workbench mesh satisfies that exact build-station requirement throughout the same mesh.
+- Applies that same exact connected-home station rule to ordinary deconstruction and the Hammer requirement display, while leaving vanilla removal and UI behavior unchanged everywhere else.
 - Checks vanilla in-range access first and preserves vanilla behavior when the option is off, the player or station is outside a valid mesh, the required station name differs, or identity/topology is ambiguous.
 - Keeps non-Workbench stations as occupants only: they never enlarge ranges, link separate homes, or become topology graph nodes.
 - Retains vanilla DLC, free-build, material, crafting, upgrade, removal, multiplayer, and dedicated-server rules.
+- Keeps rapid consecutive chest-backed crafts reliable: an operation-scoped reservation generation prevents stale cleanup from touching the next craft, and a just-released unowned chest waits for vanilla's exact local reassignment instead of consuming a failed click.
 - Recreates the optional inventory and Hammer reservation rows safely after logout, world changes, and reconnects instead of retaining Unity objects destroyed with the old scene.
 - Simplifies the detailed README mechanics into player-focused sections of five to eight bullets each.
 

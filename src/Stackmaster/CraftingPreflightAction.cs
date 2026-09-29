@@ -80,7 +80,7 @@ namespace Stackmaster
 
     internal static class CraftingPreflightAction
     {
-        private const float OwnershipTimeoutSeconds = 2f;
+        private const float OwnershipTimeoutSeconds = 3f;
 
         private static readonly CraftingActionLifecycle Lifecycle = new CraftingActionLifecycle();
         private static readonly MethodInfo OnCraftPressedMethod = AccessTools.Method(typeof(InventoryGui), "OnCraftPressed", Type.EmptyTypes);
