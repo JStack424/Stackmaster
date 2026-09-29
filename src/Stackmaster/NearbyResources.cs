@@ -443,6 +443,17 @@ namespace Stackmaster
             return requirements.Count == 0 || Plan(player, requirements, true, fresh).IsSatisfiable;
         }
 
+        internal static bool HasPlayerPieceRequirements(Player player, Piece piece, bool fresh)
+        {
+            if (player == null || piece == null) return false;
+            if (ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey())) return true;
+            var inventory = player.GetInventory();
+            if (inventory == null) return false;
+            return (piece.m_resources ?? Array.Empty<Piece.Requirement>()).All(requirement =>
+                requirement == null || requirement.m_resItem == null || requirement.m_amount <= 0 ||
+                inventory.CountItems(requirement.m_resItem.m_itemData.m_shared.m_name, -1, true) >= requirement.m_amount);
+        }
+
         internal static IReadOnlyList<RuntimeRequirementAvailability> GetPieceRequirementAvailability(
             Player player,
             Piece piece,
@@ -1081,7 +1092,7 @@ namespace Stackmaster
         {
             if (player == null || piece == null) return false;
             if (piece.m_craftingStation != null &&
-                CraftingStation.HaveBuildStationInRange(piece.m_craftingStation.m_name, player.transform.position) == null &&
+                !WholeHomeCraftingStationService.HasBuildStation(player, piece.m_craftingStation.m_name) &&
                 (ZoneSystem.instance == null || !ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoWorkbench)))
             {
                 return false;
@@ -2284,8 +2295,9 @@ namespace Stackmaster
             var vanillaResult = __result;
             try
             {
-                if (!RuntimeContext.Compatibility.IsCompatible || mode != Player.RequirementMode.CanBuild ||
-                    RuntimeContext.Plugin == null || !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value)
+                var plugin = RuntimeContext.Plugin;
+                if (!RuntimeContext.Compatibility.IsCompatible || mode != Player.RequirementMode.CanBuild || plugin == null ||
+                    (!plugin.BuildingFromNearbyChestsEnabled.Value && !plugin.WholeHomeCraftingStationsEnabled.Value))
                 {
                     return;
                 }
@@ -2294,12 +2306,15 @@ namespace Stackmaster
                     __result = false;
                     return;
                 }
-                if (ResourceActionContext.Current == ResourceActionKind.Building && ResourceTransactionContext.Active)
+                if (plugin.BuildingFromNearbyChestsEnabled.Value &&
+                    ResourceActionContext.Current == ResourceActionKind.Building && ResourceTransactionContext.Active)
                 {
                     __result = true;
                     return;
                 }
-                __result = NearbyResourceService.HasPieceRequirements(__instance, piece, false);
+                __result = plugin.BuildingFromNearbyChestsEnabled.Value
+                    ? NearbyResourceService.HasPieceRequirements(__instance, piece, false)
+                    : NearbyResourceService.HasPlayerPieceRequirements(__instance, piece, false);
             }
             catch (Exception exception)
             {

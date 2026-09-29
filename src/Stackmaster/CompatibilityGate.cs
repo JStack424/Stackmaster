@@ -118,6 +118,7 @@ namespace Stackmaster
             RequireMethod(failures, typeof(ZNetView), "IsValid");
             RequireMethod(failures, typeof(ZNetView), "GetZDO");
             RequireStaticMethod(failures, typeof(CraftingStation), "get_Instances");
+            RequireStaticMethod(failures, typeof(CraftingStation), "HaveBuildStationInRange", typeof(string), typeof(Vector3));
             RequireMethod(failures, typeof(CraftingStation), "GetStationBuildRange");
             RequireMethod(failures, typeof(CraftingStation), "GetLevel", typeof(bool));
             RequireMethod(failures, typeof(CraftingStation), "CheckUsable", typeof(Player), typeof(bool));
@@ -184,6 +185,7 @@ namespace Stackmaster
             RequireField(failures, typeof(Piece.Requirement), "m_resItem");
             RequireField(failures, typeof(Piece.Requirement), "m_amount");
             RequireField(failures, typeof(Piece), "m_craftingStation");
+            RuntimeContractValidator.RequireField(failures, typeof(CraftingStation), "m_name", typeof(string), false);
             RuntimeContractValidator.RequireField(failures, typeof(ItemDrop), "m_itemData", typeof(ItemDrop.ItemData), false);
             RuntimeContractValidator.RequireField(failures, typeof(Fireplace), "m_canRefill", typeof(bool), false);
             RuntimeContractValidator.RequireField(failures, typeof(Fireplace), "m_maxFuel", typeof(float), false);

@@ -220,7 +220,11 @@ internal static class Program
             WorkbenchEnumerationOrderIsDeterministic,
             ConflictingDuplicateWorkbenchIdsAreRejected,
             PlayerMovementSwitchesMeshAndFallback,
-            WorkbenchPlacementAndDestructionChangeMesh
+            WorkbenchPlacementAndDestructionChangeMesh,
+            WholeHomeStationQualifiesOnlyInsideConnectedMesh,
+            WholeHomeStationNeverBridgesDisconnectedHomes,
+            WholeHomeStationRequiresLoadedStableIdentity,
+            WholeHomeStationUsesStrictWorkbenchBoundary
         };
 
         var failures = 0;
@@ -3629,6 +3633,45 @@ internal static class Program
             "placing a bridge expands the connected mesh deterministically");
         SequenceEqual(new[] { "home" }, destroyed.ConnectedZones.Select(zone => zone.Id),
             "destroying the bridge contracts the mesh again");
+    }
+
+    private static void WholeHomeStationQualifiesOnlyInsideConnectedMesh()
+    {
+        var home = Scope(P(0, 0, 0), Zone("home", 0, 0, 0, 10));
+        True(WholeHomeStationCoveragePolicy.Qualifies(home, P(9, 500, 0), true, true),
+            "a loaded matching station anywhere in the connected Workbench cylinder should qualify");
+        True(!WholeHomeStationCoveragePolicy.Qualifies(home, P(11, 0, 0), true, true),
+            "an out-of-mesh station must not qualify");
+    }
+
+    private static void WholeHomeStationNeverBridgesDisconnectedHomes()
+    {
+        var home = Scope(P(0, 0, 0), Zone("home", 0, 0, 0, 10), Zone("other", 30, 0, 0, 10));
+        True(!WholeHomeStationCoveragePolicy.Qualifies(home, P(30, 0, 0), true, true),
+            "a non-Workbench station in another home cannot bridge disconnected meshes");
+        True(WholeHomeStationCoveragePolicy.Qualifies(home, P(9, 0, 0), true, true),
+            "the same station remains eligible when placed inside the player's connected home");
+    }
+
+    private static void WholeHomeStationRequiresLoadedStableIdentity()
+    {
+        var home = Scope(P(0, 0, 0), Zone("home", 0, 0, 0, 10));
+        True(!WholeHomeStationCoveragePolicy.Qualifies(home, P(0, 0, 0), false, true),
+            "destroyed or unloaded stations fail closed");
+        True(!WholeHomeStationCoveragePolicy.Qualifies(home, P(0, 0, 0), true, false),
+            "stations without stable loaded identity fail closed");
+        var outside = StorageScopePolicy.Resolve(P(50, 0, 0), 20, new[] { Zone("home", 0, 0, 0, 10) });
+        True(!WholeHomeStationCoveragePolicy.Qualifies(outside, P(0, 0, 0), true, true),
+            "nearby-radius fallback never enables whole-home station access");
+    }
+
+    private static void WholeHomeStationUsesStrictWorkbenchBoundary()
+    {
+        var home = Scope(P(0, 0, 0), Zone("home", 0, 0, 0, 10));
+        True(WholeHomeStationCoveragePolicy.Qualifies(home, P(9.999, 0, 0), true, true),
+            "station just inside the Workbench boundary qualifies");
+        True(!WholeHomeStationCoveragePolicy.Qualifies(home, P(10, 0, 0), true, true),
+            "station exactly on the strict Workbench boundary does not qualify");
     }
 
     private static StorageScopePlan Scope(ScopePoint player, params WorkbenchZone[] zones)

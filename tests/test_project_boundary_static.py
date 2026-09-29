@@ -109,9 +109,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("VerifyReferencesWereNotCopied", self.project)
         self.assertNotIn("Stackmaster.Core.csproj", self.project)
 
-    def test_exactly_six_current_user_settings_are_bound(self):
+    def test_exactly_seven_current_user_settings_are_bound(self):
         migration_call = "ConfigMigration.BindRenamedDefaultEnabledBoolean("
-        self.assertEqual(3, self.plugin.count("Config.Bind("))
+        self.assertEqual(4, self.plugin.count("Config.Bind("))
         self.assertEqual(2, self.plugin.count(migration_call))
         self.assertEqual(1, self.plugin.count("ConfigMigration.BindRenamedKeyboardShortcut("))
         for key in (
@@ -119,6 +119,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             "Nearby-storage radius",
             "Quick Stack keybind",
             "Allow building from storage",
+            "Enable whole-home crafting stations",
             "Allow crafting from storage",
             "Show storage amounts in craft and build menus",
         ):
@@ -2044,6 +2045,34 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("QuickGrabMaterialsAction.ExecuteAtomic", fuel)
         self.assertIn("OwnershipLeaseManager.ReleaseBatch", fuel)
         self.assertIn("StorageScopeKind.WorkbenchMesh", fuel)
+
+    def test_whole_home_station_coverage_uses_only_connected_workbench_mesh(self):
+        station = (PLUGIN_DIR / "WholeHomeCraftingStationService.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        plugin = (PLUGIN_DIR / "Plugin.cs").read_text(encoding="utf-8")
+        self.assertIn("CraftingStation.HaveBuildStationInRange", station)
+        self.assertIn("scope.Kind != StorageScopeKind.WorkbenchMesh", station)
+        self.assertIn("WholeHomeStationCoveragePolicy.Qualifies", station)
+        self.assertNotIn("GetStationBuildRange", station)
+        self.assertNotIn("StorageScopePolicy.Resolve", station)
+        self.assertIn("WholeHomeCraftingStationService.HasBuildStation", nearby)
+        self.assertIn("HasPlayerPieceRequirements", nearby)
+        self.assertIn("WholeHomeCraftingStationsEnabled.Value", nearby)
+        self.assertIn("This does not expand station radii or connect separate homes", plugin)
+
+    def test_new_fuel_and_station_runtime_contracts_fail_closed(self):
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        for contract in (
+            'typeof(Fireplace)',
+            'typeof(Smelter)',
+            'typeof(CookingStation)',
+            '"m_canRefill", typeof(bool)',
+            '"m_maxFuel", typeof(float)',
+            '"m_fuelItem", typeof(ItemDrop)',
+            '"m_useFuel", typeof(bool)',
+            '"HaveBuildStationInRange", typeof(string), typeof(Vector3)',
+        ):
+            self.assertIn(contract, gate)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

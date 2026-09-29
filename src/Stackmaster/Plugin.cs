@@ -21,6 +21,7 @@ namespace Stackmaster
         internal ConfigEntry<float> NearbyStorageRadius { get; private set; }
         internal ConfigEntry<KeyboardShortcut> StorageActionShortcut { get; private set; }
         internal ConfigEntry<bool> BuildingFromNearbyChestsEnabled { get; private set; }
+        internal ConfigEntry<bool> WholeHomeCraftingStationsEnabled { get; private set; }
         internal ConfigEntry<bool> CraftingFromNearbyChestsEnabled { get; private set; }
         internal ConfigEntry<bool> ShowStorageAmountsInRequirementMenus { get; private set; }
         internal BepInEx.Logging.ManualLogSource Log => Logger;
@@ -46,6 +47,11 @@ namespace Stackmaster
                 "Enable building from nearby chests",
                 "Allow building from storage",
                 "Allow exact building costs to be counted and consumed from eligible vanilla chests in the shared workbench-mesh or fallback-radius scope.");
+            WholeHomeCraftingStationsEnabled = Config.Bind(
+                "General",
+                "Enable whole-home crafting stations",
+                true,
+                "Let one valid loaded matching crafting station satisfy Hammer-piece station requirements throughout the same connected vanilla Workbench home. This does not expand station radii or connect separate homes.");
             CraftingFromNearbyChestsEnabled = ConfigMigration.BindRenamedDefaultEnabledBoolean(
                 Config,
                 "General",
