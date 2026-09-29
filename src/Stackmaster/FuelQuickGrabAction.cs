@@ -41,29 +41,10 @@ namespace Stackmaster
 
     internal static class FuelQuickGrabTargetResolver
     {
-        private static readonly string[][] CharcoalKilnFuel =
-        {
-            new[] { "Wood" },
-            new[] { "FineWood" },
-            new[] { "RoundLog" }
-        };
-        private static readonly string[][] ShieldGeneratorFuel =
-        {
-            new[] { "BoneFragments" },
-            new[] { "CharredBone" }
-        };
-        private static readonly string[][] BatteringRamFuel =
-        {
-            new[] { "Wood" },
-            new[] { "FineWood" },
-            new[] { "RoundLog" },
-            new[] { "Ashwood", "Blackwood" }
-        };
-
         internal static bool TryResolve(GameObject hoveredObject, out FuelQuickGrabTarget target)
         {
             target = null;
-            if (hoveredObject == null || ZNetScene.instance == null) return false;
+            if (hoveredObject == null) return false;
 
             try
             {
@@ -71,17 +52,16 @@ namespace Stackmaster
                 if (piece == null || piece.gameObject == null || !piece.gameObject.activeInHierarchy) return false;
                 var displayName = Localize(piece.m_name);
 
-                if (MatchesToken(piece.m_name, "$piece_charcoalkiln", "$piece_charcoal_kiln"))
+                var shieldGenerator = piece.GetComponentInChildren<ShieldGenerator>(true);
+                if (shieldGenerator != null)
                 {
-                    return TryResolveCurated(displayName, CharcoalKilnFuel, out target);
+                    return TryResolveList(displayName, shieldGenerator.m_fuelItems, out target);
                 }
-                if (MatchesToken(piece.m_name, "$piece_shieldgenerator"))
+
+                var siegeMachine = piece.GetComponentInChildren<SiegeMachine>(true);
+                if (siegeMachine != null && siegeMachine.m_engine != null)
                 {
-                    return TryResolveCurated(displayName, ShieldGeneratorFuel, out target);
-                }
-                if (MatchesToken(piece.m_name, "$tool_batteringram", "$piece_batteringram"))
-                {
-                    return TryResolveCurated(displayName, BatteringRamFuel, out target);
+                    return TryResolveConversions(displayName, siegeMachine.m_engine.m_conversion, out target);
                 }
 
                 var fireplace = piece.GetComponentInChildren<Fireplace>(true);
@@ -91,16 +71,20 @@ namespace Stackmaster
                     return TryResolveDirect(displayName, fireplace.m_fuelItem, out target);
                 }
 
+                var cookingStation = piece.GetComponentInChildren<CookingStation>(true);
+                if (cookingStation != null && cookingStation.m_useFuel && cookingStation.m_fuelItem != null)
+                {
+                    return TryResolveDirect(displayName, cookingStation.m_fuelItem, out target);
+                }
+
                 var smelter = piece.GetComponentInChildren<Smelter>(true);
                 if (smelter != null && smelter.m_fuelItem != null)
                 {
                     return TryResolveDirect(displayName, smelter.m_fuelItem, out target);
                 }
-
-                var cookingStation = piece.GetComponentInChildren<CookingStation>(true);
-                if (cookingStation != null && cookingStation.m_useFuel && cookingStation.m_fuelItem != null)
+                if (smelter != null && string.Equals(piece.m_name, "$piece_charcoalkiln", StringComparison.Ordinal))
                 {
-                    return TryResolveDirect(displayName, cookingStation.m_fuelItem, out target);
+                    return TryResolveConversions(displayName, smelter.m_conversion, out target);
                 }
             }
             catch (Exception exception)
@@ -119,21 +103,38 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool TryResolveCurated(string displayName, IEnumerable<string[]> prefabAliases, out FuelQuickGrabTarget target)
+        private static bool TryResolveList(string displayName, IEnumerable<ItemDrop> fuelItems, out FuelQuickGrabTarget target)
         {
             target = null;
+            if (fuelItems == null) return false;
             var items = new List<FuelQuickGrabItem>();
-            foreach (var aliases in prefabAliases)
+            foreach (var fuelItem in fuelItems)
             {
-                FuelQuickGrabItem item = null;
-                foreach (var prefabName in aliases)
-                {
-                    var prefab = ZNetScene.instance.GetPrefab(prefabName);
-                    if (prefab != null && TryCreate(prefab.GetComponent<ItemDrop>(), out item)) break;
-                }
-                if (item == null) return false;
+                FuelQuickGrabItem item;
+                if (!TryCreate(fuelItem, out item)) return false;
                 items.Add(item);
             }
+            if (items.Count == 0) return false;
+            target = new FuelQuickGrabTarget(displayName, items);
+            return true;
+        }
+
+        private static bool TryResolveConversions(
+            string displayName,
+            IEnumerable<Smelter.ItemConversion> conversions,
+            out FuelQuickGrabTarget target)
+        {
+            target = null;
+            if (conversions == null) return false;
+            var items = new List<FuelQuickGrabItem>();
+            foreach (var conversion in conversions)
+            {
+                FuelQuickGrabItem item;
+                if (conversion == null || !TryCreate(conversion.m_from, out item)) return false;
+                if (items.Any(existing => string.Equals(existing.PrefabName, item.PrefabName, StringComparison.Ordinal))) continue;
+                items.Add(item);
+            }
+            if (items.Count == 0) return false;
             target = new FuelQuickGrabTarget(displayName, items);
             return true;
         }
@@ -154,9 +155,6 @@ namespace Stackmaster
                 itemDrop.m_itemData.m_shared.m_maxStackSize);
             return true;
         }
-
-        private static bool MatchesToken(string value, params string[] candidates)
-            => candidates.Any(candidate => string.Equals(value, candidate, StringComparison.Ordinal));
 
         private static string Localize(string token)
         {

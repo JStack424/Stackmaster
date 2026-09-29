@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.0 (local test candidate)
+
+Fuel Quick Grab and connected-home crafting-station coverage. Automated verification is complete; live Valheim testing is still required before release.
+
+- Adds `Left Alt + E` fuel Quick Grab for refillable fireplaces, smelters and the Charcoal Kiln, fuel-enabled cooking stations, the Shield Generator, and the Battering Ram.
+- Selects one device-prioritized fuel type per press, uses partial stock when necessary, never mixes types, and caps the withdrawal at the item's canonical maximum stack size and backpack capacity.
+- Draws fuel only from eligible vanilla chests in the player's connected canonical Workbench mesh; player-carried stock and outside-home radius fallback are not fuel sources.
+- Suppresses the same recognized chord's normal use/load interaction through both the regular input path and the exact player interaction hook, while preserving container Quick Stack precedence and ordinary `E`.
+- Adds a default-on **Enable whole-home crafting stations** option. One loaded valid station inside the connected Workbench mesh satisfies that exact build-station requirement throughout the same mesh.
+- Checks vanilla in-range access first and preserves vanilla behavior when the option is off, the player or station is outside a valid mesh, the required station name differs, or identity/topology is ambiguous.
+- Keeps non-Workbench stations as occupants only: they never enlarge ranges, link separate homes, or become topology graph nodes.
+- Retains vanilla DLC, free-build, material, crafting, upgrade, removal, multiplayer, and dedicated-server rules.
+- Simplifies the detailed README mechanics into player-focused sections of five to eight bullets each.
+
 ## 1.3.5
 
 Durable Quick Grab build reservations, reservation-aware Quick Stack behavior, and live-verified conservation and Hammer-menu fixes. Joe live-tested and approved this release.

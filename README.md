@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Stackmaster 1.3.5:** Durable per-player, per-world Quick Grab reservations now stay visible beside the inventory and above the Hammer menu, feed exact additive material targets into Quick Stack, and decrement one at a time after successful placement. Quick Grab debits authoritative live chest inventories before crediting the player, with exact persistence, conservation, and rollback checks. Joe live-tested and approved the reservation controls, Hammer-menu selection and close behavior, material gathering, and chest debits before release.
+> **Stackmaster 1.4.0 test candidate:** `Left Alt + E` can now pull fuel directly from chests in your connected workbench home, and build-gating crafting stations inside that same home can serve its full connected area. This candidate has passed automated verification but has not yet been live-tested in Valheim.
 
 ## About this project
 
@@ -20,6 +20,8 @@ Stackmaster removes repetitive container management without adding free resource
 - Use **Quick Stack** to deposit matching items and replenish protected targets with one deliberate shortcut.
 - Keep durable per-player, per-world material reservations from valid **Quick Grab Materials** clicks, even away from supplies.
 - Build and craft using materials from accessible chests.
+- Pull fuel for supported devices with `Left Alt + E`, without loading or operating the device.
+- Use one valid crafting station throughout the same connected workbench home when the option is enabled.
 
 ## Controls
 
@@ -41,6 +43,7 @@ Stackmaster removes repetitive container management without adding free resource
 | Open or close a vanilla chest | Sort that chest when its **Auto-sort chest** setting is enabled. |
 | `Left Alt + E` while targeting a vanilla container | Run **Quick Stack**: deposit matching items and replenish protected targets. |
 | `Left Alt + E` while a vanilla chest is open | Run **Quick Stack** using that chest as the target without closing it. |
+| `Left Alt + E` while targeting a supported fuel-consuming piece | Pull one prioritized fuel type from eligible chests in the same connected workbench home, up to one full carried stack. The press does not operate or load the piece. |
 
 ### Build menu
 
@@ -53,83 +56,66 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
 ## Detailed mechanics
 
 - **Inventory sorting**
-  - Sorts movable backpack slots alphabetically whenever the inventory opens.
-  - Adds an **Auto-sort chest** checkbox beneath each supported opened vanilla chest.
-  - Sorts an enabled chest when its UI opens and again when it closes, and once after a Quick Stack that actually deposits into it.
-  - Remembers disabled chests locally per player, world, and chest without writing preferences to shared world state or affecting other players.
-  - Keeps the whole quick bar, equipped items, and protected stacks fixed.
-- **One consistent storage scope**
-  - Inside a vanilla workbench build zone, follows every overlapping workbench zone as one connected base mesh and includes loaded supported chests anywhere in that exact union.
-  - Excludes nearby chests outside the connected mesh, even if they are within the fallback radius.
-  - Outside every workbench mesh, uses the configurable player-centered radius (20 metres by default).
-  - Applies the same scope to Quick Stack, building, and crafting; a chest's **Auto-sort chest** checkbox never changes storage eligibility.
-- **Quick Stack**
-  - Runs only when you press `Left Alt + E` while targeting or interacting with a vanilla chest.
-  - Completely ignores carried items whose canonical Valheim maximum stack size is 1 or less. Items such as cultivators stay in the backpack, never route to matching or remembered chests, never receive failed-deposit warnings, and never count as left behind.
-  - Refills protected stacks, including ammo and consumables, to optional target quantities, then deposits eligible carried items.
-  - Also retains and replenishes the material quantities required by current Quick Grab Materials reservations. Reservation requirements are additive: a personal target of 50 wood plus reservations requiring 20 wood keeps 70 total.
-  - Keeps explicit personal targets in their fixed protected slots and assigns separate reservation quantities only to movable stacks or legal empty backpack slots.
-  - If the backpack begins full, an ordinary eligible deposit can free a slot which the same validated plan then uses for reservation replenishment.
-  - Fills current matching stacks first, prioritizing the targeted chest and then searching nearest to farthest.
-  - Remembers the last directly opened or targeted chest for each exact item type. If no current matching chest accepts any quantity, Quick Stack can return that item to its remembered chest even after the chest reaches zero stock.
-  - A remembered destination is only a local hint: it must still be loaded, inside the active scope, accessible, idle, compatible, and exactly the same network chest at execution time. Missing, destroyed, unloaded, blocked, busy, full, or otherwise ineligible destinations leave the item safely in the player inventory.
-  - Current matching destinations always win. If one accepts even part of a stack, Quick Stack does not open a second route to the remembered chest for the remainder.
-  - Marks only the eligible quantity that survived a failed or partial deposit with a red border and `!quantity`; quick-bar, equipped, protection-only, and target-retained quantities are excluded. The warning follows the surviving item through sorting and clears when that exact item is hovered once or the inventory closes.
-  - Sorts each distinct destination chest that actually accepted a deposit at most once at the safe end of the action, and only when that chest’s existing **Auto-sort chest** preference is enabled. Failed, untouched, unavailable, and disabled destinations are skipped.
-  - Shows every result as a short three-line bullet list for deposited, replenished, and left-behind quantities, including zeros.
-  - Leaves unmatched items and overflow safely in the player inventory.
-  - Uses the configured Quick Stack modifier for two distinct inventory controls: left-click instantly protects or fully unprotects an item, while right-click opens target entry for stackable items.
-  - A left-click protection toggle never opens a dialog; unlocking also clears any replenishment target. Canceling the right-click dialog preserves the prior state, and non-stackable items remain protection-only.
-  - Keeps protected stacks fixed while sorting and follows one compatible stack when it moves or survives a merge inside the player inventory.
-  - Clears a stack's protection and target after that whole stack is manually transferred to a chest or dropped into the world; partial moves keep the protected remainder.
-  - Prunes older orphaned targets before a Quick Stack action, so an item you no longer carry does not keep reporting `target item missing`.
-- **Storage-aware build and craft requirements**
-  - Separately controls storage-backed crafting, storage-backed building, and visibility of base-wide storage totals; all three options default to on.
-  - When enabled for an action, counts and consumes exact costs from the player plus accessible vanilla chests in the active storage scope, regardless of current network ownership.
-  - Independently shows selected build-piece, crafting, and upgrade costs as `required / total available`, including selected upgrade quality and multi-craft totals.
-  - Affordability and red/white flashing always follow what the action may actually consume: player-held materials when its storage permission is off, or combined player-plus-storage stock when it is on.
-  - Adaptively fits longer exact crafting and building totals such as `45 / 172` and `999 / 999` inside the vanilla amount label instead of clipping the final digits; short totals retain the normal font size.
-  - Handles quality-specific and multi-craft quantities without consuming whole stacks or charging duplicate costs twice.
-  - Uses the player inventory first, then chooses only the minimum distinct chest set needed by the complete action plan.
-- **Quick Grab Materials**
-  - Hold the configured Quick Stack modifier (Left Alt by default) and click a build piece to request one complete material set from eligible storage. Ordinary pieces also add one persistent reservation.
-  - Keeps the build menu open and leaves ordinary clicks unchanged.
-  - Treats every valid modified click as one additional reservation. Repeated clicks increment it deterministically, including while away from supplies, except for decorative material pieces whose player-visible localized name contains `Stack` or `Pile` anywhere (ordinal, case-insensitive, including compound names such as `Woodpile`). Those vanilla or modded pieces remain material-only Quick Grab targets and never create a reservation.
-  - Uses the raw localization token and exact stable prefab name as deterministic fallbacks only when localization is unavailable. Already-saved Stack/Pile records are removed without moving materials once their exact piece identity resolves; unresolved historical identities are never guessed.
-  - Saves ordinary reservations before any shared inventory can change. Earlier reservation state migrates from PlayerPrefs on the first mutation; new state is flushed to a detached file and published with an atomic same-directory replacement. Malformed, mixed-invalid, or changed recipe identity and failed durable saves remain fail-closed, create no active or durable phantom reservation, and move no materials.
-  - Draws each ingredient from the chest holding the largest total stock first, then smaller sources, with deterministic tie-breaking.
-  - Moves nothing unless the complete recipe is available, every required chest remains safe and accessible, all resulting stacks fit, and the added weight stays within carry capacity. For ordinary pieces, zero stock, partial stock, unreachable storage, ownership failure, or capacity failure keeps the saved reservation but performs no partial transfer. For Stack/Pile material pieces, the same shortage moves nothing, creates no reservation, and uses the ordinary truthful material-gather failure response.
-  - Clearly distinguishes `grabbed materials and added reservation` from a compact white corner summary such as `Reserved Cart ×2 — materials not gathered.` Reservation-only clicks do not create failed-deposit warnings.
-  - Shows the same live reserved-piece cards and counts in two horizontally bounded rows: one immediately to the right of the player inventory and one anchored directly above the active Hammer build menu. The inventory row is 20 logical UI pixels above its incorrectly inverted 1.3.3 position (10 above 1.3.2), while its 12-pixel rightward move and corrected label spacing remain unchanged.
-  - Clicking the main card selects that exact currently available piece through Valheim's current PieceTable. Inventory-row selection is a safe no-op unless the Hammer is already active; it never auto-equips a tool. The build-menu row follows the ordinary selection, sound, close, and placement transition.
-  - Every card has a distinct top-right `-` button while multiple counts remain and an `X` for the final count. Each click durably releases exactly one count, consumes the pointer event, moves no materials, and never selects the card beneath it.
-  - After a genuinely successful local placement, the exact placed prefab consumes one reservation count: `Wall ×5` becomes `Wall ×4`, the final count removes both rows, and unrelated piece variants remain untouched. Selection alone, failed/cancelled placement, previews, creative/no-cost placement, repair, dismantle, crafting, other players, and duplicate completion callbacks do not decrement anything. If the durable decrement cannot be saved, the completed world build remains but the reservation deliberately stays intact and Stackmaster shows one restrained warning.
-  - Marks only the exact reservation-served share in orange with a plain upper-left quantity matching the personal-target label layout. Player sorting places every positive reservation-backed stack at the front of the movable sortable region before ordinary stacks; fixed quick-bar, equipped, and protected slots remain untouched.
+  - Sorts movable backpack slots alphabetically when the inventory opens; the quick bar, equipped items, and protected stacks stay fixed.
+  - Adds an **Auto-sort chest** checkbox to supported vanilla chests and remembers each choice locally per player, world, and chest.
+  - Sorts enabled chests on open, close, and once after a successful Quick Stack deposit.
+  - Keeps protected quantities and reservation-backed materials at the front of the movable region without changing fixed slots.
+  - Clears protection only after the whole tracked stack is manually transferred or dropped; partial moves preserve the remainder.
+- **One consistent home and storage scope**
+  - Inside a workbench build zone, follows overlapping canonical vanilla Workbench zones as one connected home mesh.
+  - Includes loaded supported chests anywhere in that exact mesh and excludes nearby chests outside it.
+  - Outside every workbench mesh, uses the configurable player-centered radius (20 metres by default) for chest-powered features.
+  - Applies the same scope to Quick Stack, building, crafting, Quick Grab Materials, and fuel Quick Grab.
+  - Never uses other crafting stations as graph links between separate workbench homes.
+- **Quick Stack and protected targets**
+  - `Left Alt + E` on a vanilla chest deposits matching stackable items and replenishes protected targets and reserved build materials.
+  - Fills matching stacks first, prioritizes the targeted chest, and can reuse a remembered exact-item destination when it is still valid.
+  - Keeps unmatched items, overflow, non-stackables, protected quantities, and reserved quantities safely in the backpack.
+  - Shows exact deposited, replenished, and left-behind totals, with quantity-specific warnings for eligible items that could not move.
+  - Sorts each successfully touched destination at most once, and only when that chest has Auto-sort enabled.
+  - Uses safe ownership, revision, capacity, conservation, persistence, and rollback checks before shared inventory changes are accepted.
+- **Fuel Quick Grab**
+  - `Left Alt + E` on a recognized fuel-consuming piece pulls fuel from eligible chests in the same connected workbench home only.
+  - Supports refillable fireplaces, smelters and the Charcoal Kiln, fuel-enabled cooking stations, the Shield Generator, and the Battering Ram.
+  - Chooses one fuel type per press by device priority, uses the first type with any available stock, and never mixes fuel types.
+  - Pulls partial available stock when needed, but never exceeds the selected item's normal maximum stack size or backpack capacity.
+  - Does not use fuel already carried by the player as source stock and does not fall back to the outside-home radius.
+  - A recognized fuel chord suppresses the same press's normal use/load interaction; ordinary `E`, invalid targets, and container Quick Stack routing remain unchanged.
+- **Storage-aware build, craft, and stations**
+  - Independently controls chest-backed building, chest-backed crafting, storage-total display, and whole-home crafting-station coverage.
+  - Uses player materials first, then the minimum eligible chest set needed for the complete action, without duplicate costs or whole-stack overconsumption.
+  - Shows exact `required / available` totals for building, crafting, upgrades, quality, and multi-craft quantities when display is enabled.
+  - When whole-home stations are enabled, one loaded valid station inside the connected Workbench mesh satisfies that exact station requirement throughout the same mesh.
+  - Vanilla in-range station access is always checked first; outside a valid mesh, with the option off, or for mismatched/unloaded stations, vanilla behavior is unchanged.
+  - Station coverage changes eligibility only: it does not enlarge station radii, bridge homes, bypass DLC/free-build rules, or provide materials.
+- **Quick Grab Materials and reservations**
+  - Hold the configured modifier and click a build piece to save one reservation and gather one complete material set when safely available.
+  - Repeated clicks add counts even away from supplies; localized `Stack` or `Pile` material pieces gather only and never create reservations.
+  - Material transfer is all-or-nothing, capacity-checked, and largest-stock-first; a shortage keeps an ordinary reservation but moves nothing.
+  - Reservation cards appear beside the inventory and above the active Hammer menu, select the exact piece, and provide separate one-count release controls.
+  - Each genuinely successful paid local placement removes one exact reservation; selection, failure, cancel, free-build, repair, dismantle, and other players do not.
+  - Quick Stack retains the exact additive reserved quantities, and orange inventory markers show only the reservation-served share.
 - **Safety**
-  - Reads nearby build and craft totals without claiming chest ownership.
-  - Requests ownership only for required chests, then rechecks active-scope membership, access, ownership, chest use, serialized revision, stack identity, and quantity before removal.
-  - Withdraws exact quantities and rolls back completed steps if a later removal fails.
-  - Cancels before consuming anything and shows `The required materials are currently in use` when a required chest is busy.
-  - Keeps only ownership demonstrably acquired and used by a successful build on a 30-second sliding lease, yielding immediately when another player manually opens that chest.
-  - Ends logical in-use reservations before releasing matching ownership. If exact same-client cleanup fails transiently, it is retained and retried before that ownership can be relinquished, including during disable and hot unload; later or unrelated owners are never cleared.
-  - Never mutates inaccessible, unknown, unsupported, or actively used containers.
-  - Shows compact totals, shortages, meaningful skips, and incomplete-search notices.
-  - Treats malformed or unavailable reservation state as a fail-closed condition before reservation-aware item movement or player sorting.
-  - Keeps reservation-row and orange-highlight failures isolated from item state and from the existing blue protection overlays.
-  - Disables all item-changing behavior if its runtime compatibility checks fail.
+  - Reads requirement totals without claiming ownership and requests ownership only for the exact chests required by an action.
+  - Rechecks scope, access, use state, stable identity, ownership, revisions, stack identity, quantities, and persisted inventory before accepting mutation.
+  - Rolls back completed steps if a later step fails and verifies global item conservation before crediting the player.
+  - Cancels safely when a required chest is busy, stale, denied, unloaded, or changed.
+  - Releases exact acquired ownership on completion, cancellation, disable, disconnect, logout, unload, shutdown, and exceptions.
+  - Disables item-changing behavior if a required Valheim runtime contract is missing, changed, or ambiguous.
 
 ## Configuration
 
-Stackmaster has exactly six settings:
+Stackmaster has exactly seven settings:
 
 1. **Auto-sort enabled** — on by default and also controlled by the checkbox below the player inventory. Chest auto-sort is controlled separately in each chest UI and is not a seventh global setting.
 2. **Nearby-storage radius** — 20 metres by default; configurable from 1 to 50 metres and used by all chest-powered features only while the player is outside every valid connected workbench mesh.
 3. **Quick Stack keybind** — Left Alt + E by default. Existing custom shortcuts are migrated automatically from the legacy setting name. Its modifier keys also activate protected-item left/right clicks in the player inventory and Quick Grab Materials left-clicks in the build menu; the main E key is not required for either click action.
 4. **Allow building from storage** — on by default and independently controls building eligibility and consumption from storage.
-5. **Allow crafting from storage** — on by default and independently controls crafting/upgrade eligibility and consumption from storage.
-6. **Show storage amounts in craft and build menus** — on by default; independently shows player-plus-eligible-storage totals in both requirement UIs without granting permission to consume those stored items.
+5. **Enable whole-home crafting stations** — on by default; allows an exact required build-gating station anywhere inside the same connected canonical Workbench mesh to cover that home without changing vanilla station radii.
+6. **Allow crafting from storage** — on by default and independently controls crafting/upgrade eligibility and consumption from storage.
+7. **Show storage amounts in craft and build menus** — on by default; independently shows player-plus-eligible-storage totals in both requirement UIs without granting permission to consume those stored items.
 
-All six global settings are available through the normal r2modman/BepInEx configuration editor after the first launch. Existing building/crafting opt-outs migrate automatically to the renamed permission settings, so an explicit `false` remains off and the obsolete keys disappear after launch. Per-chest auto-sort choices are local-only preferences scoped to the current player, world, and stable chest identity; a missing or unreadable identity safely skips chest sorting.
+All seven global settings are available through the normal r2modman/BepInEx configuration editor after the first launch. Existing building/crafting opt-outs migrate automatically to the renamed permission settings, so an explicit `false` remains off and the obsolete keys disappear after launch. Per-chest auto-sort choices are local-only preferences scoped to the current player, world, and stable chest identity; a missing or unreadable identity safely skips chest sorting.
 
 ## Installation
 
@@ -139,9 +125,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-> **Stackmaster 1.3.5:** Quick Grab can create durable build reservations even when materials are unavailable, while complete material transfers remain all-or-nothing. Reservation cards appear beside the inventory and above the Hammer menu; card bodies select the exact piece through vanilla routing, separate `-` / `X` controls release counts without moving materials, and each successful paid placement consumes one reservation. Quick Stack keeps and sorts the exact additive reserved materials, ignores non-stackable items for deposit routing, and sorts only touched opted-in destination chests. Quick Grab credits the player only after authoritative live chest debits are validated, persisted, and proven globally conservative, with full rollback on any partial failure. Joe live-tested and approved the reservation controls, build-menu selection and close behavior, material gathering, and chest debits. Broader multiplayer, dedicated-server, workbench-extension, manual-access-preemption, and load/unload edge-case testing remains incomplete. Back up valuable characters and worlds and report any item loss, duplication, free output, crash, blocked chest, synchronization disagreement, stale warning, or stale requirement total.
+> **Stackmaster 1.4.0 test candidate:** Automated tests cover fuel selection, no-mixing and stack caps, connected-home topology, exact station-name matching, and compatibility contracts. Live verification remains required for every supported fuel device, input suppression, full-home station coverage, multiplayer/dedicated-server behavior, and load/unload edges. Back up valuable characters and worlds and report any item loss, duplication, free output, unintended device operation, cross-home station access, crash, blocked chest, synchronization disagreement, stale warning, or stale requirement total.
 
-Stackmaster 1.3.5 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
+Stackmaster 1.4.0 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
 
 Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, reserves them for the transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous. Remote-owned building actions use the existing prepared-ownership retry window; chest-backed crafting and Quick Grab Materials clicks instead wait in their client-side coroutines for the exact required ownership and proceed from the original click only after a fresh matching plan and reservations are ready. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Crafting and quick-grab withdrawals release their reservations and exact acquired ownership immediately and never create or renew that lease. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition releases only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards. If exact local reservation cleanup cannot finish immediately, Stackmaster keeps the matching ownership cleanup record and retries the reservation first; it never clears a later or unrelated owner's in-use state.
 

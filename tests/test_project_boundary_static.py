@@ -2031,14 +2031,23 @@ class ProjectBoundaryTests(unittest.TestCase):
         fuel = (PLUGIN_DIR / "FuelQuickGrabAction.cs").read_text(encoding="utf-8")
         self.assertLess(storage.index("if (container != null)"), storage.index("FuelQuickGrabTargetResolver.TryResolve"))
         self.assertLess(storage.index("FuelQuickGrabTargetResolver.TryResolve"), storage.index("target a valid container or fuel-consuming piece"))
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         self.assertIn('ZInput.ResetButtonStatus("Use")', storage)
+        self.assertIn('Prefix(typeof(Player), "Interact", false, typeof(void)', manifest)
+        self.assertIn("HandleFuelPieceInteraction", storage)
+        self.assertIn("target.GetComponentInParent<Container>() != null", storage)
         self.assertIn("Fireplace", fuel)
         self.assertIn("fireplace.m_canRefill", fuel)
         self.assertIn("Smelter", fuel)
         self.assertIn("smelter.m_fuelItem", fuel)
         self.assertIn("CookingStation", fuel)
         self.assertIn("cookingStation.m_useFuel", fuel)
-        self.assertNotIn("m_conversion", fuel)
+        self.assertIn("shieldGenerator.m_fuelItems", fuel)
+        self.assertIn("siegeMachine.m_engine.m_conversion", fuel)
+        self.assertIn("smelter.m_conversion", fuel)
+        self.assertNotIn("CharcoalKilnFuel", fuel)
+        self.assertNotIn("BatteringRamFuel", fuel)
+        self.assertNotIn("ShieldGeneratorFuel", fuel)
         self.assertIn("FuelQuickGrabPolicy.Select", fuel)
         self.assertIn("TryCaptureOwnedQuickGrabInventories", fuel)
         self.assertIn("TryReserveContainers", fuel)
@@ -2069,6 +2078,10 @@ class ProjectBoundaryTests(unittest.TestCase):
             '"m_canRefill", typeof(bool)',
             '"m_maxFuel", typeof(float)',
             '"m_fuelItem", typeof(ItemDrop)',
+            'typeof(ShieldGenerator)',
+            '"m_fuelItems", typeof(List<ItemDrop>)',
+            'typeof(SiegeMachine)',
+            '"m_engine", typeof(Smelter)',
             '"m_useFuel", typeof(bool)',
             '"HaveBuildStationInRange", typeof(string), typeof(Vector3)',
         ):

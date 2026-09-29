@@ -42,7 +42,8 @@ namespace Stackmaster
                 typeof(ZDOMan), typeof(Character), typeof(TextViewer), typeof(GameCamera),
                 typeof(PlayerPrefs), typeof(Recipe), typeof(Player.RequirementMode), typeof(ZInput),
                 typeof(SplitDialog), typeof(CraftingStation), typeof(ZNetScene), typeof(PrivateArea),
-                typeof(Fireplace), typeof(Smelter), typeof(CookingStation), typeof(ItemDrop),
+                typeof(Fireplace), typeof(Smelter), typeof(Smelter.ItemConversion), typeof(CookingStation),
+                typeof(ShieldGenerator), typeof(SiegeMachine), typeof(ItemDrop),
                 typeof(Vector3), typeof(ZDOVars), typeof(TextInput), typeof(KeyHints),
                 typeof(Localization), typeof(UnityEngine.UI.Text), typeof(InventoryElement)
             };
@@ -191,6 +192,10 @@ namespace Stackmaster
             RuntimeContractValidator.RequireField(failures, typeof(Fireplace), "m_maxFuel", typeof(float), false);
             RuntimeContractValidator.RequireField(failures, typeof(Fireplace), "m_fuelItem", typeof(ItemDrop), false);
             RuntimeContractValidator.RequireField(failures, typeof(Smelter), "m_fuelItem", typeof(ItemDrop), false);
+            RuntimeContractValidator.RequireField(failures, typeof(Smelter), "m_conversion", typeof(List<Smelter.ItemConversion>), false);
+            RuntimeContractValidator.RequireField(failures, typeof(Smelter.ItemConversion), "m_from", typeof(ItemDrop), false);
+            RuntimeContractValidator.RequireField(failures, typeof(ShieldGenerator), "m_fuelItems", typeof(List<ItemDrop>), false);
+            RuntimeContractValidator.RequireField(failures, typeof(SiegeMachine), "m_engine", typeof(Smelter), false);
             RuntimeContractValidator.RequireField(failures, typeof(CookingStation), "m_useFuel", typeof(bool), false);
             RuntimeContractValidator.RequireField(failures, typeof(CookingStation), "m_fuelItem", typeof(ItemDrop), false);
             RequireField(failures, typeof(Recipe), "m_resources");
