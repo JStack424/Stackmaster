@@ -1,9 +1,13 @@
 # Changelog
 
-## 1.3.5 (local test candidate)
+## 1.3.5
 
-Critical Quick Grab conservation correction and current Hammer-menu attachment fix. This candidate still requires live Valheim validation, and 1.2.0 remains the production release.
+Durable Quick Grab build reservations, reservation-aware Quick Stack behavior, and live-verified conservation and Hammer-menu fixes. Joe live-tested and approved this release.
 
+- Adds durable per-player, per-world build reservations from valid Quick Grab Materials clicks, including reservation-only clicks when a complete material set is not currently available. Every successful paid placement consumes exactly one reservation for the exact piece.
+- Shows one shared reservation card model beside the inventory and directly above the active Hammer menu. Card bodies select the exact piece through vanilla routing; separate `-` / `X` controls release one count without moving materials or selecting the card underneath.
+- Keeps exact additive reservation requirements during Quick Stack, assigns reserved materials first among movable stacks, displays the reserved share in orange, and sorts each touched destination chest once when that chest's own auto-sort option is enabled.
+- Ignores non-stackable carried items during Quick Stack deposit routing and failed-deposit warnings. Full exact material sets for `Stack` and `Pile` build pieces still gather normally; shortages stay all-or-nothing and create no reservation.
 - Fixes the shared sufficient-material Quick Grab path for every ordinary and `Stack`/`Pile` recipe. Detached ZDO snapshots remain read-only planning inputs; after ownership and refresh, the transaction rebuilds and identity-checks the exact plan against each authoritative live `Container.GetInventory()` before reserving or mutating anything.
 - Fails closed before and during every move unless the runtime source is reference-identical to that live container inventory. The player cannot be credited from a detached planning snapshot.
 - Requires every live source chest to lose its exact planned quantity, the player to gain the same exact quantity, and the combined authoritative total to remain unchanged across one or many chests, ingredients, source stacks, and destination slots.

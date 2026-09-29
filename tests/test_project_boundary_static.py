@@ -85,7 +85,9 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("tests/Stackmaster.Compatibility.Tests/Stackmaster.Compatibility.Tests.csproj", build)
         self.assertIn("run_release_gate()", package)
         self.assertNotIn("TEST_ONLY", package)
-        self.assertIn('f"JStack424-Stackmaster-{VERSION}.zip"', package)
+        self.assertIn('CANONICAL_FILENAME = f"JStack424-Stackmaster-{VERSION}.zip"', package)
+        self.assertIn('args.output.name != CANONICAL_FILENAME', package)
+        self.assertIn('refusing non-canonical package filename', package)
         self.assertNotIn('output filename must end with -test.zip', package)
         self.assertLess(package.index("run_release_gate()", package.index("def main")),
                         package.index('run_git("status"', package.index("def main")))

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
 VERSION = "1.3.5"
+CANONICAL_FILENAME = f"JStack424-Stackmaster-{VERSION}.zip"
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
 CODE_REVISION_FILE = ROOT / "RELEASE_CODE_REVISION"
 EXPECTED = (
@@ -140,9 +141,12 @@ def run_release_gate() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / f"JStack424-Stackmaster-{VERSION}.zip")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / CANONICAL_FILENAME)
     parser.add_argument("--verify-only", type=Path)
     args = parser.parse_args()
+
+    if args.output.name != CANONICAL_FILENAME:
+        parser.error(f"refusing non-canonical package filename: expected {CANONICAL_FILENAME}")
 
     if args.verify_only:
         files = verify_zip(args.verify_only)
