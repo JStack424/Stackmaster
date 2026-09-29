@@ -188,6 +188,8 @@ namespace Stackmaster
             RequireField(failures, typeof(Piece.Requirement), "m_resItem");
             RequireField(failures, typeof(Piece.Requirement), "m_amount");
             RequireField(failures, typeof(Piece), "m_craftingStation");
+            RuntimeContractValidator.RequireField(failures, typeof(Player), "m_placementGhost", typeof(GameObject), false);
+            RuntimeContractValidator.RequireField(failures, typeof(Player), "m_placementStatus", typeof(Player.PlacementStatus), false);
             RuntimeContractValidator.RequireField(failures, typeof(CraftingStation), "m_name", typeof(string), false);
             RuntimeContractValidator.RequireField(failures, typeof(ItemDrop), "m_itemData", typeof(ItemDrop.ItemData), false);
             RuntimeContractValidator.RequireField(failures, typeof(Fireplace), "m_canRefill", typeof(bool), false);

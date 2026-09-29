@@ -2099,6 +2099,8 @@ class ProjectBoundaryTests(unittest.TestCase):
             '"m_maxFuel", typeof(int)',
             '"m_enabled", typeof(bool)',
             '"IsPlacedByPlayer"',
+            '"m_placementGhost", typeof(GameObject)',
+            '"m_placementStatus", typeof(Player.PlacementStatus)',
             '"m_fuelItem", typeof(ItemDrop)',
             'typeof(ShieldGenerator)',
             '"m_fuelItems", typeof(List<ItemDrop>)',
