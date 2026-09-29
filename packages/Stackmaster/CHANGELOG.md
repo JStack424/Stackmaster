@@ -12,6 +12,7 @@ Fuel Quick Grab and connected-home crafting-station coverage. Automated verifica
 - Checks vanilla in-range access first and preserves vanilla behavior when the option is off, the player or station is outside a valid mesh, the required station name differs, or identity/topology is ambiguous.
 - Keeps non-Workbench stations as occupants only: they never enlarge ranges, link separate homes, or become topology graph nodes.
 - Retains vanilla DLC, free-build, material, crafting, upgrade, removal, multiplayer, and dedicated-server rules.
+- Recreates the optional inventory and Hammer reservation rows safely after logout, world changes, and reconnects instead of retaining Unity objects destroyed with the old scene.
 - Simplifies the detailed README mechanics into player-focused sections of five to eight bullets each.
 
 ## 1.3.5
