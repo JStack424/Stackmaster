@@ -25,12 +25,14 @@ namespace Stackmaster
             _generation++;
             _lastActionFrame = -1;
             _actionRunning = false;
+            FuelQuickGrabAction.Shutdown();
         }
 
         internal static void RearmSession()
         {
             _lastActionFrame = -1;
             _actionRunning = false;
+            FuelQuickGrabAction.RearmSession();
         }
 
         internal static void Update()
@@ -66,15 +68,49 @@ namespace Stackmaster
 
             var hover = player != null ? player.GetHoverObject() : null;
             var container = hover != null ? hover.GetComponentInParent<Container>() : null;
-            if (container == null)
+            if (container != null)
             {
-                RuntimeContext.Plugin.Log.LogWarning("Quick Stack rejected: targetHovered=false reason=no targeted container.");
-                RuntimeContext.ShowTopLeft("Stackmaster: target a valid container.");
-                _lastActionFrame = Time.frameCount;
+                Begin(player, container);
                 return;
             }
 
-            Begin(player, container);
+            FuelQuickGrabTarget fuelTarget;
+            if (FuelQuickGrabTargetResolver.TryResolve(hover, out fuelTarget))
+            {
+                // A recognized fuel-piece chord owns this Use press. Consume only Valheim's named
+                // action so the same key press cannot also insert a carried item or operate it.
+                _lastActionFrame = Time.frameCount;
+                ZInput.ResetButtonStatus("Use");
+                FuelQuickGrabAction.Begin(player, fuelTarget);
+                return;
+            }
+
+            RuntimeContext.Plugin.Log.LogWarning("Storage shortcut rejected: targetHovered=false reason=no targeted container or fuel piece.");
+            RuntimeContext.ShowTopLeft("Stackmaster: target a valid container or fuel-consuming piece.");
+            _lastActionFrame = Time.frameCount;
+        }
+
+        internal static bool HandleFuelPieceInteraction(Player player, GameObject target)
+        {
+            var plugin = RuntimeContext.Plugin;
+            if (plugin == null || player != Player.m_localPlayer || target == null || InputIsBlocked(false) ||
+                !plugin.StorageActionShortcut.Value.IsPressed() || target.GetComponentInParent<Container>() != null)
+            {
+                return false;
+            }
+
+            FuelQuickGrabTarget fuelTarget;
+            if (!FuelQuickGrabTargetResolver.TryResolve(target, out fuelTarget)) return false;
+
+            // Suppress every vanilla interaction attempt while this recognized chord is held. Only
+            // the down edge starts a transfer, and the frame guard deduplicates Plugin.Update.
+            if (plugin.StorageActionShortcut.Value.IsDown() && _lastActionFrame != Time.frameCount)
+            {
+                _lastActionFrame = Time.frameCount;
+                ZInput.ResetButtonStatus("Use");
+                FuelQuickGrabAction.Begin(player, fuelTarget);
+            }
+            return true;
         }
 
         internal static bool HandleContainerInteraction(Container container, Humanoid character)
@@ -590,6 +626,14 @@ namespace Stackmaster
         private static void Postfix(InventoryGui __instance)
         {
             CraftingPreflightAction.Update(__instance);
+        }
+    }
+
+    internal static class PlayerFuelInteractPatch
+    {
+        private static bool Prefix(Player __instance, [HarmonyArgument(0)] GameObject go)
+        {
+            return !RuntimeContext.Compatibility.IsCompatible || !StorageAction.HandleFuelPieceInteraction(__instance, go);
         }
     }
 

@@ -61,6 +61,9 @@ internal static class Program
             AuthoritativeQuickGrabConservesSingleAndMultipleSources,
             AuthoritativeQuickGrabRejectsPlayerOnlyCreditAndPartialDebits,
             AuthoritativeQuickGrabRollbackRequiresExactRestoration,
+            FuelQuickGrabSelectsHighestAvailablePriorityWithoutMixing,
+            FuelQuickGrabAllowsPartialStockAndCapsAtCanonicalStack,
+            FuelQuickGrabRejectsInvalidInputsAndEmptyStock,
             ResolvedMaterialOnlyReservationMigrationIsDurableAndExact,
             ReservationOnlyQuickGrabWithZeroAvailablePersistsWithoutMovement,
             ReservationOnlyQuickGrabWithPartialAvailablePersistsWithoutPartialMovement,
@@ -3731,6 +3734,47 @@ internal static class Program
         Equal(TransferKind.Replenishment, step.Kind, "replenishment kind");
         Equal(sourceId, step.Source.InventoryId, "replenishment source");
         Equal(quantity, step.Quantity, "replenishment quantity");
+    }
+
+    private static void FuelQuickGrabSelectsHighestAvailablePriorityWithoutMixing()
+    {
+        var selected = FuelQuickGrabPolicy.Select(new[]
+        {
+            new FuelQuickGrabCandidate("Wood", 20, 50),
+            new FuelQuickGrabCandidate("FineWood", 100, 50),
+            new FuelQuickGrabCandidate("RoundLog", 100, 50)
+        });
+        Equal("Wood", selected!.Identity, "fuel selection must retain strict declared priority");
+        Equal(20, selected.Quantity, "a lower-priority fuel must not top up a partial higher-priority selection");
+
+        selected = FuelQuickGrabPolicy.Select(new[]
+        {
+            new FuelQuickGrabCandidate("Wood", 0, 50),
+            new FuelQuickGrabCandidate("FineWood", 12, 50),
+            new FuelQuickGrabCandidate("RoundLog", 50, 50)
+        });
+        Equal("FineWood", selected!.Identity, "fuel selection may fall through only after zero eligible stock");
+        Equal(12, selected.Quantity, "selected fuel must remain unmixed");
+    }
+
+    private static void FuelQuickGrabAllowsPartialStockAndCapsAtCanonicalStack()
+    {
+        var partial = FuelQuickGrabPolicy.Select(new[] { new FuelQuickGrabCandidate("Coal", 17, 50) });
+        Equal(17, partial!.Quantity, "partial eligible fuel stock should be withdrawn");
+        var capped = FuelQuickGrabPolicy.Select(new[] { new FuelQuickGrabCandidate("Coal", 125, 50) });
+        Equal(50, capped!.Quantity, "one press should request no more than the canonical stack maximum");
+    }
+
+    private static void FuelQuickGrabRejectsInvalidInputsAndEmptyStock()
+    {
+        True(FuelQuickGrabPolicy.Select(Array.Empty<FuelQuickGrabCandidate>()) == null,
+            "empty fuel stock should produce no selection");
+        True(FuelQuickGrabPolicy.Select(new[] { new FuelQuickGrabCandidate("Wood", 0, 50) }) == null,
+            "zero stock should produce no selection");
+        Throws<ArgumentOutOfRangeException>(() => new FuelQuickGrabCandidate("Wood", -1, 50),
+            "negative stock must fail closed");
+        Throws<ArgumentOutOfRangeException>(() => new FuelQuickGrabCandidate("Wood", 1, 0),
+            "non-positive canonical stack maximum must fail closed");
     }
 
     private sealed class FakeDebitReceipt

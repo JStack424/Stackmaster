@@ -41,6 +41,7 @@ namespace Stackmaster
                 typeof(InventoryGrid), typeof(ItemDrop.ItemData), typeof(Vector2i), typeof(InventoryGrid.Modifier)
             }, typeof(ManualProtectionExitSelectionPatch)),
             Both(typeof(InventoryGui), "OnDropOutside", false, typeof(void), Type.EmptyTypes, typeof(ManualProtectionExitDropOutsidePatch)),
+            Prefix(typeof(Player), "Interact", false, typeof(void), new[] { typeof(GameObject), typeof(bool), typeof(bool) }, typeof(PlayerFuelInteractPatch)),
             Prefix(typeof(Container), "Interact", false, typeof(bool), new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, typeof(ContainerInteractPatch)),
             Postfix(typeof(Container), "GetHoverText", false, typeof(string), Type.EmptyTypes, typeof(ContainerHoverTextPatch)),
             Postfix(typeof(Container), "RPC_RequestOpen", false, typeof(void), new[] { typeof(long), typeof(long) }, typeof(ContainerOpenRequestLeasePatch)),

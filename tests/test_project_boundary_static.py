@@ -73,7 +73,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ResolveExactMethod", installer)
         self.assertNotRegex(installer, r"typeof\((InventoryGui|Container|InventoryGrid|Player|Hud|BuildUi|Game|ZNet)\)")
         self.assertEqual(
-            34,
+            35,
             len(re.findall(r"^\s{12}(?:Prefix|Postfix|Both|Transactional)\(", manifest, flags=re.MULTILINE)),
         )
         self.assertIn(
@@ -369,7 +369,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("liveInventory,", owned_capture)
         self.assertIn("new NearbyResourceCapture(freshScope, liveHandles", owned_capture)
 
-        transaction = action[action.index("private static bool ExecuteAtomic"):action.index("private static bool RollbackOrDisable")]
+        transaction = action[action.index("internal static bool ExecuteAtomic"):action.index("private static bool RollbackOrDisable")]
         self.assertGreaterEqual(transaction.count("ReferenceEquals(runtime.Inventory"), 2)
         self.assertIn("planned quick-grab source was not the authoritative live container inventory", transaction)
         self.assertIn("sourceTotalsBefore", transaction)
@@ -2024,6 +2024,26 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn('Both(typeof(InventoryGui), "SetupRequirement", true, typeof(bool), new[]', gate)
         self.assertIn("HarmonyTargetManifest.Validate(failures)", gate)
         self.assertIn("method.IsStatic == mustBeStatic", (PLUGIN_DIR / "RuntimeContractValidator.cs").read_text(encoding="utf-8"))
+
+    def test_fuel_quick_grab_preserves_input_precedence_and_uses_transaction_engine(self):
+        storage = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
+        fuel = (PLUGIN_DIR / "FuelQuickGrabAction.cs").read_text(encoding="utf-8")
+        self.assertLess(storage.index("if (container != null)"), storage.index("FuelQuickGrabTargetResolver.TryResolve"))
+        self.assertLess(storage.index("FuelQuickGrabTargetResolver.TryResolve"), storage.index("target a valid container or fuel-consuming piece"))
+        self.assertIn('ZInput.ResetButtonStatus("Use")', storage)
+        self.assertIn("Fireplace", fuel)
+        self.assertIn("fireplace.m_canRefill", fuel)
+        self.assertIn("Smelter", fuel)
+        self.assertIn("smelter.m_fuelItem", fuel)
+        self.assertIn("CookingStation", fuel)
+        self.assertIn("cookingStation.m_useFuel", fuel)
+        self.assertNotIn("m_conversion", fuel)
+        self.assertIn("FuelQuickGrabPolicy.Select", fuel)
+        self.assertIn("TryCaptureOwnedQuickGrabInventories", fuel)
+        self.assertIn("TryReserveContainers", fuel)
+        self.assertIn("QuickGrabMaterialsAction.ExecuteAtomic", fuel)
+        self.assertIn("OwnershipLeaseManager.ReleaseBatch", fuel)
+        self.assertIn("StorageScopeKind.WorkbenchMesh", fuel)
 
     def test_release_output_is_single_plugin_binary_and_symbols(self):
         output = ROOT / "src" / "Stackmaster" / "bin" / "Release"

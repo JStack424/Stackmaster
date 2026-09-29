@@ -231,7 +231,7 @@ namespace Stackmaster.Compatibility.Tests
                 .GetMethod("PrepareCleanupSafety", BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, null)!).Cast<object>().ToArray();
 
-            Equal(34, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
+            Equal(35, descriptors.Length, "HarmonyTargetManifest contains every declared patch operation");
             Equal(descriptors.Length, prepared.Length, "PatchInstaller.Prepare returns every manifest operation");
             Equal(2, cleanupSafety.Length, "cleanup safety installation filters the canonical manifest");
 

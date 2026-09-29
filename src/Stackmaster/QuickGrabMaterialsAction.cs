@@ -830,7 +830,7 @@ namespace Stackmaster
             });
         }
 
-        private static bool TryPlanCapacity(
+        internal static bool TryPlanCapacity(
             Player player,
             NearbyResourceCapture capture,
             ResourceWithdrawalPlan withdrawal,
@@ -881,7 +881,7 @@ namespace Stackmaster
             return true;
         }
 
-        private static bool ExecuteAtomic(
+        internal static bool ExecuteAtomic(
             Player player,
             NearbyResourceCapture capture,
             ResourceWithdrawalPlan withdrawal,
