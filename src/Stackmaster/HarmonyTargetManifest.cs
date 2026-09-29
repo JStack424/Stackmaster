@@ -65,6 +65,7 @@ namespace Stackmaster
             }, typeof(NearbyFirstRequiredItemPatch)),
             Transactional(typeof(InventoryGui), "DoCrafting", false, typeof(void), new[] { typeof(Player) }, typeof(NearbyCraftingActionPatch)),
             Transactional(typeof(Player), "UpdatePlacement", false, typeof(void), new[] { typeof(bool), typeof(float) }, typeof(NearbyBuildingActionPatch)),
+            Postfix(typeof(Player), "UpdatePlacementGhost", false, typeof(void), new[] { typeof(bool) }, typeof(WholeHomePlacementGhostPatch)),
             Both(typeof(Player), "TryPlacePiece", false, typeof(bool), new[] { typeof(Piece) }, typeof(NearbyTryPlacePiecePatch)),
             Prefix(typeof(Inventory), "RemoveItem", false, typeof(void), new[] { typeof(string), typeof(int), typeof(int), typeof(bool) }, typeof(NearbyResourceRemovalPatch))
         };

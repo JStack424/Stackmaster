@@ -73,7 +73,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("ResolveExactMethod", installer)
         self.assertNotRegex(installer, r"typeof\((InventoryGui|Container|InventoryGrid|Player|Hud|BuildUi|Game|ZNet)\)")
         self.assertEqual(
-            35,
+            36,
             len(re.findall(r"^\s{12}(?:Prefix|Postfix|Both|Transactional)\(", manifest, flags=re.MULTILINE)),
         )
         self.assertIn(
@@ -2067,6 +2067,16 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("WholeHomeCraftingStationService.HasBuildStation", nearby)
         self.assertIn("HasPlayerPieceRequirements", nearby)
         self.assertIn("WholeHomeCraftingStationsEnabled.Value", nearby)
+        self.assertIn("WholeHomePlacementGuardContext.Begin", nearby)
+        self.assertIn("HasBuildStationForPlacement", station)
+        self.assertIn("requirePositionInPlayerMesh && !scope.Contains(requiredPosition)", station)
+        self.assertIn("station.GetType() != requiredStation.GetType()", station)
+        self.assertIn("zdo.GetPrefab() != expectedPrefabHash", station)
+        self.assertIn("WholeHomePlacementGhostPatch", station)
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+        self.assertIn('Postfix(typeof(Player), "UpdatePlacementGhost", false, typeof(void), new[] { typeof(bool) }, typeof(WholeHomePlacementGhostPatch))', manifest)
+        self.assertIn("placementStatus = Player.PlacementStatus.Invalid", station)
+        self.assertIn('RuntimeContext.ShowCenter("$msg_missingstation")', station)
         self.assertIn("This does not expand station radii or connect separate homes", plugin)
 
     def test_new_fuel_and_station_runtime_contracts_fail_closed(self):

@@ -1092,7 +1092,7 @@ namespace Stackmaster
         {
             if (player == null || piece == null) return false;
             if (piece.m_craftingStation != null &&
-                !WholeHomeCraftingStationService.HasBuildStation(player, piece.m_craftingStation.m_name) &&
+                !WholeHomeCraftingStationService.HasBuildStation(player, piece.m_craftingStation) &&
                 (ZoneSystem.instance == null || !ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoWorkbench)))
             {
                 return false;
@@ -2979,6 +2979,7 @@ namespace Stackmaster
         {
             if (__exception != null)
             {
+                WholeHomePlacementGuardContext.Clear();
                 ResourceTransactionContext.Rollback();
                 SuccessfulBuildReservationContext.Cancel(__state);
                 ResourceActionContext.Restore(__state?.PreviousAction ?? ResourceActionKind.None);
@@ -3003,6 +3004,7 @@ namespace Stackmaster
             var compatible = RuntimeContext.Compatibility.IsCompatible && RuntimeContext.Plugin != null;
             __state = compatible && !___m_noPlacementCost &&
                       !(ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(piece.FreeBuildKey()));
+            WholeHomePlacementGuardContext.Begin(__instance, piece, ___m_noPlacementCost);
 
             if (!compatible || !RuntimeContext.Plugin.BuildingFromNearbyChestsEnabled.Value ||
                 ResourceActionContext.Current != ResourceActionKind.Building || !__state)
@@ -3028,6 +3030,7 @@ namespace Stackmaster
             bool __result,
             bool __state)
         {
+            WholeHomePlacementGuardContext.Clear();
             if (!__result)
             {
                 ResourceTransactionContext.Rollback();

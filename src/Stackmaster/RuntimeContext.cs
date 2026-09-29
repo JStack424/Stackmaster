@@ -31,6 +31,7 @@ namespace Stackmaster
             RememberedChestDestinations.Initialize();
             ExpeditionReservations.Initialize();
             StorageScopeProvider.Reset();
+            WholeHomePlacementGuardContext.Clear();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
             NearbyCraftingHudPatch.ResetCache();
@@ -80,6 +81,7 @@ namespace Stackmaster
                 RememberedChestDestinations.Initialize();
                 ExpeditionReservations.Initialize();
                 StorageScopeProvider.Reset();
+                WholeHomePlacementGuardContext.Clear();
                 NearbyResourceService.ResetCaches();
                 NearbyBuildHudPatch.ResetCache();
                 NearbyCraftingHudPatch.ResetCache();
@@ -146,6 +148,7 @@ namespace Stackmaster
                 completedSafely &= TryCleanup("Remembered Quick Stack destination cleanup", RememberedChestDestinations.Shutdown);
                 completedSafely &= TryCleanup("Expedition reservation cleanup", ExpeditionReservations.Shutdown);
                 completedSafely &= TryCleanup("Storage scope cleanup", StorageScopeProvider.Reset);
+                completedSafely &= TryCleanup("Whole-home placement guard cleanup", WholeHomePlacementGuardContext.Clear);
                 completedSafely &= TryCleanup("Nearby resource cache cleanup", NearbyResourceService.ResetCaches);
                 completedSafely &= TryCleanup("Build HUD cache cleanup", NearbyBuildHudPatch.ResetCache);
                 completedSafely &= TryCleanup("Crafting HUD cache cleanup", NearbyCraftingHudPatch.ResetCache);
@@ -188,6 +191,7 @@ namespace Stackmaster
             RememberedChestDestinations.Shutdown();
             ExpeditionReservations.Shutdown();
             StorageScopeProvider.Reset();
+            WholeHomePlacementGuardContext.Clear();
             NearbyResourceService.ResetCaches();
             NearbyBuildHudPatch.ResetCache();
             NearbyCraftingHudPatch.ResetCache();
