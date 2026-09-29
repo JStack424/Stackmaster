@@ -21,7 +21,8 @@ This is a local test candidate, not a production-approved release. Roll back to 
 ## Whole-home crafting stations
 
 - [ ] **Connected Workbench home:** Place one Forge/Stonecutter/Artisan Table inside a connected Workbench mesh, move to another point in that same mesh outside the station's vanilla radius, and select a gated Hammer piece. Expected: the piece is build-eligible when its normal material/DLC requirements are met.
-- [ ] **Every vanilla gated piece sampled:** Check representative Forge-, Stonecutter-, Artisan Table-, and other Hammer station-gated pieces. Expected: each uses the exact required station type; one station never substitutes for another.
+- [ ] **Every vanilla gate sampled:** Check representative Workbench-, Stonecutter-, Forge-, Black Forge-, Artisan Table-, and Galdr Table-gated Hammer pieces. Expected: each uses the exact required station type; one station never substitutes for another.
+- [ ] **Build point stays in the same home:** Stand inside the home and aim the placement ghost just outside that connected Workbench mesh. Expected: extended station eligibility is denied at the boundary; moving the ghost back inside the same mesh restores it.
 - [ ] **Vanilla-first behavior:** Stand inside a station's normal radius. Expected: behavior is identical with the whole-home option on or off.
 - [ ] **Toggle independence:** Test all four combinations of **Allow building from storage** and **Enable whole-home crafting stations**. Expected: station coverage and chest-backed materials change independently; station-only mode still requires player-held materials exactly as vanilla does.
 - [ ] **Disconnected homes:** Place the required station in a nearby but separate Workbench mesh. Expected: it grants no build eligibility in the player's mesh.
