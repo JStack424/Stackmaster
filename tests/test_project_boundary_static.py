@@ -2080,6 +2080,8 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("requirePositionInPlayerMesh && !scope.Contains(requiredPosition)", station)
         self.assertIn("station.GetType() != requiredStation.GetType()", station)
         self.assertIn("zdo.GetPrefab() != expectedPrefabHash", station)
+        self.assertIn("if (!seen.Add(zdo.m_uid)) return false", station)
+        self.assertIn("return found", station)
         self.assertIn("WholeHomePlacementGhostPatch", station)
         manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
         self.assertIn('Postfix(typeof(Player), "UpdatePlacementGhost", false, typeof(void), new[] { typeof(bool) }, typeof(WholeHomePlacementGhostPatch))', manifest)

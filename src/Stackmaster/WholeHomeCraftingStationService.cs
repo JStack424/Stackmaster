@@ -47,6 +47,7 @@ namespace Stackmaster
             if (stations == null) return false;
 
             var seen = new HashSet<ZDOID>();
+            var found = false;
             foreach (var station in stations.OfType<CraftingStation>().ToArray())
             {
                 if (station == null || station.gameObject == null || !station.isActiveAndEnabled ||
@@ -68,10 +69,10 @@ namespace Stackmaster
                         true,
                         true))
                 {
-                    return true;
+                    found = true;
                 }
             }
-            return false;
+            return found;
         }
     }
 
