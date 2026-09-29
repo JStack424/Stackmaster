@@ -19,7 +19,12 @@ namespace Stackmaster
 
         internal static void Ensure(InventoryGui gui)
         {
-            if (_disabled || _view != null || gui == null || gui.m_player == null) return;
+            if (_disabled || gui == null || gui.m_player == null) return;
+            if (_view != null)
+            {
+                if (_view.IsAlive && _gui != null && ReferenceEquals(_gui, gui)) return;
+                DiscardView();
+            }
             try
             {
                 var compatibility = CompatibilityGate.EvaluateExpeditionReservationUi();
@@ -56,16 +61,21 @@ namespace Stackmaster
                     return;
                 }
                 Ensure(gui);
-                if (_view == null) return;
+                if (_view == null || !_view.IsAlive)
+                {
+                    DiscardView();
+                    return;
+                }
                 IReadOnlyList<ExpeditionReservationRecord> records;
                 if (!ExpeditionReservations.TryGetRecords(player, out records) || records.Count == 0)
                 {
-                    _view.SetVisible(false);
+                    if (!_view.SetVisible(false)) DiscardView();
                     return;
                 }
                 UpdateGeometry(gui);
+                if (_view == null || !_view.IsAlive) return;
                 _view.Render(records, ReservationCardInteractions.SelectFromInventory, ReleaseOne);
-                _view.SetVisible(true);
+                if (!_view.SetVisible(true)) DiscardView();
             }
             catch (Exception exception)
             {
@@ -75,7 +85,7 @@ namespace Stackmaster
 
         internal static void Hide()
         {
-            if (_view != null) _view.SetVisible(false);
+            if (_view != null && !_view.SetVisible(false)) DiscardView();
         }
 
         internal static void RearmSession()
@@ -87,14 +97,24 @@ namespace Stackmaster
 
         internal static void Destroy()
         {
-            _view?.Destroy();
+            DiscardView();
+        }
+
+        private static void DiscardView()
+        {
+            var view = _view;
             _view = null;
             _gui = null;
+            view?.Destroy();
         }
 
         private static void UpdateGeometry(InventoryGui gui)
         {
-            if (_view == null || gui == null || gui.m_player == null) return;
+            if (_view == null || !_view.IsAlive || gui == null || gui.m_player == null)
+            {
+                if (_view != null && !_view.IsAlive) DiscardView();
+                return;
+            }
             var playerRect = gui.m_player as RectTransform;
             if (playerRect == null) return;
             var corners = new Vector3[4];

@@ -84,6 +84,16 @@ namespace Stackmaster
         internal RectTransform RootRect { get; }
         internal RectTransform Viewport { get; }
 
+        // ReservationStripView is a managed wrapper around scene-owned Unity objects. The wrapper can
+        // survive a world transition even though Unity has already destroyed its root and children.
+        // Use Unity's overloaded null semantics for every scene object before touching the view.
+        internal bool IsAlive =>
+            Root != null &&
+            RootRect != null &&
+            Viewport != null &&
+            _content != null &&
+            _label != null;
+
         internal float PreferredLabelWidth
         {
             get
@@ -117,11 +127,38 @@ namespace Stackmaster
             LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
         }
 
-        internal void SetVisible(bool visible) => Root.SetActive(visible);
+        internal bool SetVisible(bool visible)
+        {
+            if (!IsAlive) return false;
+            try
+            {
+                Root.SetActive(visible);
+                return true;
+            }
+            catch (MissingReferenceException)
+            {
+                return false;
+            }
+            catch (NullReferenceException) when (Root == null)
+            {
+                return false;
+            }
+        }
 
         internal void Destroy()
         {
-            if (Root != null) Object.Destroy(Root);
+            try
+            {
+                if (Root != null) Object.Destroy(Root);
+            }
+            catch (MissingReferenceException)
+            {
+                // The scene already destroyed the optional view.
+            }
+            catch (NullReferenceException) when (Root == null)
+            {
+                // Unity invalidated the native object between the liveness check and cleanup.
+            }
         }
 
         private void CreateCard(

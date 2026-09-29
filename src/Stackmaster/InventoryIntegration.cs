@@ -493,8 +493,11 @@ namespace Stackmaster
 
         internal static void OnSessionDisconnected()
         {
-            OnInventoryHidden();
+            // Scene-owned reservation views must be detached before any ordinary hide path can
+            // observe Unity objects that were already destroyed during world teardown.
+            ExpeditionReservationUi.Destroy();
             ExpeditionReservationBuildUi.Destroy();
+            OnInventoryHidden();
             _sortingChestOnClose = false;
             if (_toggleAnchor != null)
             {
@@ -504,9 +507,11 @@ namespace Stackmaster
 
         internal static void OnSessionRearmed()
         {
-            OnInventoryHidden();
+            // Clear stale wrappers and reset optional-UI failure isolation before any hide/update
+            // path can run against the new scene's InventoryGui or BuildUi.
             ExpeditionReservationUi.RearmSession();
             ExpeditionReservationBuildUi.RearmSession();
+            OnInventoryHidden();
             _sortingChestOnClose = false;
             _overlaysDisabled = false;
             _overlayFailureLogged = false;

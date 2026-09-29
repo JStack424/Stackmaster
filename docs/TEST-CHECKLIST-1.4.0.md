@@ -37,6 +37,7 @@ This is a local test candidate, not a production-approved release. Roll back to 
 - [ ] Quick Stack, chest auto-sort, protected targets, Quick Grab Materials, reservation cards, reservation decrement, building from storage, crafting/upgrading from storage, and exact requirement totals still behave as in 1.3.5.
 - [ ] With a modded host and guest, repeat one fuel transfer and one whole-home station build. Expected: one exact debit/credit, correct eligibility, no blocked chest, and no disagreement after reconnect.
 - [ ] With a dedicated server and an unmodded peer if available, repeat the compatibility checks. Expected: no required server install, no world corruption, and no new behavior on the unmodded client.
+- [ ] **World-switch reservation UI:** In world A, create a reservation and confirm both the inventory row and Hammer row appear. Log out, enter world B, open inventory and Hammer, then log out and reconnect to world A. Expected: both rows are recreated for the active scene, no `MissingReferenceException` appears, and Stackmaster remains active without restarting Valheim.
 - [ ] Disable/re-enable or unload/reload Stackmaster after an interrupted action. Expected: no stale ownership, reservation, input suppression, station eligibility, or duplicate action.
 
-If an item is lost/duplicated, a device operates on the chord, or a separate home grants station access, stop testing and return to **Stackmaster 1.3.5**.
+If an item is lost/duplicated, a device operates on the chord, a separate home grants station access, or Stackmaster disables after a world change, stop testing and return to **Stackmaster 1.3.5**.

@@ -1619,6 +1619,51 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("!item.IsFixed", visuals)
         self.assertIn("OrderBy(item => item.Slot)", visuals)
 
+    def test_reservation_ui_discards_destroyed_scene_views_and_recreates_after_rearm(self):
+        view = (PLUGIN_DIR / "ReservationStripView.cs").read_text(encoding="utf-8")
+        inventory_ui = (PLUGIN_DIR / "ExpeditionReservationUi.cs").read_text(encoding="utf-8")
+        build_ui = (PLUGIN_DIR / "ExpeditionReservationBuildUi.cs").read_text(encoding="utf-8")
+        integration = (PLUGIN_DIR / "InventoryIntegration.cs").read_text(encoding="utf-8")
+
+        self.assertIn("internal bool IsAlive", view)
+        for unity_reference in ("Root != null", "RootRect != null", "Viewport != null", "_content != null", "_label != null"):
+            self.assertIn(unity_reference, view)
+        self.assertIn("if (!IsAlive) return false", view)
+        self.assertIn("catch (MissingReferenceException)", view)
+        self.assertIn("catch (NullReferenceException) when (Root == null)", view)
+
+        self.assertIn("if (_view.IsAlive && _gui != null && ReferenceEquals(_gui, gui)) return", inventory_ui)
+        self.assertIn("DiscardView();", inventory_ui)
+        self.assertIn("var view = _view;", inventory_ui)
+        self.assertLess(inventory_ui.index("_view = null;", inventory_ui.index("private static void DiscardView")),
+                        inventory_ui.index("view?.Destroy();", inventory_ui.index("private static void DiscardView")))
+        self.assertIn("if (_view != null && !_view.SetVisible(false)) DiscardView()", inventory_ui)
+        self.assertIn("if (!_view.SetVisible(true)) DiscardView()", inventory_ui)
+        self.assertIn("Destroy();\n            _disabled = false;", inventory_ui)
+
+        self.assertIn("!_view.IsAlive || _menuRect == null || _hostRect == null", build_ui)
+        self.assertIn("if (_disabled || _view == null || !_view.IsAlive) return", build_ui)
+        self.assertIn("if (_view != null && !_view.IsAlive)", build_ui)
+        self.assertIn("var view = _view;", build_ui)
+        self.assertLess(build_ui.index("_view = null;", build_ui.index("internal static void Destroy")),
+                        build_ui.index("view?.Destroy();", build_ui.index("internal static void Destroy")))
+        self.assertIn("if (_view != null && !_view.SetVisible(false))", build_ui)
+        self.assertIn("if (!_view.SetVisible(true)) Destroy()", build_ui)
+        self.assertIn("Destroy();\n            _disabled = false;", build_ui)
+
+        disconnect = integration[integration.index("internal static void OnSessionDisconnected"):
+                                 integration.index("internal static void OnSessionRearmed")]
+        self.assertLess(disconnect.index("ExpeditionReservationUi.Destroy();"),
+                        disconnect.index("OnInventoryHidden();"))
+        self.assertLess(disconnect.index("ExpeditionReservationBuildUi.Destroy();"),
+                        disconnect.index("OnInventoryHidden();"))
+        rearm = integration[integration.index("internal static void OnSessionRearmed"):
+                            integration.index("internal static void Shutdown")]
+        self.assertLess(rearm.index("ExpeditionReservationUi.RearmSession();"),
+                        rearm.index("OnInventoryHidden();"))
+        self.assertLess(rearm.index("ExpeditionReservationBuildUi.RearmSession();"),
+                        rearm.index("OnInventoryHidden();"))
+
     def test_expedition_reservations_drive_quick_stack_sorting_and_failed_warning_exclusions(self):
         action = (PLUGIN_DIR / "StorageAction.cs").read_text(encoding="utf-8")
         sorter = (PLUGIN_DIR / "SortExecutor.cs").read_text(encoding="utf-8")

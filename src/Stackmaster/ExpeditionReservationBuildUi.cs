@@ -42,10 +42,11 @@ namespace Stackmaster
                     return;
                 }
                 if (!ReferenceEquals(_owner, buildUi) || !ReferenceEquals(_player, player) || _view == null ||
-                    _menuRect == null || _hostRect == null)
+                    !_view.IsAlive || _menuRect == null || _hostRect == null)
                 {
                     Attach(buildUi, player);
                 }
+                if (_disabled || _view == null || !_view.IsAlive) return;
                 _view.Root.transform.SetAsLastSibling();
                 RefreshVisible(player);
                 UpdateGeometry(_menuRect, _hostRect);
@@ -64,6 +65,11 @@ namespace Stackmaster
 
         internal static void RefreshVisible(Player player)
         {
+            if (_view != null && !_view.IsAlive)
+            {
+                Destroy();
+                return;
+            }
             if (_disabled || _view == null || _owner == null || player == null ||
                 !ReferenceEquals(player, Player.m_localPlayer) || !ReferenceEquals(player, _player) ||
                 !ReferenceEquals(Hud.instance != null ? Hud.instance.m_buildUi : null, _owner))
@@ -80,7 +86,7 @@ namespace Stackmaster
             if (!ExpeditionReservations.TryGetRecords(player, out records) || records.Count == 0)
             {
                 _digest = string.Empty;
-                _view.SetVisible(false);
+                if (!_view.SetVisible(false)) Destroy();
                 return;
             }
             var digest = Digest(records);
@@ -90,7 +96,7 @@ namespace Stackmaster
                 _digest = digest;
                 _refreshRequested = false;
             }
-            _view.SetVisible(true);
+            if (!_view.SetVisible(true)) Destroy();
         }
 
         internal static void RearmSession()
@@ -103,13 +109,15 @@ namespace Stackmaster
 
         internal static void Destroy()
         {
-            _view?.Destroy();
+            var view = _view;
             _view = null;
             _owner = null;
             _player = null;
             _menuRect = null;
             _hostRect = null;
             _digest = null;
+            _refreshRequested = true;
+            view?.Destroy();
         }
 
         private static void Attach(BuildUi buildUi, Player player)
@@ -154,7 +162,11 @@ namespace Stackmaster
 
         private static void UpdateGeometry(RectTransform menuRect, RectTransform hostRect)
         {
-            if (_view == null || menuRect == null || hostRect == null) return;
+            if (_view == null || !_view.IsAlive || menuRect == null || hostRect == null)
+            {
+                if (_view != null && !_view.IsAlive) Destroy();
+                return;
+            }
 
             // BuildUi is the activation/input root, not a reliable visible-panel bound. m_tabContainer
             // is the top edge of the Categories / Materials / Recent / Favorites panel, so anchor to it and
@@ -187,7 +199,7 @@ namespace Stackmaster
                 menuLeft, menuRight, menuTop, safeLeft, safeRight, safeTop);
             if (!geometry.Visible)
             {
-                _view.SetVisible(false);
+                if (!_view.SetVisible(false)) Destroy();
                 return;
             }
             _view.RootRect.anchoredPosition = new Vector2(geometry.Left, geometry.Bottom);
@@ -219,7 +231,11 @@ namespace Stackmaster
 
         private static void Hide()
         {
-            if (_view != null) _view.SetVisible(false);
+            if (_view != null && !_view.SetVisible(false))
+            {
+                Destroy();
+                return;
+            }
             _digest = null;
             _refreshRequested = true;
         }
