@@ -12,6 +12,12 @@ namespace Stackmaster
         internal static bool HasBuildStation(Player player, CraftingStation requiredStation)
         {
             if (player == null || requiredStation == null) return false;
+            if (CraftingStation.HaveBuildStationInRange(requiredStation.m_name, player.transform.position) != null)
+            {
+                return true;
+            }
+            var plugin = RuntimeContext.Plugin;
+            if (plugin == null || !plugin.WholeHomeCraftingStationsEnabled.Value) return false;
             return HasBuildStation(player, requiredStation, player.transform.position, false);
         }
 
@@ -24,6 +30,8 @@ namespace Stackmaster
             {
                 return true;
             }
+            var plugin = RuntimeContext.Plugin;
+            if (plugin == null || !plugin.WholeHomeCraftingStationsEnabled.Value) return false;
             return HasBuildStation(player, requiredStation, placementPosition, true);
         }
 

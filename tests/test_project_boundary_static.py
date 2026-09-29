@@ -2068,6 +2068,7 @@ class ProjectBoundaryTests(unittest.TestCase):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         plugin = (PLUGIN_DIR / "Plugin.cs").read_text(encoding="utf-8")
         self.assertIn("CraftingStation.HaveBuildStationInRange", station)
+        self.assertGreaterEqual(station.count("!plugin.WholeHomeCraftingStationsEnabled.Value"), 2)
         self.assertIn("scope.Kind != StorageScopeKind.WorkbenchMesh", station)
         self.assertIn("WholeHomeStationCoveragePolicy.Qualifies", station)
         self.assertNotIn("GetStationBuildRange", station)
