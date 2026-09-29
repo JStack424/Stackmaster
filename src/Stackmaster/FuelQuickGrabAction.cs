@@ -49,40 +49,52 @@ namespace Stackmaster
             try
             {
                 var piece = hoveredObject.GetComponentInParent<Piece>();
-                if (piece == null || piece.gameObject == null || !piece.gameObject.activeInHierarchy) return false;
+                if (piece == null || piece.gameObject == null || !piece.gameObject.activeInHierarchy ||
+                    !piece.m_enabled || !piece.IsPlacedByPlayer() || hoveredObject.GetComponentInParent<Container>() != null)
+                {
+                    return false;
+                }
+                var piecePrefabName = Utils.GetPrefabName(piece.gameObject);
+                if (string.IsNullOrEmpty(piecePrefabName) ||
+                    string.Equals(piecePrefabName, "charred_shieldgenerator", StringComparison.Ordinal))
+                {
+                    return false;
+                }
                 var displayName = Localize(piece.m_name);
 
                 var shieldGenerator = piece.GetComponentInChildren<ShieldGenerator>(true);
-                if (shieldGenerator != null)
+                if (shieldGenerator != null && string.Equals(piecePrefabName, "piece_shieldgenerator", StringComparison.Ordinal))
                 {
                     return TryResolveList(displayName, shieldGenerator.m_fuelItems, out target);
                 }
 
                 var siegeMachine = piece.GetComponentInChildren<SiegeMachine>(true);
-                if (siegeMachine != null && siegeMachine.m_engine != null)
+                if (siegeMachine != null && siegeMachine.m_engine != null &&
+                    string.Equals(piecePrefabName, "BatteringRam", StringComparison.Ordinal))
                 {
                     return TryResolveConversions(displayName, siegeMachine.m_engine.m_conversion, out target);
                 }
 
                 var fireplace = piece.GetComponentInChildren<Fireplace>(true);
-                if (fireplace != null && fireplace.m_canRefill && fireplace.m_fuelItem != null &&
+                if (fireplace != null && fireplace.m_canRefill && !fireplace.m_infiniteFuel && fireplace.m_fuelItem != null &&
                     fireplace.m_maxFuel > 0f && !float.IsNaN(fireplace.m_maxFuel) && !float.IsInfinity(fireplace.m_maxFuel))
                 {
                     return TryResolveDirect(displayName, fireplace.m_fuelItem, out target);
                 }
 
                 var cookingStation = piece.GetComponentInChildren<CookingStation>(true);
-                if (cookingStation != null && cookingStation.m_useFuel && cookingStation.m_fuelItem != null)
+                if (cookingStation != null && cookingStation.m_useFuel && cookingStation.m_maxFuel > 0 &&
+                    cookingStation.m_fuelItem != null)
                 {
                     return TryResolveDirect(displayName, cookingStation.m_fuelItem, out target);
                 }
 
                 var smelter = piece.GetComponentInChildren<Smelter>(true);
-                if (smelter != null && smelter.m_fuelItem != null)
+                if (smelter != null && smelter.m_maxFuel > 0 && smelter.m_fuelItem != null)
                 {
                     return TryResolveDirect(displayName, smelter.m_fuelItem, out target);
                 }
-                if (smelter != null && string.Equals(piece.m_name, "$piece_charcoalkiln", StringComparison.Ordinal))
+                if (smelter != null && string.Equals(piecePrefabName, "charcoal_kiln", StringComparison.Ordinal))
                 {
                     return TryResolveConversions(displayName, smelter.m_conversion, out target);
                 }

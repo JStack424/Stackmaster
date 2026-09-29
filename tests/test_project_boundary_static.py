@@ -2049,6 +2049,14 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertNotIn("BatteringRamFuel", fuel)
         self.assertNotIn("ShieldGeneratorFuel", fuel)
         self.assertIn("FuelQuickGrabPolicy.Select", fuel)
+        self.assertIn("!piece.m_enabled || !piece.IsPlacedByPlayer()", fuel)
+        self.assertIn('string.Equals(piecePrefabName, "charred_shieldgenerator", StringComparison.Ordinal)', fuel)
+        self.assertIn('string.Equals(piecePrefabName, "piece_shieldgenerator", StringComparison.Ordinal)', fuel)
+        self.assertIn('string.Equals(piecePrefabName, "BatteringRam", StringComparison.Ordinal)', fuel)
+        self.assertIn('string.Equals(piecePrefabName, "charcoal_kiln", StringComparison.Ordinal)', fuel)
+        self.assertIn("!fireplace.m_infiniteFuel", fuel)
+        self.assertIn("cookingStation.m_maxFuel > 0", fuel)
+        self.assertIn("smelter.m_maxFuel > 0", fuel)
         self.assertIn("TryCaptureOwnedQuickGrabInventories", fuel)
         self.assertIn("TryReserveContainers", fuel)
         self.assertIn("QuickGrabMaterialsAction.ExecuteAtomic", fuel)
@@ -2086,7 +2094,11 @@ class ProjectBoundaryTests(unittest.TestCase):
             'typeof(Smelter)',
             'typeof(CookingStation)',
             '"m_canRefill", typeof(bool)',
+            '"m_infiniteFuel", typeof(bool)',
             '"m_maxFuel", typeof(float)',
+            '"m_maxFuel", typeof(int)',
+            '"m_enabled", typeof(bool)',
+            '"IsPlacedByPlayer"',
             '"m_fuelItem", typeof(ItemDrop)',
             'typeof(ShieldGenerator)',
             '"m_fuelItems", typeof(List<ItemDrop>)',
