@@ -1371,7 +1371,14 @@ namespace Stackmaster
             foreach (var id in requiredIds)
             {
                 ContainerHandle handle;
-                if (!handles.TryGetValue(id, out handle) || !ValidateReadOnlyHandle(player, capture.Scope, handle, out failure))
+                if (!handles.TryGetValue(id, out handle))
+                {
+                    failure = ReadOnlyContainerPreflightPolicy.FailureMessage(
+                        ReadOnlyContainerPreflightFailure.MissingHandle);
+                    requiredHandles = Array.Empty<ContainerHandle>();
+                    return false;
+                }
+                if (!ValidateReadOnlyHandle(player, capture.Scope, handle, out failure))
                 {
                     requiredHandles = Array.Empty<ContainerHandle>();
                     return false;

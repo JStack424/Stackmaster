@@ -1176,6 +1176,11 @@ class ProjectBoundaryTests(unittest.TestCase):
             self.assertIn(message, policy)
         self.assertIn("if (!ContainerDiscovery.CheckAccess", validation)
         self.assertIn("if (zdo.DataRevision != handle.ResourceDataRevision)", validation)
+        resolve_start = nearby.index("internal static bool TryResolveRequiredContainers(")
+        resolve_end = nearby.index("private static bool ValidateReadOnlyHandle(", resolve_start)
+        resolve = nearby[resolve_start:resolve_end]
+        self.assertIn("if (!handles.TryGetValue(id, out handle))", resolve)
+        self.assertIn("ReadOnlyContainerPreflightFailure.MissingHandle", resolve)
 
         unowned = nearby[nearby.index("var unowned = requiredHandles"):nearby.index("if (unowned.Length > 0)")]
         self.assertIn("OwnershipPreparationPolicy.RequiresPreparation", unowned)
