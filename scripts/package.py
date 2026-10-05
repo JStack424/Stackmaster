@@ -21,7 +21,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "Stackmaster"
 DLL = ROOT / "src" / "Stackmaster" / "bin" / "Release" / "Stackmaster.dll"
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 CANONICAL_FILENAME = f"JStack424-Stackmaster-{VERSION}.zip"
 DEPENDENCY = "denikson-BepInExPack_Valheim-5.4.2350"
 CODE_REVISION_FILE = ROOT / "RELEASE_CODE_REVISION"

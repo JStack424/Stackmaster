@@ -1008,7 +1008,10 @@ namespace Stackmaster
             }
 
             var unowned = requiredHandles
-                .Where(handle => !handle.NetworkView.IsOwner() || !handle.Container.IsOwner())
+                .Where(handle => OwnershipPreparationPolicy.RequiresPreparation(
+                    handle.NetworkView.HasOwner(),
+                    handle.NetworkView.IsOwner(),
+                    handle.Container.IsOwner()))
                 .ToArray();
             if (unowned.Length > 0)
             {
@@ -1382,21 +1385,46 @@ namespace Stackmaster
         private static bool ValidateReadOnlyHandle(Player player, StorageScope scope, ContainerHandle handle, out string failure)
         {
             failure = null;
-            if (handle == null || handle.Container == null || handle.Container.GetType() != typeof(Container) ||
-                (scope == null || !scope.Contains(handle.Container.transform.position)) ||
-                handle.NetworkView == null || !handle.NetworkView.IsValid() || handle.NetworkView.GetZDO() == null ||
-                !string.Equals(handle.NetworkView.GetZDO().m_uid.ToString(), handle.Id, StringComparison.Ordinal) ||
-                !handle.NetworkView.HasOwner() || !handle.ResourceReadable || handle.ResourceInventory == null)
+            var hasHandle = handle != null;
+            var hasContainer = hasHandle && handle.Container != null;
+            var isVanillaContainer = hasContainer && handle.Container.GetType() == typeof(Container);
+            var hasStorageScope = scope != null;
+            var isInsideStorageScope = hasStorageScope && hasContainer && scope.Contains(handle.Container.transform.position);
+            var hasNetworkView = hasHandle && handle.NetworkView != null;
+            var isNetworkViewValid = hasNetworkView && handle.NetworkView.IsValid();
+            var zdo = isNetworkViewValid ? handle.NetworkView.GetZDO() : null;
+            var hasNetworkState = zdo != null;
+            var identityMatches = hasNetworkState && hasHandle &&
+                string.Equals(zdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal);
+            var isSnapshotReadable = hasHandle && handle.ResourceReadable;
+            var hasDetachedInventory = hasHandle && handle.ResourceInventory != null;
+            var preflightFailure = ReadOnlyContainerPreflightPolicy.Evaluate(
+                hasHandle,
+                hasContainer,
+                isVanillaContainer,
+                hasStorageScope,
+                isInsideStorageScope,
+                hasNetworkView,
+                isNetworkViewValid,
+                hasNetworkState,
+                identityMatches,
+                isSnapshotReadable,
+                hasDetachedInventory);
+            if (preflightFailure != ReadOnlyContainerPreflightFailure.None)
             {
-                failure = "nearby container identity or readable state changed before ownership";
+                failure = ReadOnlyContainerPreflightPolicy.FailureMessage(preflightFailure);
                 return false;
             }
+
+            // An otherwise valid detached snapshot may be temporarily ownerless. Do not reject it
+            // here: TryBeginTransaction explicitly routes it through the bounded vanilla-assignment
+            // wait before any live inventory is loaded or any material can be consumed.
             if (!ContainerDiscovery.CheckAccess(player, handle.Container))
             {
                 failure = "nearby container access changed before ownership";
                 return false;
             }
-            if (handle.NetworkView.GetZDO().DataRevision != handle.ResourceDataRevision)
+            if (zdo.DataRevision != handle.ResourceDataRevision)
             {
                 failure = "nearby container contents changed before ownership";
                 return false;
@@ -2053,9 +2081,50 @@ namespace Stackmaster
     internal static class NearbyResourceOwnership
     {
         internal const string InUseMessage = "The required materials are currently in use";
+        internal const string OwnerlessTimeoutMessage =
+            "The required nearby container remained ownerless while waiting for Valheim; nothing was consumed.";
         private const float OwnershipTimeoutSeconds = 3f;
+        private const int MaximumScopeSignatureLogCharacters = 320;
         private static bool _running;
         private static int _generation;
+
+        private static void LogOwnerlessPreflight(
+            IEnumerable<ContainerHandle> handles,
+            StorageScope scope)
+        {
+            if (RuntimeContext.Plugin == null || handles == null) return;
+
+            string scopeSignature;
+            try
+            {
+                scopeSignature = scope != null && !string.IsNullOrEmpty(scope.Signature)
+                    ? scope.Signature
+                    : "unavailable";
+            }
+            catch (Exception exception)
+            {
+                scopeSignature = "unavailable(" + exception.GetType().Name + ")";
+            }
+            if (scopeSignature.Length > MaximumScopeSignatureLogCharacters)
+            {
+                scopeSignature = scopeSignature.Substring(0, MaximumScopeSignatureLogCharacters) +
+                    "…(length=" + scopeSignature.Length.ToString(CultureInfo.InvariantCulture) + ")";
+            }
+
+            foreach (var handle in handles.Where(handle =>
+                         handle != null && handle.NetworkView != null && !handle.NetworkView.HasOwner()))
+            {
+                var distance = handle.Snapshot != null
+                    ? handle.Snapshot.Distance.ToString("0.0", CultureInfo.InvariantCulture)
+                    : "unavailable";
+                RuntimeContext.Plugin.Log.LogWarning(
+                    "Nearby-resource required container entered bounded ownerless wait: " +
+                    "containerId=" + handle.Id +
+                    " capturedOwnerRevision=" + handle.ResourceOwnerRevision +
+                    " distance=" + distance +
+                    " scopeSignature=" + scopeSignature + ".");
+            }
+        }
 
         internal static void Shutdown()
         {
@@ -2094,6 +2163,7 @@ namespace Stackmaster
             _running = true;
             try
             {
+                LogOwnerlessPreflight(unownedHandles, readOnlyCapture != null ? readOnlyCapture.Scope : null);
                 RuntimeContext.ShowTopLeft("Stackmaster: checking required storage…");
                 RuntimeContext.Plugin.StartCoroutine(Run(
                     player,
@@ -2180,16 +2250,25 @@ namespace Stackmaster
                         // still validate locally, an authoritative rejection is the only safe signal
                         // available for a remotely busy chest. A concurrent access/owner change uses
                         // the generic failure instead of misreporting it as in-use.
-                        var ownerRejectedAsBusy = ownership.OwnerRejectedContainerIds.Count > 0 &&
+                        var ownerlessTimedOut = ownership.FailedContainerIds.Values.Any(reason =>
+                            string.Equals(reason, OwnershipBatch.OwnerlessAssignmentTimeoutFailure, StringComparison.Ordinal));
+                        var ownerRejectedAsBusy = !ownerlessTimedOut &&
+                            ownership.OwnerRejectedContainerIds.Count > 0 &&
                             unownedHandles
                                 .Where(handle => ownership.OwnerRejectedContainerIds.Contains(handle.Id))
                                 .All(handle =>
                                     handle.NetworkView != null && handle.NetworkView.IsValid() &&
                                     handle.NetworkView.HasOwner() &&
                                     ContainerDiscovery.CheckAccess(player, handle.Container));
-                        RuntimeContext.ShowCenter(ownerRejectedAsBusy
-                            ? InUseMessage
-                            : "Stackmaster could not safely acquire the required materials; nothing was consumed.");
+                        RuntimeContext.Plugin.Log.LogWarning(
+                            "Nearby-resource ownership preparation failed safely: " +
+                            string.Join(", ", ownership.FailedContainerIds.Select(pair =>
+                                "containerId=" + pair.Key + " reason=" + pair.Value)) + ".");
+                        RuntimeContext.ShowCenter(ownerlessTimedOut
+                            ? OwnerlessTimeoutMessage
+                            : ownerRejectedAsBusy
+                                ? InUseMessage
+                                : "Stackmaster could not safely acquire the required materials; nothing was consumed.");
                     }
                     else
                     {

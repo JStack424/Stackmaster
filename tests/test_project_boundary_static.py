@@ -1149,6 +1149,85 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(f'"{dependency}"', gate)
 
+    def test_ownerless_readable_preflight_routes_to_bounded_assignment_without_weakening_owned_stages(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "ReadOnlyContainerPreflightPolicy.cs").read_text(encoding="utf-8")
+        ownership_policy = (ROOT / "src" / "Stackmaster.Core" / "OwnershipPreparationPolicy.cs").read_text(encoding="utf-8")
+
+        validation_start = nearby.index("private static bool ValidateReadOnlyHandle(")
+        validation_end = nearby.index("internal static bool ValidateClaimedPlan(", validation_start)
+        validation = nearby[validation_start:validation_end]
+        self.assertIn("ReadOnlyContainerPreflightPolicy.Evaluate", validation)
+        self.assertNotIn("HasOwner()", validation)
+        self.assertNotIn("nearby container identity or readable state changed before ownership", validation)
+        for message in (
+            "required nearby container handle was unavailable before ownership",
+            "nearby container disappeared before ownership",
+            "nearby container type changed before ownership",
+            "active storage scope became unavailable before ownership",
+            "nearby container left the active storage scope before ownership",
+            "nearby container network view disappeared before ownership",
+            "nearby container network view became invalid before ownership",
+            "nearby container network state disappeared before ownership",
+            "nearby container identity changed before ownership",
+            "nearby container inventory snapshot became unreadable before ownership",
+            "nearby container detached inventory disappeared before ownership",
+        ):
+            self.assertIn(message, policy)
+        self.assertIn("if (!ContainerDiscovery.CheckAccess", validation)
+        self.assertIn("if (zdo.DataRevision != handle.ResourceDataRevision)", validation)
+
+        unowned = nearby[nearby.index("var unowned = requiredHandles"):nearby.index("if (unowned.Length > 0)")]
+        self.assertIn("OwnershipPreparationPolicy.RequiresPreparation", unowned)
+        self.assertIn("handle.NetworkView.HasOwner()", unowned)
+        self.assertIn("handle.NetworkView.IsOwner()", unowned)
+        self.assertIn("handle.Container.IsOwner()", unowned)
+        self.assertIn("!hasOwner || !networkViewIsOwner || !containerIsOwner", ownership_policy)
+
+        # Every later caller that can load or reserve a live inventory still requires local ownership
+        # explicitly after the now ownership-neutral read-only validation.
+        self.assertIn("!ValidateReadOnlyHandle(player, freshScope, handle, out failure) ||\n                    !handle.NetworkView.IsOwner() || !handle.Container.IsOwner()", nearby)
+        self.assertIn("!ValidateReadOnlyHandle(player, transactionScope, handle, out failure)", nearby)
+        reserve_start = nearby.index("internal static bool TryReserveContainers(")
+        reserve = nearby[reserve_start:nearby.index("internal static bool ReleaseReservations(", reserve_start)]
+        self.assertIn("!handle.NetworkView.IsOwner() || !handle.Container.IsOwner()", reserve)
+        self.assertIn("handle.NetworkView.GetZDO().OwnerRevision != handle.ResourceOwnerRevision", reserve)
+
+    def test_ownerless_diagnostics_timeout_and_shared_placement_route_are_bounded(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        manifest = (PLUGIN_DIR / "HarmonyTargetManifest.cs").read_text(encoding="utf-8")
+
+        self.assertIn("LogOwnerlessPreflight(unownedHandles", nearby)
+        self.assertIn("entered bounded ownerless wait", nearby)
+        self.assertIn("capturedOwnerRevision=", nearby)
+        self.assertIn("distance=", nearby)
+        self.assertIn("scopeSignature=", nearby)
+        self.assertIn("MaximumScopeSignatureLogCharacters", nearby)
+        self.assertIn("ownerless assignment completed safely", ownership)
+        self.assertIn("capturedOwnerRevision=", ownership)
+        self.assertIn("assignedOwnerRevision=", ownership)
+        self.assertIn("OwnerlessAssignmentTimeoutFailure", ownership)
+        self.assertIn("OwnerlessTimeoutMessage", nearby)
+        self.assertIn("remained ownerless while waiting for Valheim; nothing was consumed", nearby)
+        ownerless_log_start = nearby.index("private static void LogOwnerlessPreflight(")
+        ownerless_log_end = nearby.index("internal static void Shutdown()", ownerless_log_start)
+        self.assertNotIn("while (", nearby[ownerless_log_start:ownerless_log_end])
+
+        # Hammer construction and Cultivator planting both reach the one Player.TryPlacePiece
+        # transaction prefix; there is no tool-name filter that can split their safety behavior.
+        placement = nearby[nearby.index("internal static class NearbyTryPlacePiecePatch"):]
+        self.assertIn("NearbyResourceService.TryBeginPieceTransaction", placement)
+        self.assertNotIn('"Hammer"', placement)
+        self.assertNotIn('"Cultivator"', placement)
+        self.assertIn('typeof(Player), "TryPlacePiece"', manifest)
+        ownership_gate = nearby.index("if (unowned.Length > 0)")
+        transaction_begin = nearby.index("var transactionBegan = false", ownership_gate)
+        ownership_branch = nearby[ownership_gate:transaction_begin]
+        self.assertIn("NearbyResourceOwnership.TryBegin", ownership_branch)
+        self.assertIn("return false;", ownership_branch)
+        self.assertLess(ownership_gate, transaction_begin)
+
     def test_remote_owned_resource_stock_is_read_only_and_claimed_only_for_exact_action_plan(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")

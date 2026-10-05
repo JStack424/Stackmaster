@@ -31,6 +31,10 @@ namespace Stackmaster
 
     internal sealed class OwnershipBatch
     {
+        internal const string OwnerlessAssignmentTimeoutFailure =
+            "container remained ownerless while waiting for vanilla assignment";
+        internal const string OwnershipResponseTimeoutFailure = "ownership response timed out";
+
         private readonly Dictionary<Container, ContainerHandle> _pending;
         private readonly Queue<Container> _requestOrder;
         private readonly long _requestSession;
@@ -139,6 +143,16 @@ namespace Stackmaster
                     handle.NetworkView.IsOwner() && handle.Container.IsOwner())
                 {
                     SuccessfulContainerIds.Add(handle.Id);
+                    if (RuntimeContext.Plugin != null)
+                    {
+                        RuntimeContext.Plugin.Log.LogInfo(
+                            "Nearby-resource ownerless assignment completed safely: " +
+                            "containerId=" + handle.Id +
+                            " capturedOwner=" + handle.ResourceOwner +
+                            " capturedOwnerRevision=" + handle.ResourceOwnerRevision +
+                            " assignedOwner=" + zdo.GetOwner() +
+                            " assignedOwnerRevision=" + zdo.OwnerRevision + ".");
+                    }
                 }
                 else
                 {
@@ -174,7 +188,11 @@ namespace Stackmaster
             TimedOutRequestContainer = _waitingForOwnerAssignment || _grantReceived ? null : _waitingFor;
             foreach (var handle in _pending.Values)
             {
-                FailedContainerIds[handle.Id] = "ownership response timed out";
+                var timeoutKind = OwnershipPreparationPolicy.TimeoutKind(
+                    _waitingForOwnerAssignment && ReferenceEquals(handle, _waitingHandle));
+                FailedContainerIds[handle.Id] = timeoutKind == OwnershipPreparationTimeoutKind.VanillaOwnerAssignment
+                    ? OwnerlessAssignmentTimeoutFailure
+                    : OwnershipResponseTimeoutFailure;
             }
             _pending.Clear();
             _requestOrder.Clear();

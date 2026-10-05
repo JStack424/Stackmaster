@@ -176,6 +176,11 @@ internal static class Program
             RapidDifferentRecipeCraftsConserveExactItems,
             RapidMultiChestCraftsConserveExactItems,
             BoundaryAbortsConserveExactItems,
+            ReadOnlyContainerPreflightReportsEveryFailureInOrder,
+            ReadOnlyContainerPreflightAcceptsValidReadableStateWithoutOwnershipInput,
+            OwnerlessContainerExplicitlyRequiresOwnershipPreparation,
+            OwnedContainerDoesNotRequireOwnershipPreparation,
+            OwnerlessAndOwnerResponseTimeoutsRemainDistinct,
             UnownedContainerWaitsForVanillaLocalAssignment,
             UnownedContainerRejectsUnrelatedAssignment,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
@@ -3236,6 +3241,91 @@ internal static class Program
             Equal(5, stock["boundary-wood"], boundary + " preserves the exact pre-operation item total");
             True(!debit.Rollback(receipt => Restore(stock, receipt)), boundary + " stale rollback cannot duplicate items");
         }
+    }
+
+    private static void ReadOnlyContainerPreflightReportsEveryFailureInOrder()
+    {
+        var cases = new[]
+        {
+            (ReadOnlyContainerPreflightFailure.MissingHandle, Preflight(hasHandle: false), "required nearby container handle was unavailable before ownership"),
+            (ReadOnlyContainerPreflightFailure.MissingContainer, Preflight(hasContainer: false), "nearby container disappeared before ownership"),
+            (ReadOnlyContainerPreflightFailure.ChangedContainerType, Preflight(isVanillaContainer: false), "nearby container type changed before ownership"),
+            (ReadOnlyContainerPreflightFailure.MissingStorageScope, Preflight(hasStorageScope: false), "active storage scope became unavailable before ownership"),
+            (ReadOnlyContainerPreflightFailure.OutsideStorageScope, Preflight(isInsideStorageScope: false), "nearby container left the active storage scope before ownership"),
+            (ReadOnlyContainerPreflightFailure.MissingNetworkView, Preflight(hasNetworkView: false), "nearby container network view disappeared before ownership"),
+            (ReadOnlyContainerPreflightFailure.InvalidNetworkView, Preflight(isNetworkViewValid: false), "nearby container network view became invalid before ownership"),
+            (ReadOnlyContainerPreflightFailure.MissingNetworkState, Preflight(hasNetworkState: false), "nearby container network state disappeared before ownership"),
+            (ReadOnlyContainerPreflightFailure.ChangedIdentity, Preflight(identityMatches: false), "nearby container identity changed before ownership"),
+            (ReadOnlyContainerPreflightFailure.UnreadableSnapshot, Preflight(isSnapshotReadable: false), "nearby container inventory snapshot became unreadable before ownership"),
+            (ReadOnlyContainerPreflightFailure.MissingDetachedInventory, Preflight(hasDetachedInventory: false), "nearby container detached inventory disappeared before ownership")
+        };
+
+        foreach (var item in cases)
+        {
+            Equal(item.Item1, item.Item2, "each read-only preflight predicate has its own ordered failure");
+            Equal(item.Item3, ReadOnlyContainerPreflightPolicy.FailureMessage(item.Item2),
+                "each read-only preflight failure has a precise reportable message");
+        }
+    }
+
+    private static void ReadOnlyContainerPreflightAcceptsValidReadableStateWithoutOwnershipInput()
+    {
+        var result = Preflight();
+        Equal(ReadOnlyContainerPreflightFailure.None, result,
+            "an otherwise valid detached snapshot passes preflight without any ownership predicate");
+        Equal(string.Empty, ReadOnlyContainerPreflightPolicy.FailureMessage(result),
+            "valid preflight has no failure message");
+    }
+
+    private static void OwnerlessContainerExplicitlyRequiresOwnershipPreparation()
+    {
+        True(OwnershipPreparationPolicy.RequiresPreparation(false, false, false),
+            "an ownerless source is explicitly routed to bounded ownership preparation");
+    }
+
+    private static void OwnedContainerDoesNotRequireOwnershipPreparation()
+    {
+        True(!OwnershipPreparationPolicy.RequiresPreparation(true, true, true),
+            "an already locally owned source keeps the unchanged direct transaction path");
+        True(OwnershipPreparationPolicy.RequiresPreparation(true, false, false),
+            "a remote-owned source still requires the owner-authorized handshake");
+    }
+
+    private static void OwnerlessAndOwnerResponseTimeoutsRemainDistinct()
+    {
+        Equal(OwnershipPreparationTimeoutKind.VanillaOwnerAssignment,
+            OwnershipPreparationPolicy.TimeoutKind(true),
+            "an ownerless wait keeps its distinct timeout cause");
+        Equal(OwnershipPreparationTimeoutKind.OwnerResponse,
+            OwnershipPreparationPolicy.TimeoutKind(false),
+            "an ordinary owner RPC keeps its distinct timeout cause");
+    }
+
+    private static ReadOnlyContainerPreflightFailure Preflight(
+        bool hasHandle = true,
+        bool hasContainer = true,
+        bool isVanillaContainer = true,
+        bool hasStorageScope = true,
+        bool isInsideStorageScope = true,
+        bool hasNetworkView = true,
+        bool isNetworkViewValid = true,
+        bool hasNetworkState = true,
+        bool identityMatches = true,
+        bool isSnapshotReadable = true,
+        bool hasDetachedInventory = true)
+    {
+        return ReadOnlyContainerPreflightPolicy.Evaluate(
+            hasHandle,
+            hasContainer,
+            isVanillaContainer,
+            hasStorageScope,
+            isInsideStorageScope,
+            hasNetworkView,
+            isNetworkViewValid,
+            hasNetworkState,
+            identityMatches,
+            isSnapshotReadable,
+            hasDetachedInventory);
     }
 
     private static void UnownedContainerWaitsForVanillaLocalAssignment()
