@@ -181,6 +181,7 @@ internal static class Program
             OwnerlessContainerExplicitlyRequiresOwnershipPreparation,
             OwnedContainerDoesNotRequireOwnershipPreparation,
             OwnerlessAndOwnerResponseTimeoutsRemainDistinct,
+            QueuedContainersReportBatchAbortInsteadOfResponseTimeout,
             UnownedContainerWaitsForVanillaLocalAssignment,
             UnownedContainerRejectsUnrelatedAssignment,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
@@ -3294,11 +3295,27 @@ internal static class Program
     private static void OwnerlessAndOwnerResponseTimeoutsRemainDistinct()
     {
         Equal(OwnershipPreparationTimeoutKind.VanillaOwnerAssignment,
-            OwnershipPreparationPolicy.TimeoutKind(true),
-            "an ownerless wait keeps its distinct timeout cause");
+            OwnershipPreparationPolicy.TimeoutKind(true, true),
+            "an active ownerless wait keeps its distinct timeout cause");
         Equal(OwnershipPreparationTimeoutKind.OwnerResponse,
-            OwnershipPreparationPolicy.TimeoutKind(false),
-            "an ordinary owner RPC keeps its distinct timeout cause");
+            OwnershipPreparationPolicy.TimeoutKind(true, false),
+            "an active owner RPC keeps its distinct timeout cause");
+    }
+
+    private static void QueuedContainersReportBatchAbortInsteadOfResponseTimeout()
+    {
+        var queuedOwnerless = OwnershipPreparationPolicy.TimeoutKind(false, true);
+        var queuedRemoteOwned = OwnershipPreparationPolicy.TimeoutKind(false, false);
+        Equal(OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest,
+            queuedOwnerless,
+            "a queued ownerless container is reported as unattempted when an earlier wait expires");
+        Equal(OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest,
+            queuedRemoteOwned,
+            "a queued remote-owned container is reported as unattempted when an earlier wait expires");
+        True(queuedOwnerless != OwnershipPreparationTimeoutKind.OwnerResponse,
+            "a queued ownerless container never invents an owner RPC timeout");
+        True(queuedOwnerless != OwnershipPreparationTimeoutKind.VanillaOwnerAssignment,
+            "a queued ownerless container never claims that its own vanilla wait expired");
     }
 
     private static ReadOnlyContainerPreflightFailure Preflight(

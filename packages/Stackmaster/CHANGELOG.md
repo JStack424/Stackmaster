@@ -8,7 +8,7 @@ Ownerless remote-container recovery and precise pre-ownership diagnostics. Autom
 - Makes ownerless routing explicit while preserving exact identity, vanilla type, active-scope, network-view/ZDO, access, data-revision, ownership-transfer, reservation, rollback, and no-consumption guards.
 - Splits the former combined identity/readability cancellation into distinct messages for missing handles or containers, changed type or scope, missing or invalid network state, changed ZDO identity, and unreadable or missing detached inventory.
 - Logs one bounded diagnostic when a required chest enters the ownerless wait, including its captured identity, owner revision, distance, and bounded scope signature; successful exact local assignment is logged separately.
-- Distinguishes a three-second vanilla owner-assignment timeout from an ordinary owner-RPC timeout and continues to consume nothing on either failure.
+- Distinguishes a three-second vanilla owner-assignment timeout from an ordinary owner-RPC timeout, labels every still-queued chest as unattempted rather than inventing a timeout, and continues to consume nothing on any failure.
 - Preserves the explicit retry after successful ownership preparation rather than replaying Hammer construction or Cultivator planting outside Valheim's normal action path.
 
 ## 1.4.0 (local test candidate)

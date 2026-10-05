@@ -3,7 +3,8 @@ namespace Stackmaster.Core
     public enum OwnershipPreparationTimeoutKind
     {
         OwnerResponse,
-        VanillaOwnerAssignment
+        VanillaOwnerAssignment,
+        BatchAbortedBeforeRequest
     }
 
     public static class OwnershipPreparationPolicy
@@ -14,9 +15,13 @@ namespace Stackmaster.Core
             bool containerIsOwner)
             => !hasOwner || !networkViewIsOwner || !containerIsOwner;
 
-        public static OwnershipPreparationTimeoutKind TimeoutKind(bool waitingForVanillaOwnerAssignment)
-            => waitingForVanillaOwnerAssignment
-                ? OwnershipPreparationTimeoutKind.VanillaOwnerAssignment
-                : OwnershipPreparationTimeoutKind.OwnerResponse;
+        public static OwnershipPreparationTimeoutKind TimeoutKind(
+            bool isActiveRequest,
+            bool waitingForVanillaOwnerAssignment)
+            => !isActiveRequest
+                ? OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest
+                : waitingForVanillaOwnerAssignment
+                    ? OwnershipPreparationTimeoutKind.VanillaOwnerAssignment
+                    : OwnershipPreparationTimeoutKind.OwnerResponse;
     }
 }

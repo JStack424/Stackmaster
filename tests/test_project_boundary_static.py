@@ -1233,6 +1233,32 @@ class ProjectBoundaryTests(unittest.TestCase):
         self.assertIn("return false;", ownership_branch)
         self.assertLess(ownership_gate, transaction_begin)
 
+    def test_ownerless_timeout_classifies_queued_handles_as_unattempted(self):
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "OwnershipPreparationPolicy.cs").read_text(encoding="utf-8")
+
+        timeout_start = ownership.index("internal void Timeout()")
+        timeout_end = ownership.index("private void RemovePendingHandle", timeout_start)
+        timeout = ownership[timeout_start:timeout_end]
+        self.assertIn("ReferenceEquals(handle, _waitingHandle)", timeout)
+        self.assertIn("OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest", timeout)
+        self.assertIn("BatchAbortedBeforeRequestFailure", timeout)
+        self.assertIn("ownership batch aborted before this container was attempted", ownership)
+        self.assertIn("!isActiveRequest", policy)
+        self.assertIn("OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest", policy)
+        self.assertIn("isActiveRequest && _waitingForOwnerAssignment", timeout)
+
+        # The active ownerless wait still drives the precise player-facing result. Queued handles
+        # cannot impersonate either a completed vanilla wait or an owner RPC that was never sent.
+        self.assertIn("OwnerlessAssignmentTimeoutFailure", timeout)
+        self.assertIn("OwnershipResponseTimeoutFailure", timeout)
+        self.assertIn("ownerlessTimedOut", nearby)
+        self.assertIn("OwnerlessTimeoutMessage", nearby)
+        self.assertNotIn("StackAll()", timeout)
+        self.assertNotIn("RequestNext()", timeout)
+        self.assertNotIn("RemoveItem", timeout)
+
     def test_remote_owned_resource_stock_is_read_only_and_claimed_only_for_exact_action_plan(self):
         nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
         discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")

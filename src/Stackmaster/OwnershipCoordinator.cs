@@ -34,6 +34,8 @@ namespace Stackmaster
         internal const string OwnerlessAssignmentTimeoutFailure =
             "container remained ownerless while waiting for vanilla assignment";
         internal const string OwnershipResponseTimeoutFailure = "ownership response timed out";
+        internal const string BatchAbortedBeforeRequestFailure =
+            "ownership batch aborted before this container was attempted";
 
         private readonly Dictionary<Container, ContainerHandle> _pending;
         private readonly Queue<Container> _requestOrder;
@@ -188,11 +190,17 @@ namespace Stackmaster
             TimedOutRequestContainer = _waitingForOwnerAssignment || _grantReceived ? null : _waitingFor;
             foreach (var handle in _pending.Values)
             {
+                var isActiveRequest = ReferenceEquals(handle, _waitingHandle);
                 var timeoutKind = OwnershipPreparationPolicy.TimeoutKind(
-                    _waitingForOwnerAssignment && ReferenceEquals(handle, _waitingHandle));
+                    isActiveRequest,
+                    isActiveRequest && _waitingForOwnerAssignment);
                 FailedContainerIds[handle.Id] = timeoutKind == OwnershipPreparationTimeoutKind.VanillaOwnerAssignment
                     ? OwnerlessAssignmentTimeoutFailure
-                    : OwnershipResponseTimeoutFailure;
+                    : timeoutKind == OwnershipPreparationTimeoutKind.OwnerResponse
+                        ? OwnershipResponseTimeoutFailure
+                        : timeoutKind == OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest
+                            ? BatchAbortedBeforeRequestFailure
+                            : "unknown ownership timeout classification";
             }
             _pending.Clear();
             _requestOrder.Clear();
