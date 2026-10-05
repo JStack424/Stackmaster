@@ -130,6 +130,7 @@ namespace Stackmaster.Compatibility.Tests
                 ("ItemDrop", "m_itemData")
             };
             foreach (var field in fields) contract.Field(field.Type, field.Name);
+            contract.Field("Hud", "m_hoverName", "TMPro.TextMeshProUGUI", FieldAttributes.Public);
             contract.Field("BuildUi", "m_tabContainer", "UnityEngine.RectTransform", 0);
             contract.NestedField("ItemDrop", "ItemData", "m_shared", "SharedData", FieldAttributes.Public);
             contract.NestedField("ItemDrop", "ItemData", "m_dropPrefab", "UnityEngine.GameObject",

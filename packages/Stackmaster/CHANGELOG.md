@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.4.1 (local test candidate)
+## 1.4.2 (local test candidate)
+
+Live-load compatibility correction for the 1.4.1 test candidate. Automated verification is complete; live Valheim testing is still required before release.
+
+- Corrects the startup contract for `Hud.m_hoverName` to its actual public `TextMeshProUGUI` field type in the pinned Valheim client/server assembly.
+- Adds an exact metadata regression check so a future mismatch between the compiled field reference and startup gate cannot pass packaging unnoticed.
+- Preserves every 1.4.1 gameplay change; Stackmaster still fails closed before installing any Harmony or inventory hook if the actual field or any other required runtime contract changes.
+
+## 1.4.1 (superseded local test candidate)
 
 Ownerless remote-container recovery and precise pre-ownership diagnostics. Automated verification is complete; live Valheim testing is still required before release.
 

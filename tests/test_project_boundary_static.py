@@ -2307,7 +2307,7 @@ class ProjectBoundaryTests(unittest.TestCase):
             'typeof(SiegeMachine)',
             '"m_engine", typeof(Smelter)',
             '"m_useFuel", typeof(bool)',
-            '"m_hoverName"',
+            '"m_hoverName", typeof(TMPro.TextMeshProUGUI), false',
             '"HaveBuildStationInRange", typeof(string), typeof(Vector3)',
         ):
             self.assertIn(contract, gate)
