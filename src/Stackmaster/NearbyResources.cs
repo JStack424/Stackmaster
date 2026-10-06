@@ -1001,8 +1001,21 @@ namespace Stackmaster
             {
                 return false;
             }
+            // Local-log-only: record every exact required source before any ownership decision.
+            // The observer never requests ownership or mutates a ZDO/inventory.
+            OwnershipDistanceDiagnosticLog.LogActionSelection(
+                player,
+                readOnlyCapture.Scope,
+                requiredHandles);
             if (requiredHandles.Any(handle => OwnershipLeaseManager.HasPotentialAcquisition(handle.Id)))
             {
+                foreach (var handle in requiredHandles.Where(candidate =>
+                             OwnershipLeaseManager.HasPotentialAcquisition(candidate.Id)))
+                {
+                    OwnershipDistanceDiagnosticLog.LogImmediateResult(
+                        handle,
+                        "blocked-previous-ownership-transition-pending");
+                }
                 failure = "a previous ownership transition is still pending";
                 return false;
             }
@@ -1319,6 +1332,9 @@ namespace Stackmaster
             }
 
             var capture = new NearbyResourceCapture(scope, containers, resourceStacks, runtimeStacks);
+            // Observe only previously action-selected source identities. The tracker is bounded,
+            // transition-only, read-only, and fail-open so HUD behavior cannot depend on logging.
+            DistanceDiagnosticTracker.ObserveCapture(player, scope, containers);
             _cachedFrame = Time.frameCount;
             _cachedPlayer = player;
             _cachedScopeSignature = scope.Signature;

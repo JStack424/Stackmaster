@@ -99,7 +99,13 @@ namespace Stackmaster.Compatibility.Tests
                 ("CraftingStation", "CheckUsable", new[] { "Player", "System.Boolean" }),
                 ("ZNetScene", "GetPrefab", new[] { "System.String" }),
                 ("ZNetView", "GetZDO", Array.Empty<string>()),
-                ("ZDO", "GetPrefab", Array.Empty<string>())
+                ("ZNetView", "HasOwner", Array.Empty<string>()),
+                ("ZNetView", "IsOwner", Array.Empty<string>()),
+                ("ZDOMan", "GetZDO", new[] { "ZDOID" }),
+                ("ZDO", "GetPrefab", Array.Empty<string>()),
+                ("ZDO", "GetOwner", Array.Empty<string>()),
+                ("ZDO", "get_OwnerRevision", Array.Empty<string>()),
+                ("ZDO", "get_DataRevision", Array.Empty<string>())
             };
             foreach (var method in methods) contract.Method(method.Type, method.Name, method.Parameters);
             contract.SuccessfulPlacementConsumesMaterialsAfterTryPlace();

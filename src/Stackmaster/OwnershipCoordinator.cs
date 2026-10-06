@@ -40,10 +40,13 @@ namespace Stackmaster
         private readonly Dictionary<Container, ContainerHandle> _pending;
         private readonly Queue<Container> _requestOrder;
         private readonly long _requestSession;
+        private readonly float _diagnosticStartedAt;
+        private readonly BoundedDiagnosticTransitionTracker _diagnosticTransitions;
         private Container _waitingFor;
         private ContainerHandle _waitingHandle;
         private bool _waitingForOwnerAssignment;
         private bool _grantReceived;
+        private string _waitingLifecyclePath;
 
         internal OwnershipBatch(IEnumerable<ContainerHandle> handles, ISet<Container> unresolvedResponses)
         {
@@ -51,6 +54,8 @@ namespace Stackmaster
             _pending = ordered.ToDictionary(handle => handle.Container, handle => handle);
             _requestOrder = new Queue<Container>();
             _requestSession = ZDOMan.instance != null ? ZDOMan.GetSessionID() : 0L;
+            _diagnosticStartedAt = Time.realtimeSinceStartup;
+            _diagnosticTransitions = new BoundedDiagnosticTransitionTracker(Math.Max(1, ordered.Length));
             SuccessfulContainerIds = new HashSet<string>(StringComparer.Ordinal);
             OwnerRejectedContainerIds = new HashSet<string>(StringComparer.Ordinal);
             FailedContainerIds = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -101,11 +106,22 @@ namespace Stackmaster
                 return false;
             }
 
+            OwnershipDistanceDiagnosticLog.LogTransition(
+                _waitingHandle,
+                _diagnosticStartedAt,
+                _waitingLifecyclePath,
+                _diagnosticTransitions,
+                granted ? "owner-response-granted" : "owner-response-rejected");
             if (!granted)
             {
                 var handle = _waitingHandle;
                 OwnerRejectedContainerIds.Add(handle.Id);
                 FailedContainerIds[handle.Id] = "container owner reported busy or unavailable";
+                OwnershipDistanceDiagnosticLog.LogResult(
+                    handle,
+                    _diagnosticStartedAt,
+                    _waitingLifecyclePath,
+                    "owner-response-rejected");
                 RemovePendingHandle(handle);
                 ClearWaiting();
                 CancelRemaining("ownership batch cancelled after a required container was unavailable");
@@ -125,6 +141,12 @@ namespace Stackmaster
                 return;
             }
 
+            OwnershipDistanceDiagnosticLog.LogTransition(
+                handle,
+                _diagnosticStartedAt,
+                _waitingLifecyclePath,
+                _diagnosticTransitions,
+                "refresh");
             var zdo = OwnershipLeaseManager.ResolveZdo(handle);
             var expectedOwnerRevision = OwnershipLeasePolicy.NextOwnerRevision(handle.ResourceOwnerRevision);
             if (_waitingForOwnerAssignment)
@@ -161,6 +183,14 @@ namespace Stackmaster
                     FailedContainerIds[handle.Id] =
                         "container ownership changed while waiting for vanilla assignment";
                 }
+                OwnershipDistanceDiagnosticLog.LogResult(
+                    handle,
+                    _diagnosticStartedAt,
+                    _waitingLifecyclePath,
+                    decision == UnownedAssignmentDecision.ContinueLocally &&
+                        handle.NetworkView.IsOwner() && handle.Container.IsOwner()
+                        ? "ownerless-assignment-continued-locally"
+                        : "ownerless-assignment-rejected");
                 RemovePendingHandle(handle);
                 ClearWaiting();
                 RequestNext();
@@ -176,6 +206,11 @@ namespace Stackmaster
                     handle.ResourceOwner,
                     _requestSession,
                     expectedOwnerRevision));
+                OwnershipDistanceDiagnosticLog.LogResult(
+                    handle,
+                    _diagnosticStartedAt,
+                    _waitingLifecyclePath,
+                    "owner-response-acquired-locally");
                 RemovePendingHandle(handle);
                 ClearWaiting();
                 RequestNext();
@@ -188,6 +223,16 @@ namespace Stackmaster
             // not erase an in-flight request merely because its scene Container unloaded.
             TimedOutAcquisitionHandle = _waitingForOwnerAssignment ? null : _waitingHandle;
             TimedOutRequestContainer = _waitingForOwnerAssignment || _grantReceived ? null : _waitingFor;
+            if (_waitingHandle != null)
+            {
+                OwnershipDistanceDiagnosticLog.LogResult(
+                    _waitingHandle,
+                    _diagnosticStartedAt,
+                    _waitingLifecyclePath,
+                    _waitingForOwnerAssignment
+                        ? "ownerless-assignment-timeout"
+                        : _grantReceived ? "owner-response-granted-without-matching-transition-timeout" : "owner-response-timeout");
+            }
             foreach (var handle in _pending.Values)
             {
                 var isActiveRequest = ReferenceEquals(handle, _waitingHandle);
@@ -240,6 +285,14 @@ namespace Stackmaster
                     _waitingFor = container;
                     _waitingHandle = handle;
                     _waitingForOwnerAssignment = !handle.NetworkView.HasOwner();
+                    _waitingLifecyclePath = OwnershipLeaseManager.DescribeLifecycle(handle.Id) +
+                        (_waitingForOwnerAssignment ? "+ownerless-wait" : "+owner-rpc");
+                    OwnershipDistanceDiagnosticLog.LogTransition(
+                        handle,
+                        _diagnosticStartedAt,
+                        _waitingLifecyclePath,
+                        _diagnosticTransitions,
+                        "wait-start");
                     if (_waitingForOwnerAssignment)
                     {
                         return;
@@ -268,6 +321,7 @@ namespace Stackmaster
             _waitingHandle = null;
             _waitingForOwnerAssignment = false;
             _grantReceived = false;
+            _waitingLifecyclePath = null;
         }
     }
 
@@ -381,6 +435,19 @@ namespace Stackmaster
 
         internal static bool HasPotentialAcquisition(string id)
             => id != null && Pending.ContainsKey(id);
+
+        internal static string DescribeLifecycle(string id)
+        {
+            if (id == null) return "unknown";
+            if (Pending.ContainsKey(id)) return "late-acquisition-cleanup";
+            OwnershipLease lease;
+            if (!Leases.TryGetValue(id, out lease)) return "new-capture";
+            return lease.Purpose == OwnershipLeasePurpose.Retry
+                ? "existing-retry-lease"
+                : lease.Purpose == OwnershipLeasePurpose.Building
+                    ? "existing-building-lease"
+                    : "existing-crafting-lease";
+        }
 
         internal static bool HasUnresolvedCleanup => Pending.Count > 0 || Leases.Count > 0;
 

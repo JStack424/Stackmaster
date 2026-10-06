@@ -184,6 +184,11 @@ internal static class Program
             QueuedContainersReportBatchAbortInsteadOfResponseTimeout,
             UnownedContainerWaitsForVanillaLocalAssignment,
             UnownedContainerRejectsUnrelatedAssignment,
+            DiagnosticTransitionsEmitInitialAndChangedStatesOnly,
+            DiagnosticTransitionRegistryIsBounded,
+            DiagnosticTransitionResetStartsANewSession,
+            ContainerDiagnosticDistinguishesMissingSceneFromMissingZdo,
+            OwnershipDiagnosticCapturesOwnerAndViewTransitions,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
             ResourcePlanMinimizesDistinctContainers,
             ResourcePlanMinimizesAcrossDifferentMaterials,
@@ -4072,6 +4077,76 @@ internal static class Program
             "negative stock must fail closed");
         Throws<ArgumentOutOfRangeException>(() => new FuelQuickGrabCandidate("Wood", 1, 0),
             "non-positive canonical stack maximum must fail closed");
+    }
+
+    private static void DiagnosticTransitionsEmitInitialAndChangedStatesOnly()
+    {
+        var tracker = new BoundedDiagnosticTransitionTracker(2);
+        Equal(DiagnosticEmissionDecision.Initial, tracker.Observe("chest", "loaded|ownerless"),
+            "first observation should be emitted");
+        Equal(DiagnosticEmissionDecision.SuppressDuplicate, tracker.Observe("chest", "loaded|ownerless"),
+            "identical HUD refreshes must not emit repeated logs");
+        Equal(DiagnosticEmissionDecision.Changed, tracker.Observe("chest", "loaded|owned"),
+            "an ownership transition should emit once");
+        Equal(DiagnosticEmissionDecision.SuppressDuplicate, tracker.Observe("chest", "loaded|owned"),
+            "the new stable state should deduplicate");
+    }
+
+    private static void DiagnosticTransitionRegistryIsBounded()
+    {
+        var tracker = new BoundedDiagnosticTransitionTracker(1);
+        Equal(DiagnosticEmissionDecision.Initial, tracker.Observe("first", "state"),
+            "the first stream should fit");
+        Equal(DiagnosticEmissionDecision.SuppressCapacity, tracker.Observe("second", "state"),
+            "a second stream must be rejected at the bound");
+        Equal(1, tracker.Count, "capacity rejection must not grow the registry");
+    }
+
+    private static void DiagnosticTransitionResetStartsANewSession()
+    {
+        var tracker = new BoundedDiagnosticTransitionTracker(1);
+        tracker.Observe("chest", "state");
+        tracker.Reset();
+        Equal(0, tracker.Count, "session reset must discard prior fingerprints");
+        Equal(DiagnosticEmissionDecision.Initial, tracker.Observe("chest", "state"),
+            "the same state in a new session should be reported as initial");
+    }
+
+    private static void ContainerDiagnosticDistinguishesMissingSceneFromMissingZdo()
+    {
+        var zdoRetained = new ContainerStreamDiagnosticState(
+            false, false, false, false, false, false, true, false, true,
+            0L, 73, 101U, true, false, 0);
+        var zdoAbsent = new ContainerStreamDiagnosticState(
+            false, false, false, false, false, false, false, false, false,
+            0L, 0, 0U, true, false, 0);
+        True(!string.Equals(zdoRetained.Fingerprint, zdoAbsent.Fingerprint, StringComparison.Ordinal),
+            "scene-object loss with a retained client ZDO must differ from complete client ZDO loss");
+
+        var tracker = new BoundedDiagnosticTransitionTracker(1);
+        Equal(DiagnosticEmissionDecision.Initial, tracker.Observe("source", zdoRetained.Fingerprint),
+            "retained-ZDO state should be observable");
+        Equal(DiagnosticEmissionDecision.Changed, tracker.Observe("source", zdoAbsent.Fingerprint),
+            "client ZDO disappearance should emit a distinct transition");
+    }
+
+    private static void OwnershipDiagnosticCapturesOwnerAndViewTransitions()
+    {
+        var ownerless = new OwnershipDiagnosticState(
+            0L, 73, 101U, false, false, false, true, true, true, true, true, true, true, true, true);
+        var localButViewsDisagree = new OwnershipDiagnosticState(
+            4242L, 74, 101U, true, false, false, true, true, true, true, true, true, true, true, true);
+        var localAndReady = new OwnershipDiagnosticState(
+            4242L, 74, 101U, true, true, true, true, true, true, true, true, true, true, true, true);
+        var tracker = new BoundedDiagnosticTransitionTracker(1);
+        Equal(DiagnosticEmissionDecision.Initial, tracker.Observe("source", ownerless.Fingerprint),
+            "captured ownerless state should be logged");
+        Equal(DiagnosticEmissionDecision.Changed, tracker.Observe("source", localButViewsDisagree.Fingerprint),
+            "owner assignment with stale ownership views should be distinct");
+        Equal(DiagnosticEmissionDecision.Changed, tracker.Observe("source", localAndReady.Fingerprint),
+            "ownership-view convergence should be distinct");
+        Equal(DiagnosticEmissionDecision.SuppressDuplicate, tracker.Observe("source", localAndReady.Fingerprint),
+            "stable ownership must not log every refresh frame");
     }
 
     private sealed class FakeDebitReceipt

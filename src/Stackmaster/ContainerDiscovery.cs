@@ -29,6 +29,7 @@ namespace Stackmaster
             Id = id;
             Container = container;
             NetworkView = networkView;
+            CapturedZdo = networkView != null && networkView.IsValid() ? networkView.GetZDO() : null;
             Snapshot = snapshot;
             ResourceInventory = resourceInventory;
             ResourceDataRevision = resourceDataRevision;
@@ -42,6 +43,7 @@ namespace Stackmaster
         internal string Id { get; }
         internal Container Container { get; }
         internal ZNetView NetworkView { get; }
+        internal ZDO CapturedZdo { get; }
         internal ContainerSnapshot Snapshot { get; }
         // Detached inventory decoded from the ZDO. Availability reads this copy and therefore
         // never claims ownership or mutates the live Container inventory.

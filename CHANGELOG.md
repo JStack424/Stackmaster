@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.3 (local diagnostic test candidate)
+
+Bounded local diagnostics for the two distance transitions observed in the 1.4.2 live test. This candidate intentionally changes no gameplay behavior.
+
+- Remembers up to 16 recently action-selected source-chest identities per session and logs only state transitions, sampled no more than twice per second.
+- Distinguishes a loaded scene `Container`, its `ZNetView`/captured ZDO reference, the scene ZDO, and the same `ZDOID` in the client `ZDOMan`, including owner/data revisions, distance, scope summary, and whether the source is included in current read-only totals.
+- Logs ownership batch start, changed owner/view/reference states, lifecycle path, elapsed time, and final outcome for each prepared source without weakening any ownership, revision, identity, reservation, rollback, or conservation check.
+- Clears all diagnostic session state on initialization, reconnect, disable, and shutdown; logging is fail-open and does not request ownership, invoke RPCs, mutate ZDOs, or touch live inventory.
+
 ## 1.4.2 (local test candidate)
 
 Live-load compatibility correction for the 1.4.1 test candidate. Automated verification is complete; live Valheim testing is still required before release.

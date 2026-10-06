@@ -37,6 +37,7 @@ namespace Stackmaster
             NearbyCraftingHudPatch.ResetCache();
             QuickGrabMaterialsBuildHint.Detach();
             NearbyHudFailOpen.ResetSession();
+            DistanceDiagnosticTracker.ResetSession();
         }
 
         internal static void DisconnectSession()
@@ -86,6 +87,7 @@ namespace Stackmaster
                 NearbyBuildHudPatch.ResetCache();
                 NearbyCraftingHudPatch.ResetCache();
                 NearbyHudFailOpen.ResetSession();
+                DistanceDiagnosticTracker.ResetSession();
                 InventoryIntegration.OnSessionRearmed();
 
                 if (!_lifecycle.TryRearm(
@@ -154,6 +156,7 @@ namespace Stackmaster
                 completedSafely &= TryCleanup("Crafting HUD cache cleanup", NearbyCraftingHudPatch.ResetCache);
                 completedSafely &= TryCleanup("Quick-grab build-menu hint cleanup", QuickGrabMaterialsBuildHint.Detach);
                 completedSafely &= TryCleanup("HUD diagnostic cache cleanup", NearbyHudFailOpen.ResetSession);
+                completedSafely &= TryCleanup("Distance diagnostic cleanup", DistanceDiagnosticTracker.ResetSession);
             }
             finally
             {
@@ -197,6 +200,7 @@ namespace Stackmaster
             NearbyCraftingHudPatch.ResetCache();
             QuickGrabMaterialsBuildHint.Detach();
             NearbyHudFailOpen.ResetSession();
+            DistanceDiagnosticTracker.ResetSession();
             ResourceActionContext.Reset();
             VanillaPlayerCraftContext.End();
             _lifecycle.ShutDown();

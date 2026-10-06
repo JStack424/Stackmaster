@@ -206,6 +206,44 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(signature, gate)
 
+    def test_distance_diagnostics_are_bounded_read_only_and_reset_with_lifecycle(self):
+        diagnostics = (PLUGIN_DIR / "DistanceDiagnostics.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "DiagnosticTransitionPolicy.cs").read_text(encoding="utf-8")
+        runtime = (PLUGIN_DIR / "RuntimeContext.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+
+        self.assertIn("MaximumTrackedChests = 16", diagnostics)
+        self.assertIn("ObservationIntervalSeconds = 0.5f", diagnostics)
+        self.assertIn("BoundedDiagnosticTransitionTracker", diagnostics)
+        self.assertIn("SuppressDuplicate", policy)
+        self.assertIn("SuppressCapacity", policy)
+        self.assertGreaterEqual(runtime.count("DistanceDiagnosticTracker.ResetSession"), 4)
+        self.assertIn("DistanceDiagnosticTracker.ObserveCapture(player, scope, containers)", nearby)
+        self.assertIn("OwnershipDistanceDiagnosticLog.LogActionSelection", nearby)
+        self.assertIn("OwnershipDistanceDiagnosticLog.LogTransition", ownership)
+        self.assertIn("OwnershipDistanceDiagnosticLog.LogResult", ownership)
+        for forbidden in (
+            "RequestOwn", "ClaimOwnership", "SetOwner(", "ForceSendZDO",
+            "InvokeRPC", "StackAll(", "RemoveItem(", "AddItem(", "MoveItemToThis",
+        ):
+            self.assertNotIn(forbidden, diagnostics)
+
+    def test_distance_diagnostics_use_only_startup_gated_zdo_introspection(self):
+        diagnostics = (PLUGIN_DIR / "DistanceDiagnostics.cs").read_text(encoding="utf-8")
+        gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")
+        self.assertIn("ZDOMan.instance.GetZDO(tracked.ZdoId)", diagnostics)
+        self.assertIn("ZDOMan.GetSessionID()", diagnostics)
+        self.assertIn('RequireMethod(failures, typeof(ZDOMan), "GetZDO", typeof(ZDOID))', gate)
+        self.assertIn('RequireStaticMethod(failures, typeof(ZDOMan), "GetSessionID")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZNetView), "GetZDO")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZNetView), "HasOwner")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZNetView), "IsOwner")', gate)
+        self.assertIn('RequireMethod(failures, typeof(Container), "IsOwner")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZDO), "GetOwner")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZDO), "get_OwnerRevision")', gate)
+        self.assertIn('RequireMethod(failures, typeof(ZDO), "get_DataRevision")', gate)
+
     def test_mutation_uses_verified_game_primitive_and_never_claims_blindly(self):
         self.assertIn("MoveItemToThis", self.gameplay)
         self.assertIn("container.StackAll()", self.gameplay)
