@@ -236,6 +236,10 @@ class ProjectBoundaryTests(unittest.TestCase):
         checklist = (ROOT / "docs" / "TEST-CHECKLIST-1.4.3.md").read_text(encoding="utf-8")
 
         self.assertIn("DiagnosticFailureBoundary.TryRun", diagnostics)
+        self.assertIn(
+            "try\n            {\n                if (Tracked.Count == 0 || player == null || Time.realtimeSinceStartup",
+            diagnostics,
+        )
         self.assertIn("catch (Exception exception)", policy)
         self.assertGreaterEqual(ownership.count("OwnershipDistanceDiagnosticLog.LogResult"), 7)
         for final_result in (

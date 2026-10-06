@@ -66,10 +66,10 @@ namespace Stackmaster
             StorageScope scope,
             IReadOnlyList<ContainerHandle> includedSources)
         {
-            if (Tracked.Count == 0 || player == null || Time.realtimeSinceStartup < _nextObservationTime) return;
-            _nextObservationTime = Time.realtimeSinceStartup + ObservationIntervalSeconds;
             try
             {
+                if (Tracked.Count == 0 || player == null || Time.realtimeSinceStartup < _nextObservationTime) return;
+                _nextObservationTime = Time.realtimeSinceStartup + ObservationIntervalSeconds;
                 var included = (includedSources ?? Array.Empty<ContainerHandle>())
                     .Where(handle => handle != null)
                     .GroupBy(handle => handle.Id, StringComparer.Ordinal)
