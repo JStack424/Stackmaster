@@ -232,6 +232,7 @@ class ProjectBoundaryTests(unittest.TestCase):
     def test_ownership_diagnostics_fail_open_and_cover_every_prepared_source(self):
         diagnostics = (PLUGIN_DIR / "DistanceDiagnostics.cs").read_text(encoding="utf-8")
         policy = (ROOT / "src" / "Stackmaster.Core" / "DiagnosticTransitionPolicy.cs").read_text(encoding="utf-8")
+        discovery = (PLUGIN_DIR / "ContainerDiscovery.cs").read_text(encoding="utf-8")
         ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
         checklist = (ROOT / "docs" / "TEST-CHECKLIST-1.4.3.md").read_text(encoding="utf-8")
 
@@ -241,6 +242,16 @@ class ProjectBoundaryTests(unittest.TestCase):
             diagnostics,
         )
         self.assertIn("catch (Exception exception)", policy)
+        self.assertIn("ZDO capturedZdo", discovery)
+        self.assertIn("CapturedZdo = capturedZdo;", discovery)
+        self.assertNotIn("CapturedZdo = networkView", discovery)
+        ownerless_refresh = ownership[
+            ownership.index("var decision = UnownedAssignmentPolicy.Decide"):
+            ownership.index("if (_grantReceived")
+        ]
+        self.assertIn("var continuedLocally =", ownerless_refresh)
+        self.assertEqual(ownerless_refresh.count("handle.NetworkView.IsOwner()"), 1)
+        self.assertEqual(ownerless_refresh.count("handle.Container.IsOwner()"), 1)
         self.assertGreaterEqual(ownership.count("OwnershipDistanceDiagnosticLog.LogResult"), 7)
         for final_result in (
             "previous-ownership-response-still-pending",

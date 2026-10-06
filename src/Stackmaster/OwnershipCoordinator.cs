@@ -173,8 +173,9 @@ namespace Stackmaster
                     zdo.OwnerRevision,
                     _requestSession);
                 if (decision == UnownedAssignmentDecision.Wait) return;
-                if (decision == UnownedAssignmentDecision.ContinueLocally &&
-                    handle.NetworkView.IsOwner() && handle.Container.IsOwner())
+                var continuedLocally = decision == UnownedAssignmentDecision.ContinueLocally &&
+                    handle.NetworkView.IsOwner() && handle.Container.IsOwner();
+                if (continuedLocally)
                 {
                     SuccessfulContainerIds.Add(handle.Id);
                     if (RuntimeContext.Plugin != null)
@@ -197,8 +198,7 @@ namespace Stackmaster
                     handle,
                     _diagnosticStartedAt,
                     _waitingLifecyclePath,
-                    decision == UnownedAssignmentDecision.ContinueLocally &&
-                        handle.NetworkView.IsOwner() && handle.Container.IsOwner()
+                    continuedLocally
                         ? "ownerless-assignment-continued-locally"
                         : "ownerless-assignment-rejected");
                 RemovePendingHandle(handle);

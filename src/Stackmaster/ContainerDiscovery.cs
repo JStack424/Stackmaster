@@ -17,6 +17,7 @@ namespace Stackmaster
             string id,
             Container container,
             ZNetView networkView,
+            ZDO capturedZdo,
             ContainerSnapshot snapshot,
             Inventory resourceInventory,
             uint resourceDataRevision,
@@ -29,7 +30,9 @@ namespace Stackmaster
             Id = id;
             Container = container;
             NetworkView = networkView;
-            CapturedZdo = networkView != null && networkView.IsValid() ? networkView.GetZDO() : null;
+            // Reuse discovery's already-resolved ZDO. Diagnostic capture must not introduce
+            // another runtime call outside its fail-open logging boundary.
+            CapturedZdo = capturedZdo;
             Snapshot = snapshot;
             ResourceInventory = resourceInventory;
             ResourceDataRevision = resourceDataRevision;
@@ -353,6 +356,7 @@ namespace Stackmaster
                 id,
                 container,
                 view,
+                zdo,
                 snapshot,
                 resourceReadable ? resourceInventory : null,
                 resourceDataRevision,
