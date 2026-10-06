@@ -54,7 +54,7 @@ namespace Stackmaster
             _pending = ordered.ToDictionary(handle => handle.Container, handle => handle);
             _requestOrder = new Queue<Container>();
             _requestSession = ZDOMan.instance != null ? ZDOMan.GetSessionID() : 0L;
-            _diagnosticStartedAt = Time.realtimeSinceStartup;
+            _diagnosticStartedAt = OwnershipDistanceDiagnosticLog.CurrentTimeOrZero();
             _diagnosticTransitions = new BoundedDiagnosticTransitionTracker(Math.Max(1, ordered.Length));
             SuccessfulContainerIds = new HashSet<string>(StringComparer.Ordinal);
             OwnerRejectedContainerIds = new HashSet<string>(StringComparer.Ordinal);
@@ -67,6 +67,11 @@ namespace Stackmaster
                     OwnershipLeaseManager.HasPotentialAcquisition(handle.Id))
                 {
                     FailedContainerIds[handle.Id] = "previous ownership response is still pending";
+                    OwnershipDistanceDiagnosticLog.LogResult(
+                        handle,
+                        _diagnosticStartedAt,
+                        OwnershipDistanceDiagnosticLog.DescribeLifecycleOrFallback(handle, "+previous-pending"),
+                        "previous-ownership-response-still-pending");
                     RemovePendingHandle(handle);
                 }
                 else if (!handle.NetworkView.HasOwner())
@@ -79,6 +84,11 @@ namespace Stackmaster
                 else if (handle.NetworkView.IsOwner() && handle.Container.IsOwner())
                 {
                     SuccessfulContainerIds.Add(handle.Id);
+                    OwnershipDistanceDiagnosticLog.LogResult(
+                        handle,
+                        _diagnosticStartedAt,
+                        OwnershipDistanceDiagnosticLog.DescribeLifecycleOrFallback(handle),
+                        "already-owned-locally");
                     RemovePendingHandle(handle);
                 }
                 else
@@ -223,16 +233,6 @@ namespace Stackmaster
             // not erase an in-flight request merely because its scene Container unloaded.
             TimedOutAcquisitionHandle = _waitingForOwnerAssignment ? null : _waitingHandle;
             TimedOutRequestContainer = _waitingForOwnerAssignment || _grantReceived ? null : _waitingFor;
-            if (_waitingHandle != null)
-            {
-                OwnershipDistanceDiagnosticLog.LogResult(
-                    _waitingHandle,
-                    _diagnosticStartedAt,
-                    _waitingLifecyclePath,
-                    _waitingForOwnerAssignment
-                        ? "ownerless-assignment-timeout"
-                        : _grantReceived ? "owner-response-granted-without-matching-transition-timeout" : "owner-response-timeout");
-            }
             foreach (var handle in _pending.Values)
             {
                 var isActiveRequest = ReferenceEquals(handle, _waitingHandle);
@@ -246,6 +246,22 @@ namespace Stackmaster
                         : timeoutKind == OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest
                             ? BatchAbortedBeforeRequestFailure
                             : "unknown ownership timeout classification";
+                var result = timeoutKind == OwnershipPreparationTimeoutKind.VanillaOwnerAssignment
+                    ? "ownerless-assignment-timeout"
+                    : timeoutKind == OwnershipPreparationTimeoutKind.OwnerResponse
+                        ? _grantReceived
+                            ? "owner-response-granted-without-matching-transition-timeout"
+                            : "owner-response-timeout"
+                        : timeoutKind == OwnershipPreparationTimeoutKind.BatchAbortedBeforeRequest
+                            ? "batch-aborted-before-request-timeout"
+                            : "unknown-ownership-timeout-classification";
+                OwnershipDistanceDiagnosticLog.LogResult(
+                    handle,
+                    _diagnosticStartedAt,
+                    isActiveRequest
+                        ? _waitingLifecyclePath
+                        : OwnershipDistanceDiagnosticLog.DescribeLifecycleOrFallback(handle, "+queued-timeout"),
+                    result);
             }
             _pending.Clear();
             _requestOrder.Clear();
@@ -264,6 +280,11 @@ namespace Stackmaster
             foreach (var handle in _pending.Values)
             {
                 FailedContainerIds[handle.Id] = reason;
+                OwnershipDistanceDiagnosticLog.LogResult(
+                    handle,
+                    _diagnosticStartedAt,
+                    OwnershipDistanceDiagnosticLog.DescribeLifecycleOrFallback(handle, "+queued-abort"),
+                    "batch-aborted-before-request");
             }
             _pending.Clear();
             _requestOrder.Clear();
@@ -285,8 +306,9 @@ namespace Stackmaster
                     _waitingFor = container;
                     _waitingHandle = handle;
                     _waitingForOwnerAssignment = !handle.NetworkView.HasOwner();
-                    _waitingLifecyclePath = OwnershipLeaseManager.DescribeLifecycle(handle.Id) +
-                        (_waitingForOwnerAssignment ? "+ownerless-wait" : "+owner-rpc");
+                    _waitingLifecyclePath = OwnershipDistanceDiagnosticLog.DescribeLifecycleOrFallback(
+                        handle,
+                        _waitingForOwnerAssignment ? "+ownerless-wait" : "+owner-rpc");
                     OwnershipDistanceDiagnosticLog.LogTransition(
                         handle,
                         _diagnosticStartedAt,
@@ -308,6 +330,11 @@ namespace Stackmaster
                     OwnershipCoordinator.SuppressLateResponse(container);
                     OwnershipLeaseManager.WatchPotentialAcquisition(handle);
                     FailedContainerIds[handle.Id] = "ownership request failed: " + exception.GetType().Name;
+                    OwnershipDistanceDiagnosticLog.LogResult(
+                        handle,
+                        _diagnosticStartedAt,
+                        _waitingLifecyclePath,
+                        "ownership-request-exception-" + exception.GetType().Name);
                     RemovePendingHandle(handle);
                     ClearWaiting();
                     CancelRemaining("ownership batch cancelled after a required request failed");

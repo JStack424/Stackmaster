@@ -12,6 +12,24 @@ namespace Stackmaster.Core
         SuppressCapacity
     }
 
+    public static class DiagnosticFailureBoundary
+    {
+        public static bool TryRun(Action action, out Exception? failure)
+        {
+            try
+            {
+                action?.Invoke();
+                failure = null;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+                return false;
+            }
+        }
+    }
+
     public sealed class BoundedDiagnosticTransitionTracker
     {
         private readonly int _maximumStreams;

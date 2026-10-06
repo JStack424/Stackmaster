@@ -229,6 +229,38 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, diagnostics)
 
+    def test_ownership_diagnostics_fail_open_and_cover_every_prepared_source(self):
+        diagnostics = (PLUGIN_DIR / "DistanceDiagnostics.cs").read_text(encoding="utf-8")
+        policy = (ROOT / "src" / "Stackmaster.Core" / "DiagnosticTransitionPolicy.cs").read_text(encoding="utf-8")
+        ownership = (PLUGIN_DIR / "OwnershipCoordinator.cs").read_text(encoding="utf-8")
+        checklist = (ROOT / "docs" / "TEST-CHECKLIST-1.4.3.md").read_text(encoding="utf-8")
+
+        self.assertIn("DiagnosticFailureBoundary.TryRun", diagnostics)
+        self.assertIn("catch (Exception exception)", policy)
+        self.assertGreaterEqual(ownership.count("OwnershipDistanceDiagnosticLog.LogResult"), 7)
+        for final_result in (
+            "previous-ownership-response-still-pending",
+            "already-owned-locally",
+            "owner-response-rejected",
+            "ownerless-assignment-timeout",
+            "batch-aborted-before-request",
+            "ownership-request-exception-",
+        ):
+            self.assertIn(final_result, ownership)
+        for exact_log_marker in (
+            "Nearby-resource distance diagnostic transition:",
+            "Nearby-resource ownership diagnostic:",
+            "phase=action-selection",
+            "managerZdo=True",
+            "sourceIncluded=False",
+        ):
+            self.assertIn(exact_log_marker, checklist)
+        for stale_marker in (
+            "[distance-diagnostic]", "[ownership-diagnostic]", "phase=selected",
+            "managerZdoPresent=", "included=false",
+        ):
+            self.assertNotIn(stale_marker, checklist)
+
     def test_distance_diagnostics_use_only_startup_gated_zdo_introspection(self):
         diagnostics = (PLUGIN_DIR / "DistanceDiagnostics.cs").read_text(encoding="utf-8")
         gate = (PLUGIN_DIR / "CompatibilityGate.cs").read_text(encoding="utf-8")

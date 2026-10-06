@@ -189,6 +189,7 @@ internal static class Program
             DiagnosticTransitionResetStartsANewSession,
             ContainerDiagnosticDistinguishesMissingSceneFromMissingZdo,
             OwnershipDiagnosticCapturesOwnerAndViewTransitions,
+            DiagnosticFailureBoundaryCannotAlterCallerOutcome,
             ResourcePlanUsesPlayerThenDeterministicContainerOrder,
             ResourcePlanMinimizesDistinctContainers,
             ResourcePlanMinimizesAcrossDifferentMaterials,
@@ -4147,6 +4148,28 @@ internal static class Program
             "ownership-view convergence should be distinct");
         Equal(DiagnosticEmissionDecision.SuppressDuplicate, tracker.Observe("source", localAndReady.Fingerprint),
             "stable ownership must not log every refresh frame");
+    }
+
+    private static void DiagnosticFailureBoundaryCannotAlterCallerOutcome()
+    {
+        var transactionOutcome = "unchanged";
+        Exception? failure;
+        var completed = DiagnosticFailureBoundary.TryRun(
+            () => throw new InvalidOperationException("injected diagnostic failure"),
+            out failure);
+
+        True(!completed, "an injected diagnostic exception should be contained");
+        True(failure is InvalidOperationException, "the contained failure should remain locally reportable");
+        Equal("unchanged", transactionOutcome,
+            "a diagnostic failure must not alter the caller's transaction outcome");
+
+        completed = DiagnosticFailureBoundary.TryRun(
+            () => transactionOutcome = "diagnostic-completed",
+            out failure);
+        True(completed, "a successful diagnostic should complete normally");
+        True(failure == null, "a successful diagnostic should not report a failure");
+        Equal("diagnostic-completed", transactionOutcome,
+            "the boundary should execute a successful diagnostic exactly once");
     }
 
     private sealed class FakeDebitReceipt

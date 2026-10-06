@@ -232,30 +232,49 @@ namespace Stackmaster
             IEnumerable<ContainerHandle> handles)
         {
             if (handles == null) return;
-            DistanceDiagnosticTracker.TrackRequiredHandles(handles);
-            foreach (var handle in handles.Where(item => item != null))
+            RunFailOpen(() =>
             {
-                LogSnapshot(
-                    "action-selection",
-                    handle,
-                    player,
-                    scope,
-                    0f,
-                    OwnershipLeaseManager.DescribeLifecycle(handle.Id),
-                    null,
-                    true,
-                    null);
-            }
+                DistanceDiagnosticTracker.TrackRequiredHandles(handles);
+                foreach (var handle in handles.Where(item => item != null))
+                {
+                    LogSnapshot(
+                        "action-selection",
+                        handle,
+                        player,
+                        scope,
+                        0f,
+                        OwnershipLeaseManager.DescribeLifecycle(handle.Id),
+                        null,
+                        true,
+                        null);
+                }
+            });
         }
 
         internal static void LogImmediateResult(ContainerHandle handle, string reason)
         {
             if (handle == null) return;
-            LogResult(
+            RunFailOpen(() => LogResult(
                 handle,
                 Time.realtimeSinceStartup,
                 OwnershipLeaseManager.DescribeLifecycle(handle.Id),
-                reason);
+                reason));
+        }
+
+        internal static float CurrentTimeOrZero()
+        {
+            var current = 0f;
+            RunFailOpen(() => current = Time.realtimeSinceStartup);
+            return current;
+        }
+
+        internal static string DescribeLifecycleOrFallback(ContainerHandle handle, string suffix = "")
+        {
+            var description = "diagnostic-unavailable" + (suffix ?? string.Empty);
+            if (handle == null) return description;
+            RunFailOpen(() => description = OwnershipLeaseManager.DescribeLifecycle(handle.Id) +
+                (suffix ?? string.Empty));
+            return description;
         }
 
         internal static void LogTransition(
@@ -266,15 +285,18 @@ namespace Stackmaster
             string phase)
         {
             if (handle == null || transitions == null) return;
-            var state = Capture(handle);
-            var decision = transitions.Observe(handle.Id, state.Fingerprint);
-            if (decision == DiagnosticEmissionDecision.SuppressDuplicate ||
-                decision == DiagnosticEmissionDecision.SuppressCapacity)
+            RunFailOpen(() =>
             {
-                return;
-            }
-            LogSnapshot(phase, handle, Player.m_localPlayer, null,
-                Time.realtimeSinceStartup - startedAt, lifecyclePath, state, false, decision.ToString());
+                var state = Capture(handle);
+                var decision = transitions.Observe(handle.Id, state.Fingerprint);
+                if (decision == DiagnosticEmissionDecision.SuppressDuplicate ||
+                    decision == DiagnosticEmissionDecision.SuppressCapacity)
+                {
+                    return;
+                }
+                LogSnapshot(phase, handle, Player.m_localPlayer, null,
+                    Time.realtimeSinceStartup - startedAt, lifecyclePath, state, false, decision.ToString());
+            });
         }
 
         internal static void LogResult(
@@ -284,8 +306,8 @@ namespace Stackmaster
             string result)
         {
             if (handle == null) return;
-            LogSnapshot("final", handle, Player.m_localPlayer, null,
-                Time.realtimeSinceStartup - startedAt, lifecyclePath, Capture(handle), false, result);
+            RunFailOpen(() => LogSnapshot("final", handle, Player.m_localPlayer, null,
+                Time.realtimeSinceStartup - startedAt, lifecyclePath, Capture(handle), false, result));
         }
 
         private static OwnershipDiagnosticState Capture(ContainerHandle handle)
@@ -313,6 +335,22 @@ namespace Stackmaster
                 currentZdo != null && string.Equals(currentZdo.m_uid.ToString(), handle.Id, StringComparison.Ordinal),
                 currentZdo != null && handle.CapturedZdo != null && ReferenceEquals(currentZdo, handle.CapturedZdo),
                 sceneZdo != null && managerZdo != null && ReferenceEquals(sceneZdo, managerZdo));
+        }
+
+        private static void RunFailOpen(Action action)
+        {
+            Exception failure;
+            if (DiagnosticFailureBoundary.TryRun(action, out failure)) return;
+            try
+            {
+                RuntimeContext.Plugin?.Log.LogWarning(
+                    "Ownership diagnostics failed open without changing the action: " +
+                    failure.GetType().Name + ".");
+            }
+            catch
+            {
+                // Diagnostics must never alter ownership or transaction behavior.
+            }
         }
 
         private static void LogSnapshot(
