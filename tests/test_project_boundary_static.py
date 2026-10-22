@@ -229,6 +229,50 @@ class ProjectBoundaryTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, diagnostics)
 
+    def test_mesh_resource_distance_limit_partitions_and_classifies_too_far(self):
+        policy = (ROOT / "src" / "Stackmaster.Core" / "ResourceDistancePolicy.cs").read_text(encoding="utf-8")
+        nearby = (PLUGIN_DIR / "NearbyResources.cs").read_text(encoding="utf-8")
+        crafting = (PLUGIN_DIR / "CraftingPreflightAction.cs").read_text(encoding="utf-8")
+        quick_grab = (PLUGIN_DIR / "QuickGrabMaterialsAction.cs").read_text(encoding="utf-8")
+        fuel = (PLUGIN_DIR / "FuelQuickGrabAction.cs").read_text(encoding="utf-8")
+        checklist = (ROOT / "docs" / "TEST-CHECKLIST-1.4.4.md").read_text(encoding="utf-8")
+
+        # The supported range is one fixed, mesh-only, fail-closed rule in pure policy.
+        self.assertIn("MaximumMeshResourceDistance = 100.0", policy)
+        self.assertIn("scopeKind != StorageScopeKind.WorkbenchMesh", policy)
+        self.assertIn("distance <= MaximumMeshResourceDistance", policy)
+
+        # Capture partitions far stock into evidence-only sets that no planner can select.
+        self.assertIn("ResourceDistancePolicy.IsWithinLimit(scope.Kind, distance)", nearby)
+        self.assertIn("tooFarStacks, tooFarDetachedStacks", nearby)
+        self.assertIn("internal IReadOnlyList<ResourceStack> TooFarStacks { get; }", nearby)
+        self.assertIn("WouldBeSatisfiedWithTooFarStock", nearby)
+        self.assertIn("HasTooFarRequiredItem", nearby)
+        self.assertIn(
+            "\"you're too far away from the required resources (over 100 m)\"",
+            nearby,
+        )
+
+        # The limit is re-measured at validation and reservation time, not only at capture.
+        self.assertGreaterEqual(nearby.count("ResourceDistancePolicy.IsWithinLimit("), 3)
+        self.assertIn("failure = TooFarFailure;", nearby)
+
+        # Every action surface classifies a far-only cost with the same refusal.
+        self.assertIn("NearbyResourceService.IsTooFarFailure(failure)", crafting)
+        self.assertIn(
+            "Stackmaster: You're too far away from the required resources (over 100 m); nothing was consumed.",
+            crafting,
+        )
+        self.assertIn("StableEligibleStacks(capture.TooFarStacks, capture.TooFarDetachedStacks, allowedIdentities)", quick_grab)
+        self.assertIn("NearbyResourceService.IsTooFarFailure(failure)", quick_grab)
+        self.assertIn("TooFarStacks(candidate, capture)", fuel)
+        self.assertIn("NearbyResourceService.TooFarFailure", fuel)
+
+        # The fix must never call ownership claiming, and the live checklist states the rule.
+        self.assertNotIn("ClaimOwnership(", self.gameplay)
+        self.assertIn("100 metres", checklist)
+        self.assertIn("Rollback version:** Stackmaster **1.3.5**", checklist)
+
     def test_ownership_diagnostics_fail_open_and_cover_every_prepared_source(self):
         diagnostics = (PLUGIN_DIR / "DistanceDiagnostics.cs").read_text(encoding="utf-8")
         policy = (ROOT / "src" / "Stackmaster.Core" / "DiagnosticTransitionPolicy.cs").read_text(encoding="utf-8")

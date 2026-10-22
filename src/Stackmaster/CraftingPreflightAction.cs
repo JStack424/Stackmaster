@@ -146,6 +146,14 @@ namespace Stackmaster
                     out plan,
                     out failure))
             {
+                if (NearbyResourceService.IsTooFarFailure(failure))
+                {
+                    // The exact cost exists only beyond the supported resource distance.
+                    // Refuse immediately instead of letting vanilla report a plain shortage
+                    // or entering an ownership wait that cannot succeed reliably.
+                    Show("Stackmaster: You're too far away from the required resources (over 100 m); nothing was consumed.");
+                    return false;
+                }
                 return true;
             }
 

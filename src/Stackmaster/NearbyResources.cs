@@ -299,18 +299,29 @@ namespace Stackmaster
             StorageScope scope,
             IReadOnlyList<ContainerHandle> containers,
             IReadOnlyList<ResourceStack> stacks,
-            IReadOnlyDictionary<string, RuntimeResourceStack> runtimeStacks)
+            IReadOnlyDictionary<string, RuntimeResourceStack> runtimeStacks,
+            IReadOnlyList<ResourceStack> tooFarStacks = null,
+            IReadOnlyDictionary<string, RuntimeResourceStack> tooFarDetachedStacks = null)
         {
             Scope = scope;
             Containers = containers;
             Stacks = stacks;
             RuntimeStacks = runtimeStacks;
+            TooFarStacks = tooFarStacks ?? Array.Empty<ResourceStack>();
+            TooFarDetachedStacks = tooFarDetachedStacks ??
+                new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
         }
 
         internal StorageScope Scope { get; }
         internal IReadOnlyList<ContainerHandle> Containers { get; }
         internal IReadOnlyList<ResourceStack> Stacks { get; }
         internal IReadOnlyDictionary<string, RuntimeResourceStack> RuntimeStacks { get; }
+        // Read-only evidence about readable in-mesh chests excluded solely by the supported
+        // distance limit. These stacks are never in Containers, Stacks, or RuntimeStacks, so
+        // no planner, reservation, or mutation path can select them; they exist only so an
+        // action whose exact cost is available solely beyond the limit can say so.
+        internal IReadOnlyList<ResourceStack> TooFarStacks { get; }
+        internal IReadOnlyDictionary<string, RuntimeResourceStack> TooFarDetachedStacks { get; }
     }
 
     internal sealed class CraftingResourcePlan
@@ -408,6 +419,27 @@ namespace Stackmaster
     internal static class NearbyResourceService
     {
         private const string PlayerInventoryId = "player";
+        // Failure fragment for wrapped action messages: callers add their own prefix and
+        // cancellation suffix. The wording matches the supported-range rule exactly so a
+        // player can tell a distance refusal from an ordinary shortage at a glance.
+        internal const string TooFarFailure =
+            "you're too far away from the required resources (over 100 m)";
+
+        internal static bool IsTooFarFailure(string failure)
+            => string.Equals(failure, TooFarFailure, StringComparison.Ordinal);
+
+        // True only when the exact complete cost cannot be planned from eligible stock but
+        // becomes satisfiable once the distance-excluded read-only stock is counted. This
+        // never exposes a plan over excluded stock; it only classifies the refusal.
+        internal static bool WouldBeSatisfiedWithTooFarStock(
+            NearbyResourceCapture capture,
+            IEnumerable<ResourceRequirement> requirements)
+        {
+            if (capture == null || capture.TooFarStacks.Count == 0 || requirements == null) return false;
+            var combined = Planner.Plan(requirements, capture.Stacks.Concat(capture.TooFarStacks));
+            return combined.IsSatisfiable && combined.PlannedUnits == combined.RequiredUnits;
+        }
+
         private static readonly ResourceWithdrawalPlanner Planner = new ResourceWithdrawalPlanner();
         private static readonly Dictionary<string, PendingReservationRelease> PendingReservationReleases =
             new Dictionary<string, PendingReservationRelease>(StringComparer.Ordinal);
@@ -656,7 +688,9 @@ namespace Stackmaster
                 selected = FindFirstRequiredItem(player, recipe, qualityLevel, craftMultiplier, true, out amount, out extraAmount);
                 if (selected == null || selected.m_shared == null || amount <= 0)
                 {
-                    failure = "fresh nearby stock no longer satisfies the selected ingredient";
+                    failure = HasTooFarRequiredItem(player, recipe, qualityLevel, craftMultiplier, Capture(player, true, true))
+                        ? TooFarFailure
+                        : "fresh nearby stock no longer satisfies the selected ingredient";
                     return false;
                 }
                 requirements = new[] { new ResourceRequirement(selected.m_shared.m_name, amount, selected.m_quality) };
@@ -671,7 +705,9 @@ namespace Stackmaster
             }
             if (!plan.IsSatisfiable || plan.PlannedUnits != plan.RequiredUnits)
             {
-                failure = "fresh nearby stock no longer satisfies the exact complete cost";
+                failure = WouldBeSatisfiedWithTooFarStock(capture, requirements)
+                    ? TooFarFailure
+                    : "fresh nearby stock no longer satisfies the exact complete cost";
                 return false;
             }
 
@@ -964,6 +1000,39 @@ namespace Stackmaster
             return null;
         }
 
+        // Mirrors FindFirstRequiredItem's station/quality search over eligible plus
+        // distance-excluded stock solely to classify a refusal. Because the eligible-only
+        // search already failed, a combined success means far stock made the difference.
+        // It never selects a far stack for the craft itself.
+        private static bool HasTooFarRequiredItem(
+            Player player,
+            Recipe recipe,
+            int qualityLevel,
+            int craftMultiplier,
+            NearbyResourceCapture capture)
+        {
+            if (player == null || recipe == null || craftMultiplier <= 0 ||
+                capture == null || capture.TooFarStacks.Count == 0) return false;
+            var combined = capture.Stacks.Concat(capture.TooFarStacks).ToArray();
+            var station = player.GetCurrentCraftingStation();
+            foreach (var requirement in recipe.m_resources ?? Array.Empty<Piece.Requirement>())
+            {
+                if (!AppliesAtStation(requirement, station) || requirement.m_resItem == null) continue;
+                var required = checked(requirement.GetAmount(qualityLevel) * craftMultiplier);
+                if (required <= 0) continue;
+                var name = requirement.m_resItem.m_itemData.m_shared.m_name;
+                var maxQuality = requirement.m_resItem.m_itemData.m_shared.m_maxQuality;
+                for (var quality = 1; quality <= maxQuality; quality++)
+                {
+                    var plan = Planner.Plan(
+                        new[] { new ResourceRequirement(name, required, quality) },
+                        combined);
+                    if (plan.IsSatisfiable) return true;
+                }
+            }
+            return false;
+        }
+
         private static bool TryBeginTransaction(
             Player player,
             IEnumerable<ResourceRequirement> requirements,
@@ -992,7 +1061,9 @@ namespace Stackmaster
             }
             if (!readOnlyPlan.IsSatisfiable || readOnlyPlan.PlannedUnits != readOnlyPlan.RequiredUnits)
             {
-                failure = "fresh nearby stock no longer satisfies the exact complete cost";
+                failure = WouldBeSatisfiedWithTooFarStock(readOnlyCapture, normalizedRequirements)
+                    ? TooFarFailure
+                    : "fresh nearby stock no longer satisfies the exact complete cost";
                 return false;
             }
 
@@ -1318,11 +1389,28 @@ namespace Stackmaster
             // Resource accounting must inspect the complete active scope. Returning a partial
             // workbench mesh would advertise materials that an exact transaction cannot honor.
             var discovery = ContainerDiscovery.Discover(player, null, catalog, scope, true, true);
-            var containers = discovery.Containers
+            var discovered = discovery.Containers
                 .Where(handle => handle != null && handle.ResourceReadable &&
                                  handle.ResourceInventory != null &&
                                  handle.NetworkView != null && handle.NetworkView.IsValid())
                 .ToList();
+            // Supported-range partition: inside a Workbench mesh, a readable chest beyond
+            // the fixed resource distance contributes nothing and can never be selected.
+            // Its detached stock is kept apart solely to classify a too-far refusal.
+            var containers = new List<ContainerHandle>();
+            var tooFarContainers = new List<ContainerHandle>();
+            foreach (var handle in discovered)
+            {
+                var distance = handle.Snapshot != null ? handle.Snapshot.Distance : double.NaN;
+                if (ResourceDistancePolicy.IsWithinLimit(scope.Kind, distance))
+                {
+                    containers.Add(handle);
+                }
+                else
+                {
+                    tooFarContainers.Add(handle);
+                }
+            }
             var resourceStacks = new List<ResourceStack>();
             var runtimeStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
             AddInventory(resourceStacks, runtimeStacks, PlayerInventoryId, player.GetInventory(), null, 0, matchWorldLevel);
@@ -1331,8 +1419,17 @@ namespace Stackmaster
                 var handle = containers[index];
                 AddInventory(resourceStacks, runtimeStacks, handle.Id, handle.ResourceInventory, handle, index + 1, matchWorldLevel);
             }
+            var tooFarStacks = new List<ResourceStack>();
+            var tooFarDetachedStacks = new Dictionary<string, RuntimeResourceStack>(StringComparer.Ordinal);
+            for (var index = 0; index < tooFarContainers.Count; index++)
+            {
+                var handle = tooFarContainers[index];
+                AddInventory(tooFarStacks, tooFarDetachedStacks, handle.Id, handle.ResourceInventory, handle,
+                    containers.Count + index + 1, matchWorldLevel);
+            }
 
-            var capture = new NearbyResourceCapture(scope, containers, resourceStacks, runtimeStacks);
+            var capture = new NearbyResourceCapture(
+                scope, containers, resourceStacks, runtimeStacks, tooFarStacks, tooFarDetachedStacks);
             // Observe only previously action-selected source identities. The tracker is bounded,
             // transition-only, read-only, and fail-open so HUD behavior cannot depend on logging.
             DistanceDiagnosticTracker.ObserveCapture(player, scope, containers);
@@ -1437,6 +1534,18 @@ namespace Stackmaster
             if (preflightFailure != ReadOnlyContainerPreflightFailure.None)
             {
                 failure = ReadOnlyContainerPreflightPolicy.FailureMessage(preflightFailure);
+                return false;
+            }
+
+            // The supported-range rule is re-measured from the live positions at every
+            // validation, so a chest beyond the limit can never ride an earlier in-range
+            // snapshot into a transaction.
+            if (scope != null && hasContainer &&
+                !ResourceDistancePolicy.IsWithinLimit(
+                    scope.Kind,
+                    Vector3.Distance(player.transform.position, handle.Container.transform.position)))
+            {
+                failure = TooFarFailure;
                 return false;
             }
 
@@ -1893,6 +2002,14 @@ namespace Stackmaster
                     failure = "nearby container ownership or identity changed before consumption";
                     return false;
                 }
+                if (transactionScope != null &&
+                    !ResourceDistancePolicy.IsWithinLimit(
+                        transactionScope.Kind,
+                        Vector3.Distance(player.transform.position, handle.Container.transform.position)))
+                {
+                    failure = TooFarFailure;
+                    return false;
+                }
                 if (handle.Container.IsInUse() || (handle.Container.m_wagon != null && handle.Container.m_wagon.InUse()))
                 {
                     failure = NearbyResourceOwnership.InUseMessage;
@@ -2066,6 +2183,9 @@ namespace Stackmaster
                    zdo.DataRevision == reservation.DataRevision &&
                    zdo.OwnerRevision == reservation.OwnerRevision &&
                    transactionScope != null && transactionScope.Contains(handle.Container.transform.position) &&
+                   ResourceDistancePolicy.IsWithinLimit(
+                       transactionScope.Kind,
+                       Vector3.Distance(player.transform.position, handle.Container.transform.position)) &&
                    ContainerDiscovery.CheckAccess(player, handle.Container);
         }
 

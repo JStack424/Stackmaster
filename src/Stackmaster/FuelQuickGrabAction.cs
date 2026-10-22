@@ -496,13 +496,22 @@ namespace Stackmaster
         }
 
         private static ResourceStack[] EligibleStacks(FuelQuickGrabItem candidate, NearbyResourceCapture capture)
-            => capture.Stacks.Where(stack =>
+            => CandidateStacks(candidate, capture.Stacks, capture.RuntimeStacks);
+
+        private static ResourceStack[] TooFarStacks(FuelQuickGrabItem candidate, NearbyResourceCapture capture)
+            => CandidateStacks(candidate, capture.TooFarStacks, capture.TooFarDetachedStacks);
+
+        private static ResourceStack[] CandidateStacks(
+            FuelQuickGrabItem candidate,
+            IEnumerable<ResourceStack> stacks,
+            IReadOnlyDictionary<string, RuntimeResourceStack> runtimeStacks)
+            => stacks.Where(stack =>
             {
                 RuntimeResourceStack runtime;
                 string prefabName;
                 int quality;
                 return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
-                    capture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
+                    runtimeStacks.TryGetValue(stack.StackId, out runtime) &&
                     ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
                     string.Equals(prefabName, candidate.PrefabName, StringComparison.Ordinal) &&
                     quality == candidate.Quality;
@@ -547,7 +556,12 @@ namespace Stackmaster
                 return true;
             }
 
-            failure = "no recognized fuel is available in this Workbench home";
+            // No eligible fuel: if a recognized fuel exists only in distance-excluded
+            // chests, report the supported-range refusal instead of a plain shortage.
+            var farCandidate = target.Priorities.FirstOrDefault(candidate => TooFarStacks(candidate, capture).Length > 0);
+            failure = farCandidate != null
+                ? NearbyResourceService.TooFarFailure
+                : "no recognized fuel is available in this Workbench home";
             expectedUnavailable = true;
             return false;
         }

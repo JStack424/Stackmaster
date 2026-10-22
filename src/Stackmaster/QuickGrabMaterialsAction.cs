@@ -319,7 +319,9 @@ namespace Stackmaster
                 bool expectedUnavailable;
                 if (!TryPrepare(player, piece, request.ReservationRequirements, out requirements, out capture, out plan, out handles, out failure, out expectedUnavailable))
                 {
-                    if (expectedUnavailable) ShowExpectedMaterialUnavailable(failure);
+                    // A too-far refusal stays explicit even when a reservation was saved;
+                    // the generic reservation-only summary would hide the reason.
+                    if (expectedUnavailable && !NearbyResourceService.IsTooFarFailure(failure)) ShowExpectedMaterialUnavailable(failure);
                     else ShowMaterialFault(failure);
                     Complete(generation);
                     return;
@@ -768,20 +770,21 @@ namespace Stackmaster
                 (reservationRequirements ?? Array.Empty<ResourceRequirement>())
                     .Select(requirement => StableIdentityKey(requirement.ItemName, requirement.Quality)),
                 StringComparer.Ordinal);
-            var eligibleStacks = capture.Stacks.Where(stack =>
-            {
-                RuntimeResourceStack runtime;
-                string prefabName;
-                int quality;
-                return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
-                       capture.RuntimeStacks.TryGetValue(stack.StackId, out runtime) &&
-                       ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
-                       allowedIdentities.Contains(StableIdentityKey(prefabName, quality));
-            });
+            var eligibleStacks = StableEligibleStacks(capture.Stacks, capture.RuntimeStacks, allowedIdentities);
             plan = WithdrawalPlanner.Plan(requirements, eligibleStacks);
             if (!plan.IsSatisfiable || plan.PlannedUnits != plan.RequiredUnits)
             {
-                failure = "nearby storage does not contain the exact recipe materials required for this build piece";
+                // Classify the shortage before reporting it: if the exact recipe becomes
+                // satisfiable only by counting distance-excluded stock, the honest answer
+                // is the supported-range refusal, not a generic missing-materials result.
+                var farStacks = StableEligibleStacks(capture.TooFarStacks, capture.TooFarDetachedStacks, allowedIdentities);
+                var combinedPlan = farStacks.Length == 0
+                    ? null
+                    : WithdrawalPlanner.Plan(requirements, eligibleStacks.Concat(farStacks));
+                failure = combinedPlan != null && combinedPlan.IsSatisfiable &&
+                          combinedPlan.PlannedUnits == combinedPlan.RequiredUnits
+                    ? NearbyResourceService.TooFarFailure
+                    : "nearby storage does not contain the exact recipe materials required for this build piece";
                 expectedUnavailable = true;
                 return false;
             }
@@ -791,6 +794,26 @@ namespace Stackmaster
                 return false;
             }
             return true;
+        }
+
+        // One stable-identity filter for both selectable stock and distance-excluded
+        // evidence stock. The two stack sets stay separate everywhere else; they are only
+        // ever combined inside a throwaway satisfiability check that selects nothing.
+        private static ResourceStack[] StableEligibleStacks(
+            IEnumerable<ResourceStack> stacks,
+            IReadOnlyDictionary<string, RuntimeResourceStack> runtimeStacks,
+            HashSet<string> allowedIdentities)
+        {
+            return stacks.Where(stack =>
+            {
+                RuntimeResourceStack runtime;
+                string prefabName;
+                int quality;
+                return !string.Equals(stack.InventoryId, "player", StringComparison.Ordinal) &&
+                       runtimeStacks.TryGetValue(stack.StackId, out runtime) &&
+                       ExpeditionReservations.TryGetStableItemIdentity(runtime.Item, out prefabName, out quality) &&
+                       allowedIdentities.Contains(StableIdentityKey(prefabName, quality));
+            }).ToArray();
         }
 
         private static string StableIdentityKey(string prefabName, int quality)

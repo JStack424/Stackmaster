@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Stackmaster 1.4.3 diagnostic test candidate:** Adds bounded local logs to identify the exact ownership transition behind distant one-click placement failures and to distinguish loaded-Container loss from client-ZDO loss at the repeatable read-only cutoff. Gameplay and fail-closed transaction behavior are unchanged from 1.4.2.
+> **Stackmaster 1.4.4 test candidate:** Adds a supported resource-distance limit inside connected Workbench homes. Chests more than 100 metres from the player contribute no resources, and an action whose exact cost exists only beyond that limit refuses immediately with a “too far away from the required resources” message instead of waiting on Valheim's active-area ownership assignment. The bounded 1.4.3 distance diagnostics remain for this live test.
 
 ## About this project
 
@@ -63,7 +63,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Clears protection only after the whole tracked stack is manually transferred or dropped; partial moves preserve the remainder.
 - **One consistent home and storage scope**
   - Inside a workbench build zone, follows overlapping canonical vanilla Workbench zones as one connected home mesh.
-  - Includes loaded supported chests anywhere in that exact mesh and excludes nearby chests outside it.
+  - Includes loaded supported chests in that exact mesh within 100 metres of the player; a mesh chest farther away contributes no resources, and nearby chests outside the mesh are excluded.
   - Outside every workbench mesh, uses the configurable player-centered radius (20 metres by default) for chest-powered features.
   - Applies the same scope to Quick Stack, building, crafting, Quick Grab Materials, and fuel Quick Grab.
   - Never uses other crafting stations as graph links between separate workbench homes.
@@ -103,7 +103,7 @@ The modifier follows the configured **Quick Stack** shortcut, which uses `Left A
   - Rechecks scope, access, use state, stable identity, ownership, revisions, stack identity, quantities, and persisted inventory before accepting mutation.
   - Rolls back completed steps if a later step fails and verifies global item conservation before crediting the player.
   - Lets a valid readable but temporarily ownerless chest wait up to three seconds for Valheim's exact local assignment, then asks the player to retry the ordinary action; a timeout consumes nothing.
-  - Cancels with a specific diagnostic when a required chest is busy, stale, denied, unloaded, out of scope, unreadable, or changed.
+  - Cancels with a specific diagnostic when a required chest is busy, stale, denied, unloaded, out of scope, beyond the supported 100-metre resource distance, unreadable, or changed.
   - Releases exact acquired ownership on completion, cancellation, disable, disconnect, logout, unload, shutdown, and exceptions.
   - Disables item-changing behavior if a required Valheim runtime contract is missing, changed, or ambiguous.
 
@@ -129,9 +129,9 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-> **Stackmaster 1.4.3 diagnostic test candidate:** Automated tests cover the exact startup contracts, bounded transition-only diagnostics, session reset, retained-versus-missing client ZDO states, owner/view transitions, transaction safety, and the existing gameplay suite. One focused live boundary sequence is required to collect the conclusive evidence; this is not a gameplay fix or release approval.
+> **Stackmaster 1.4.4 test candidate:** Automated tests cover the exact startup contracts, the 100-metre mesh resource limit and its boundary, too-far classification for building, crafting, and both Quick Grab paths, transaction safety, and the existing gameplay suite. One focused live boundary sequence is required before this counts as verified; it is not release approval.
 
-Stackmaster 1.4.3 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
+Stackmaster 1.4.4 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
 
 Inside a base, Stackmaster discovers the complete connected union of loaded canonical vanilla workbench build zones using each station's current game-reported build range. Outside a base, the configurable player-centered radius is the fallback. Nearby build/craft totals read stable serialized snapshots from accessible vanilla containers in that active scope without claiming them, including containers owned by another peer. Mutation remains stricter: after player-first allocation, Stackmaster requests ownership only for the minimum required chests, revalidates their owner/data revisions and exact contents, reserves them for the transaction, and cancels before mutation if any required chest is busy, denied, stale, or unavailable. Valheim’s owner-authorized request is asynchronous. Remote-owned building actions use the existing prepared-ownership retry window; chest-backed crafting and Quick Grab Materials clicks instead wait in their client-side coroutines for the exact required ownership and proceed from the original click only after a fresh matching plan and reservations are ready. After a successful chest-backed building placement, only the exact acquired chests actually used remain locally owned on a 30-second sliding lease, renewed by each subsequent successful build use. Crafting and quick-grab withdrawals release their reservations and exact acquired ownership immediately and never create or renew that lease. A remote player's manual open request immediately invalidates the build lease and continues through vanilla's normal ownership transfer. Every cancellation, failure, rollback, disable, disconnect, logout, unload, shutdown, exception, or unused acquisition releases only ownership Stackmaster can still prove it acquired, with identity, session, owner-revision, and current-owner guards. If exact local reservation cleanup cannot finish immediately, Stackmaster keeps the matching ownership cleanup record and retries the reservation first; it never clears a later or unrelated owner's in-use state.
 

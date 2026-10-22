@@ -231,6 +231,7 @@ internal static class Program
             LifecycleShutdownIsTerminal,
             WorkbenchMeshIgnoresVerticalDistance,
             WorkbenchMeshUsesStrictBoundaries,
+            MeshResourceDistanceLimitIsInclusiveAndMeshOnly,
             TangentWorkbenchZonesDoNotConnect,
             WorkbenchMeshConnectsTransitively,
             WorkbenchMeshSeedsEveryZoneContainingPlayer,
@@ -3796,6 +3797,32 @@ internal static class Program
         Equal(StorageScopeKind.NearbyRadius, onBoundary.Kind, "player exactly on build-radius boundary is outside");
         var inside = Scope(P(9.999, 0, 0), Zone("a", 0, 0, 0, 10));
         True(!inside.Contains(P(10, 0, 0)), "chest exactly on build-radius boundary is excluded");
+    }
+
+    private static void MeshResourceDistanceLimitIsInclusiveAndMeshOnly()
+    {
+        Equal(100.0, ResourceDistancePolicy.MaximumMeshResourceDistance,
+            "the supported mesh resource distance is exactly 100 metres");
+        True(ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.WorkbenchMesh, 99.999),
+            "a mesh chest just inside 100 metres contributes resources");
+        True(ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.WorkbenchMesh, 100.0),
+            "a mesh chest exactly at 100 metres still contributes resources");
+        True(!ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.WorkbenchMesh, 100.001),
+            "a mesh chest just beyond 100 metres contributes nothing");
+        True(ResourceDistancePolicy.IsBeyondLimit(StorageScopeKind.WorkbenchMesh, 137.4),
+            "the October 21 failure distance classifies as beyond the limit");
+        True(!ResourceDistancePolicy.IsBeyondLimit(StorageScopeKind.WorkbenchMesh, 100.0),
+            "the exact limit distance is not beyond the limit");
+        True(!ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.WorkbenchMesh, double.NaN),
+            "an unmeasurable mesh distance fails closed into the excluded set");
+        True(!ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.WorkbenchMesh, double.PositiveInfinity),
+            "an infinite mesh distance fails closed into the excluded set");
+        True(ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.NearbyRadius, 500.0),
+            "the fallback radius scope is governed by its own radius, never by the mesh limit");
+        True(!ResourceDistancePolicy.IsBeyondLimit(StorageScopeKind.NearbyRadius, 500.0),
+            "the fallback radius scope has no mesh too-far classification");
+        True(ResourceDistancePolicy.IsWithinLimit(StorageScopeKind.Unavailable, 500.0),
+            "the unavailable scope keeps its existing eligibility semantics");
     }
 
     private static void TangentWorkbenchZonesDoNotConnect()
