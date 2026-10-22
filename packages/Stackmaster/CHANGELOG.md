@@ -2,58 +2,15 @@
 
 ## 1.4.4
 
-Supported resource-distance limit for connected Workbench homes, resolving the distant one-click failures from issue #3 by defining the range Stackmaster supports instead of racing Valheim's active-area ownership sweep.
+Fuel Quick Grab, connected-home crafting-station coverage, more reliable distant chest-backed actions, and a supported resource-distance limit for connected Workbench homes.
 
-- Inside a connected Workbench mesh, a chest more than **100 metres** from the player (straight-line) now contributes no resources: it is excluded from build/craft totals, withdrawal planning, Quick Grab Materials, and fuel Quick Grab. Player inventory and the separate outside-home fallback radius are unchanged.
-- If an attempted build, craft, or grab could be satisfied only by stock beyond the limit, the action refuses immediately — no ownership wait — with “You're too far away from the required resources (over 100 m)” and consumes nothing. Mixed near/far stock counts only the near stock.
-- The limit is re-measured from the live player and chest positions at every transaction validation and reservation check, so an out-of-range chest cannot be used from a stale in-range snapshot.
-- Ownership behavior inside the limit is unchanged: no ownership claiming was added, and all identity, revision, reservation, rollback, and conservation checks are preserved. The bounded distance diagnostics added in 1.4.3 remain in place; they are read-only, transition-only, and log-only.
-
-## 1.4.3 (local diagnostic test candidate)
-
-Bounded local diagnostics for the two distance transitions observed in the 1.4.2 live test. This candidate intentionally changes no gameplay behavior.
-
-- Remembers up to 16 recently action-selected source-chest identities per session and logs only state transitions, sampled no more than twice per second.
-- Distinguishes a loaded scene `Container`, its `ZNetView`/captured ZDO reference, the scene ZDO, and the same `ZDOID` in the client `ZDOMan`, including owner/data revisions, distance, scope summary, and whether the source is included in current read-only totals.
-- Logs ownership batch start, changed owner/view/reference states, lifecycle path, elapsed time, and final outcome for each prepared source without weakening any ownership, revision, identity, reservation, rollback, or conservation check.
-- Clears all diagnostic session state on initialization, reconnect, disable, and shutdown; logging is fail-open and does not request ownership, invoke RPCs, mutate ZDOs, or touch live inventory.
-
-## 1.4.2 (local test candidate)
-
-Live-load compatibility correction for the 1.4.1 test candidate. Automated verification is complete; live Valheim testing is still required before release.
-
-- Corrects the startup contract for `Hud.m_hoverName` to its actual public `TextMeshProUGUI` field type in the pinned Valheim client/server assembly.
-- Adds an exact metadata regression check so a future mismatch between the compiled field reference and startup gate cannot pass packaging unnoticed.
-- Preserves every 1.4.1 gameplay change; Stackmaster still fails closed before installing any Harmony or inventory hook if the actual field or any other required runtime contract changes.
-
-## 1.4.1 (superseded local test candidate)
-
-Ownerless remote-container recovery and precise pre-ownership diagnostics. Automated verification is complete; live Valheim testing is still required before release.
-
-- Allows an otherwise valid readable chest with no current ZDO owner to reach Stackmaster's existing bounded vanilla owner-assignment wait instead of rejecting it during read-only preflight.
-- Makes ownerless routing explicit while preserving exact identity, vanilla type, active-scope, network-view/ZDO, access, data-revision, ownership-transfer, reservation, rollback, and no-consumption guards.
-- Splits the former combined identity/readability cancellation into distinct messages for missing handles or containers, changed type or scope, missing or invalid network state, changed ZDO identity, and unreadable or missing detached inventory.
-- Logs one bounded diagnostic when a required chest enters the ownerless wait, including its captured identity, owner revision, distance, and bounded scope signature; successful exact local assignment is logged separately.
-- Distinguishes a three-second vanilla owner-assignment timeout from an ordinary owner-RPC timeout, labels every still-queued chest as unattempted rather than inventing a timeout, and continues to consume nothing on any failure.
-- Preserves the explicit retry after successful ownership preparation rather than replaying Hammer construction or Cultivator planting outside Valheim's normal action path.
-
-## 1.4.0 (local test candidate)
-
-Fuel Quick Grab and connected-home crafting-station coverage. Automated verification is complete; live Valheim testing is still required before release.
-
-- Adds `Left Alt + E` fuel Quick Grab for refillable fireplaces, smelters and the Charcoal Kiln, fuel-enabled cooking stations, the Shield Generator, and the Battering Ram.
-- Selects one device-prioritized fuel type per press, uses partial stock when necessary, never mixes types, and caps the withdrawal at the item's canonical maximum stack size and backpack capacity.
-- Draws fuel only from eligible vanilla chests in the player's connected canonical Workbench mesh; player-carried stock and outside-home radius fallback are not fuel sources.
-- Suppresses the same recognized chord's normal use/load interaction through both the regular input path and the exact player interaction hook, while preserving container Quick Stack precedence and ordinary `E`.
-- Resolves fuel devices from Valheim's actual hovered child/switch and their serialized fuel-prefab references, and adds a localized `[Alt + E] Get <fuel>` line beneath vanilla hover text for recognized targets.
-- Adds a default-on **Enable whole-home crafting stations** option. One loaded valid station inside the connected Workbench mesh satisfies that exact build-station requirement throughout the same mesh.
-- Applies that same exact connected-home station rule to ordinary deconstruction and the Hammer requirement display, while leaving vanilla removal and UI behavior unchanged everywhere else.
-- Checks vanilla in-range access first and preserves vanilla behavior when the option is off, the player or station is outside a valid mesh, the required station name differs, or identity/topology is ambiguous.
-- Keeps non-Workbench stations as occupants only: they never enlarge ranges, link separate homes, or become topology graph nodes.
-- Retains vanilla DLC, free-build, material, crafting, upgrade, removal, multiplayer, and dedicated-server rules.
-- Keeps rapid consecutive chest-backed crafts reliable: an operation-scoped reservation generation prevents stale cleanup from touching the next craft, and a just-released unowned chest waits for vanilla's exact local reassignment instead of consuming a failed click.
-- Recreates the optional inventory and Hammer reservation rows safely after logout, world changes, and reconnects instead of retaining Unity objects destroyed with the old scene.
-- Simplifies the detailed README mechanics into player-focused sections of five to eight bullets each.
+- Adds `Left Alt + E` fuel Quick Grab for refillable fireplaces, smelters and the Charcoal Kiln, fuel-enabled cooking stations, the Shield Generator, and the Battering Ram. It selects one device-prioritized fuel type per press, uses partial stock when necessary, never mixes types, and caps the withdrawal at the item's canonical maximum stack size and backpack capacity.
+- Draws fuel only from eligible vanilla chests in the player's connected canonical Workbench mesh; player-carried stock and outside-home radius fallback are not fuel sources. A localized `[Alt + E] Get <fuel>` line appears beneath vanilla hover text for recognized targets, and a recognized fuel press never also operates or loads the device.
+- Adds a default-on **Enable whole-home crafting stations** option. One loaded valid station inside the connected Workbench mesh satisfies that exact build-station requirement throughout the same mesh, including the Hammer requirement display and ordinary deconstruction. Non-Workbench stations never enlarge ranges or link separate homes, and vanilla in-range access is always checked first.
+- Improves chest-backed reliability: a valid readable chest with no current owner now waits up to three seconds for Valheim's exact local assignment instead of failing the click, with precise no-consumption diagnostics when assignment, routing, or identity checks fail. Rapid consecutive chest-backed crafts stay reliable, and reservation rows are recreated safely after logout, world changes, and reconnects.
+- Adds the supported resource-distance limit, resolving the distant one-click failures from issue #3 by defining the range Stackmaster supports instead of racing Valheim's active-area ownership sweep. Inside a connected Workbench mesh, a chest more than **100 metres** from the player (straight-line) contributes no resources: it is excluded from build/craft totals, withdrawal planning, Quick Grab Materials, and fuel Quick Grab. Player inventory and the separate outside-home fallback radius are unchanged.
+- If an attempted build, craft, or grab could be satisfied only by stock beyond the limit, the action refuses immediately — no ownership wait — with "You're too far away from the required resources (over 100 m)" and consumes nothing. Mixed near/far stock counts only the near stock. The limit is re-measured from the live player and chest positions at every transaction validation and reservation check.
+- Ownership behavior inside the limit is unchanged: no ownership claiming was added, and all identity, revision, reservation, rollback, and conservation checks are preserved. Bounded, read-only, transition-only diagnostics were added for the distance behavior and write only to the local log.
 
 ## 1.3.5
 
