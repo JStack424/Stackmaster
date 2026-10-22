@@ -4,7 +4,7 @@
 
 Stackmaster by **JStack424** brings inventory sorting, **Quick Stack**, and building and crafting from nearby storage into one Valheim workflow.
 
-> **Stackmaster 1.4.4 test candidate:** Adds a supported resource-distance limit inside connected Workbench homes. Chests more than 100 metres from the player contribute no resources, and an action whose exact cost exists only beyond that limit refuses immediately with a “too far away from the required resources” message instead of waiting on Valheim's active-area ownership assignment. The bounded 1.4.3 distance diagnostics remain for this live test.
+> **Stackmaster 1.4.4:** Adds a supported resource-distance limit inside connected Workbench homes. Chests more than 100 metres from the player contribute no resources, and an action whose exact cost exists only beyond that limit refuses immediately with a “too far away from the required resources” message instead of waiting on Valheim's active-area ownership assignment.
 
 ## About this project
 
@@ -129,7 +129,7 @@ For a manual install, install `denikson-BepInExPack_Valheim` 5.4.2350 or newer, 
 
 ## Compatibility and support
 
-> **Stackmaster 1.4.4 test candidate:** Automated tests cover the exact startup contracts, the 100-metre mesh resource limit and its boundary, too-far classification for building, crafting, and both Quick Grab paths, transaction safety, and the existing gameplay suite. One focused live boundary sequence is required before this counts as verified; it is not release approval.
+> **Stackmaster 1.4.4:** Automated tests cover the exact startup contracts, the 100-metre mesh resource limit and its boundary, too-far classification for building, crafting, and both Quick Grab paths, transaction safety, and the existing gameplay suite.
 
 Stackmaster 1.4.4 is compiled from a documented Valheim/Unity/BepInEx/Harmony reference bundle, but exact version strings, file hashes, and assembly MVIDs are provenance and diagnostics—not a runtime allowlist. It supports vanilla containers only. On startup, Stackmaster checks the complete API surface it relies on, including exact overload parameters and every Harmony target, before installing any patch. A missing, changed, or ambiguous contract disables the mod before item-changing hooks are installed; a patching error disables the runtime and removes all Stackmaster patches.
 

@@ -1,13 +1,13 @@
 # Changelog
 
-## 1.4.4 (local test candidate)
+## 1.4.4
 
 Supported resource-distance limit for connected Workbench homes, resolving the distant one-click failures from issue #3 by defining the range Stackmaster supports instead of racing Valheim's active-area ownership sweep.
 
 - Inside a connected Workbench mesh, a chest more than **100 metres** from the player (straight-line) now contributes no resources: it is excluded from build/craft totals, withdrawal planning, Quick Grab Materials, and fuel Quick Grab. Player inventory and the separate outside-home fallback radius are unchanged.
 - If an attempted build, craft, or grab could be satisfied only by stock beyond the limit, the action refuses immediately — no ownership wait — with “You're too far away from the required resources (over 100 m)” and consumes nothing. Mixed near/far stock counts only the near stock.
 - The limit is re-measured from the live player and chest positions at every transaction validation and reservation check, so an out-of-range chest cannot be used from a stale in-range snapshot.
-- Ownership behavior inside the limit is unchanged: no ownership claiming was added, and all identity, revision, reservation, rollback, and conservation checks are preserved. The bounded 1.4.3 distance diagnostics remain in place for this live test.
+- Ownership behavior inside the limit is unchanged: no ownership claiming was added, and all identity, revision, reservation, rollback, and conservation checks are preserved. The bounded distance diagnostics added in 1.4.3 remain in place; they are read-only, transition-only, and log-only.
 
 ## 1.4.3 (local diagnostic test candidate)
 
